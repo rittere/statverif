@@ -124,7 +124,6 @@ process in(c, xANa:bitstring);
 	in(c, yANb:bitstring);
 	let secretANa = choice[xANa, yANa] in
 	let secretANb = choice[xANb, yANb] in
-	phase 1;
 	new skA:skey; let pkA = pk(skA) in
         out(c, pkA);
         new skB:skey; let pkB = pk(skB) in

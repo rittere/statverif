@@ -767,8 +767,16 @@ let match_hyp_eq f hyp1 hyp2 end_session_id () =
   let filt = function Out _ -> true
 		    | Pred(p,_) -> p.p_prop land Param.pred_BLOCKING != 0
   in
+  (* To prove the events and blocking predicates of the query (hyp1_events), we
+     show that they match the events and blocking predicates of the clause (hyp2_events).
+     These predicates cannot be derived from clauses.
+     To prove the non-blocking predicate of the query (hyp1_preds), we 
+     show that they are derivable from any predicates (blocking or not) of the clause 
+     (hyp2_preds, hyp2_preds_block).
+     These predicates cannot be directly in the clause since they are not blocking. *)
   let (hyp1_events, hyp1_preds) = List.partition filt hyp1 in
   let (hyp2_events, hyp2_preds) = List.partition filt hyp2 in
+  let hyp2_preds_block = List.filter (function Out _ -> false | Pred(p,_) -> p.p_prop land Param.pred_BLOCKING != 0) hyp2 in
   match_hyp_eq (fun () ->
     if hyp1_preds == [] then f() else
     (* The matching of events succeeded; now I need to prove the facts in hyp1_preds
@@ -777,6 +785,7 @@ let match_hyp_eq f hyp1 hyp2 end_session_id () =
       let bad_fact = Pred(Param.bad_pred, []) in
       let hyp2_preds' = List.map Terms.copy_fact2 hyp2_preds in
       let hyp1_preds' = List.map Terms.copy_fact2 hyp1_preds in
+      let hyp2_preds_block' = List.map Terms.copy_fact2 hyp2_preds_block in
       Terms.cleanup();
       let clauses = 
          (hyp1_preds', bad_fact, Rule(-1, LblNone, hyp1_preds', bad_fact, []), []) ::
@@ -785,8 +794,12 @@ let match_hyp_eq f hyp1 hyp2 end_session_id () =
       in
       Display.Text.print_string "Inside query: trying to prove ";
       Display.Text.display_list Display.Text.display_fact ", " hyp1_preds';
-      Display.Text.print_string " from ";
-      Display.Text.display_list Display.Text.display_fact ", " hyp2_preds';
+      let hyp2_preds_normal_block = hyp2_preds_block' @ hyp2_preds' in
+      if hyp2_preds_normal_block != [] then
+	begin
+	  Display.Text.print_string " from ";
+	  Display.Text.display_list Display.Text.display_fact ", " hyp2_preds_normal_block
+	end;
       Display.Text.newline();
       incr Param.inside_query_number;
       let inums = string_of_int (!Param.inside_query_number) in
@@ -795,8 +808,11 @@ let match_hyp_eq f hyp1 hyp2 end_session_id () =
 	  Display.LangHtml.openfile ((!Param.html_dir) ^ "/inside" ^ inums ^ ".html") ("ProVerif: inside query " ^ inums);
 	  Display.Html.print_string "Inside query: trying to prove ";
 	  Display.Html.display_list Display.Html.display_fact ", " hyp1_preds';
-	  Display.Html.print_string " from ";
-	  Display.Html.display_list Display.Html.display_fact ", " hyp2_preds';
+	  if hyp2_preds_normal_block != [] then
+	    begin
+	      Display.Html.print_string " from ";
+	      Display.Html.display_list Display.Html.display_fact ", " hyp2_preds_normal_block
+	    end;
 	  Display.Html.newline()
 	end;
       (* the resolution prover must be _sound_ for this call
@@ -805,8 +821,16 @@ let match_hyp_eq f hyp1 hyp2 end_session_id () =
 	 do not contain "any_name" and contain unary attacker predicates, 
          which is the case here. *)
       let cl = Rules.sound_bad_derivable clauses in
-      if List.exists (function ([], _, _, []) -> true
-                             | _ -> false) cl then
+      if List.exists (function 
+	  (hyp, _, _, []) -> 
+	    begin
+	      try
+		Terms.auto_cleanup (fun () ->
+		  match_hyp_eq (fun () -> ()) hyp hyp2_preds_block' end_session_id ());
+		true
+	      with Unify -> false
+	    end
+        | _ -> false) cl then
         begin
           (* Success: managed to prove the facts in hyp1_preds' *)
 	  Display.Text.print_line "Inside query: proof succeeded";

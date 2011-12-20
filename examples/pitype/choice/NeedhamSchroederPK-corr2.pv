@@ -25,9 +25,6 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
-(* We obtain termination by requiring that key registration be performed
-in a phase that precedes the protocol *)
-
 free c:channel.
 (* 
 
@@ -146,7 +143,6 @@ process new skA:skey; let pkA = pk(skA) in
 	in(c, yBNa:bitstring);
 	in(c, xBNb:bitstring);
 	in(c, yBNb:bitstring);
-	phase 1;
 	let secretANa = choice[xANa, yANa] in
 	let secretANb = choice[xANb, yANb] in
 	let secretBNa = choice[xBNa, yBNa] in

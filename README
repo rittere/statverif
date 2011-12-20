@@ -20,28 +20,28 @@ higher. Objective Caml can be downloaded from
 
 Uncompress the source and documentation archives using tar:
 
-	gunzip proverif1.86.tar.gz
-	tar -xf proverif1.86.tar
-	gunzip proverifdoc1.86.tar.gz
-	tar -xf proverifdoc1.86.tar
+	gunzip proverif1.86pl3.tar.gz
+	tar -xf proverif1.86pl3.tar
+	gunzip proverifdoc1.86pl3.tar.gz
+	tar -xf proverifdoc1.86pl3.tar
 
 or if you have GNU tar:
 
-	tar -xzf proverif1.86.tar.gz
-	tar -xzf proverifdoc1.86.tar.gz
+	tar -xzf proverif1.86pl3.tar.gz
+	tar -xzf proverifdoc1.86pl3.tar.gz
 
-This will create a directory named proverif1.86 in the current directory.
+This will create a directory named proverif1.86pl3 in the current directory.
 Go into this directory, and build the programs:
 
-	cd proverif1.86
+	cd proverif1.86pl3
 	./build
 
 * under Windows NT, 2000, or XP
 
-Uncompress the archives proverif1.86.tar.gz and proverifdoc1.86.tar.gz
+Uncompress the archives proverif1.86pl3.tar.gz and proverifdoc1.86pl3.tar.gz
 using Winzip, in the directory of your choice. This will create a
-subdirectory named proverif1.86. Open a DOS window, cd into the
-proverif1.86 directory and run the build .BAT file:
+subdirectory named proverif1.86pl3. Open a DOS window, cd into the
+proverif1.86pl3 directory and run the build .BAT file:
 
 	build
 

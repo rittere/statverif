@@ -290,6 +290,8 @@ let check_first_fact vlist = function
 let nrule = ref 0
 let red_rules = ref ([] : reduction list)
 
+let no_gen_var = ref []
+
 let add_rule hyp concl constra tags =
   red_rules := (hyp, concl, 
                 Rule (!nrule, tags, hyp, concl, constra), constra)
@@ -465,7 +467,7 @@ let end_destructor_group next_f occ cur_state =
   if (!Param.non_interference) || (cur_state.success_conditions != None) then
     begin
       (* Get all vars in cur_state.hypothesis/unif/constra *)
-      let var_list = ref [] in
+      let var_list = ref (!no_gen_var) in
       List.iter (Terms.get_vars_fact var_list) cur_state.hypothesis;
       List.iter (fun (t1,t2) -> Terms.get_vars var_list t1; Terms.get_vars var_list t2) cur_state.unif;
       List.iter (List.iter (Terms.get_vars_constra var_list)) cur_state.constra;
@@ -723,6 +725,7 @@ let rec transl_process cur_state = function
 	 cur_state
      in
      let v = Terms.new_var (if !Param.tulafale != 1 then "@sid" else "sid") Param.sid_type in
+     no_gen_var := v :: (!no_gen_var);
      let v' = get_var_for_process p' v in 
      let count_params = count_name_params cur_state.name_params in
      begin
@@ -1358,6 +1361,7 @@ let transl p =
   Reduction_helper.main_process := p;
   nrule := 0;
   red_rules := [];
+  no_gen_var := [];
   List.iter (fun (hyp1, concl1, constra1, tag1) -> 
     TermsEq.close_rule_destr_eq (fun (hyp, concl, constra) ->
       add_rule hyp concl constra tag1) (hyp1, concl1, constra1))

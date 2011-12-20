@@ -25,9 +25,6 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
-(* We obtain termination by requiring that key registration be performed
-in a phase that precedes the protocol *)
-
 type coins.
 type host.
 type key.
@@ -101,9 +98,7 @@ process
 	new Kas:key; new Kbs:key; 
 	insert keytable(A, Kas);
 	insert keytable(B, Kbs);
-	(!processK)
-	|
-	phase 1;
 	((!processInit) | 
 	 (!processResp) |
-	 (!processS))
+	 (!processS) | 
+	 (!processK))

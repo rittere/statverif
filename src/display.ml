@@ -2274,6 +2274,7 @@ let display_step_short display_loc = function
       newline()
   | RIO(ninput, tc', pat, n, tc, t) ->
       display_keyword "out";
+      print_string "(";
       display_term2 tc;
       print_string ", ";
       display_term2 t;
@@ -2285,6 +2286,7 @@ let display_step_short display_loc = function
       newline()
   | RIO2(ninput, tc', pat, n, tc, t) ->
       display_keyword "out";
+      print_string "(";
       display_term2 tc;
       print_string ", ";
       display_term2 t;

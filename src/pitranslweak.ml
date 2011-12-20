@@ -79,7 +79,7 @@ let rec find_min_choice_phase current_phase = function
       find_min_choice_phase current_phase p;
       find_min_choice_phase current_phase q
   | LetFilter(vlist,f,p,q,_) ->
-      user_error "Predicates are currently incompatible with non-interference.\n"
+      user_error "Predicates are currently incompatible with proofs of equivalences.\n"
   | Event(_,p,_) ->
       find_min_choice_phase current_phase p
   | Insert(_,p,_) ->
@@ -93,6 +93,8 @@ let rec find_min_choice_phase current_phase = function
 
 let nrule = ref 0
 let red_rules = ref ([] : reduction list)
+
+let no_gen_var = ref []
 
 let mergelr = function
     Pred(p,[t1;t2]) as x ->
@@ -172,9 +174,7 @@ type transl_state =
       last_step_unif_left : (term * term) list; 
       last_step_unif_right : (term * term) list; 
       (* Unifications to do for the last group of destructor applications. 
-         last_step_unif will be appended to unif before emitting clauses. 
-	 The separation between last_step_unif and unif is useful only 
-	 for non-interference. *)
+         last_step_unif will be appended to unif before emitting clauses. *)
       success_conditions_left : (term * term) list list ref option;
       success_conditions_right : (term * term) list list ref option;
       (* List of constraints that should be false for the evaluation
@@ -224,7 +224,6 @@ let output_rule { hypothesis = prev_input; constra = constra; unif = unif;
    with Terms.Unify -> 
       Terms.cleanup()
 
-(* For non-interference *)
 
 let start_destructor_group next_f occ cur_state =
   if (cur_state.last_step_unif_left != []) || (cur_state.last_step_unif_right != []) then
@@ -242,7 +241,7 @@ let start_destructor_group next_f occ cur_state =
   else
     begin
       (* Get all vars in cur_state.hypothesis/unif/constra *)
-      let var_list = ref [] in
+      let var_list = ref (!no_gen_var) in
       List.iter (Terms.get_vars_fact var_list) cur_state.hypothesis;
       List.iter (fun (t1,t2) -> Terms.get_vars var_list t1; Terms.get_vars var_list t2) cur_state.unif;
       List.iter (List.iter (Terms.get_vars_constra var_list)) cur_state.constra;
@@ -473,7 +472,8 @@ let rec transl_process cur_state = function
                transl_process cur_state q
  | Repl (p,occ) -> 
      (* Always introduce session identifiers ! *)
-     let v1 = Terms.new_var "sid" Param.sid_type in
+     let v1 = Terms.new_var "@sid" Param.sid_type in
+     no_gen_var := v1 :: (!no_gen_var);
      transl_process { cur_state with
                       repl_count = cur_state.repl_count + 1;
 		      name_params_left = (Var v1) :: cur_state.name_params_left;
@@ -504,17 +504,21 @@ let rec transl_process cur_state = function
        transl_term_incl_destructor (fun pat1_l pat1_r cur_state1 ->
 	 transl_term_incl_destructor (fun pat2_l pat2_r cur_state2 ->
            end_destructor_group (fun cur_state3 ->
+	     (* Left side equal but not the right side *)
 	     output_rule { cur_state3 with 
                            unif = (pat1_l, pat2_l) :: cur_state3.unif;
                            constra = [Neq(pat1_r,pat2_r)] :: cur_state3.constra;
                            hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags } (Pred(Param.bad_pred, []));
+	     (* Right side equal but not the left side *)
 	     output_rule { cur_state3 with 
                            unif = (pat1_r, pat2_r) :: cur_state3.unif;
                            constra = [Neq(pat1_l,pat2_l)] :: cur_state3.constra;
                            hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags } (Pred(Param.bad_pred, []));
+	     (* Both sides equal *)
              transl_process { cur_state3 with 
-                              unif = (pat1_l,pat2_l) :: (pat2_r,pat2_r) :: cur_state3.unif;
+                              unif = (pat1_l,pat2_l) :: (pat1_r,pat2_r) :: cur_state3.unif;
                               hyp_tags = (TestTag occ) :: cur_state3.hyp_tags } p;
+	     (* Both sides different *)
 	     transl_process { cur_state3 with 
                               constra = [Neq(pat1_l, pat2_l)] :: [Neq(pat1_r,pat2_r)] :: cur_state3.constra;
                               hyp_tags = (TestTag occ) :: cur_state3.hyp_tags } q
@@ -606,7 +610,7 @@ let rec transl_process cur_state = function
                       hyp_tags = (LetTag occ) :: cur_state.hyp_tags } p'
 
  | LetFilter(vlist,f,p,q,occ) ->
-       user_error "Predicates are currently incompatible with non-interference.\n"
+       user_error "Predicates are currently incompatible with proofs of equivalences.\n"
 
  | Event(_, p, _) ->
      transl_process cur_state p

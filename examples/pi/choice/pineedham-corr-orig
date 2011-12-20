@@ -115,7 +115,6 @@ process in(c, xANa);
 	in(c, yANb);
 	let secretANa = choice[xANa, yANa] in
 	let secretANb = choice[xANb, yANb] in
-	phase 1;
 	new skA; let pkA = pk(skA) in
         out(c, pkA);
         new skB; let pkB = pk(skB) in

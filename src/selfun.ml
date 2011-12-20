@@ -294,7 +294,12 @@ let selection_fun ((hyp,concl,hist,constra) as rule) =
    | Param.Nounifset -> selection_fun_nounifset rule
   in
   let r =
-    if (r = -1) && (!inst_constraints) then
+    (* For proofs of equivalences (!inst_constraints = true),
+       if the conclusion is selected (r = -1) and it is unselectable,
+       that is, it is of the form such as bad: or attacker:x,x',
+       then we try to find a better selection by selecting an hypothesis
+       attacker:x,x' in which x (or x') occurs in an inequality x <> M. *)
+    if (r = -1) && (!inst_constraints) && (is_unselectable concl) then
       begin
 	List.iter (List.iter inst_constra) constra;
 	let rule2 = (List.map copy_fact2 hyp, copy_fact2 concl, hist, List.map copy_constra2 constra) in

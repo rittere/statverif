@@ -1,6 +1,21 @@
 This file summarizes the most important changes between versions
 of the cryptographic protocol verifier.
 
+Version 1.86pl3
+
+- Fixed bugs in the generation of clauses for proofs of equivalences.
+
+Version 1.86pl2
+
+- Fixed bug in the selection function for proofs of equivalences.
+(This bug could cause non-termination.)
+
+Version 1.86pl1
+
+- Fixed minor display bug (missing parenthesis in display of outputs 
+on private channels)
+- Fixed bug in the proof of non-blocking predicates in queries
+
 Version 1.86
 
 - HTML output, using the command line option -html <html directory>
