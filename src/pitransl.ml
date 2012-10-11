@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -792,8 +792,18 @@ let rec transl_process cur_state = function
 	     n.f_type <- nptype, snd n.f_type;
 	     r.prev_inputs_meaning <- npm
 	   end
-	 else if not (Terms.eq_lists (fst n.f_type) nptype) then
-	   internal_error ("Name " ^ n.f_name ^ " has bad type");
+	 else if !Param.ignore_types then
+	   begin
+	     (* When we ignore types, the types of the arguments may vary,
+		only the number of arguments is preserved. *)
+	     if List.length (fst n.f_type) != List.length nptype then
+	       internal_error ("Name " ^ n.f_name ^ " has bad arity")
+	   end
+	 else
+	   begin
+	     if not (Terms.eq_lists (fst n.f_type) nptype) then
+	       internal_error ("Name " ^ n.f_name ^ " has bad type")
+	   end;
          r.prev_inputs <- Some (FunApp(n, np));
          transl_process cur_state p;
          r.prev_inputs <- None
@@ -1051,7 +1061,10 @@ let rules_for_red f phase red_rule =
     end
 
 let rules_for_function phase _ f =
-   if not f.f_private then
+   if (not f.f_private) &&
+    (* Don't generate clauses for type converter functions when we ignore types
+       (These functions disappear.) *)
+    (not ((f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types))) then
      let res_pred = Param.get_pred (Attacker(phase, snd f.f_type)) in
      match f.f_cat with
        Eq red_rules -> 
@@ -1393,7 +1406,7 @@ let transl p =
 	let w = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (Attacker(i-1,t)) in
 	add_rule [Pred(att_im1, [w])] (Pred(att_i, [w])) [] PhaseChange
-	  ) (if !Param.ignore_types || !Param.untyped_attacker then [Param.any_type] else !Param.all_types);
+	  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
     if i > 0 then
       let tbl_i = Param.get_pred (Table(i)) in
       let tbl_im1 = Param.get_pred (Table(i-1)) in
@@ -1441,7 +1454,7 @@ let transl p =
           (Pred(bad_pred, [])) [] (TestEq(att_pred));
 
       end
-	) (if !Param.ignore_types || !Param.untyped_attacker then [Param.any_type] else !Param.all_types);
+	) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
 
   (* Weak secrets *)
   begin
@@ -1485,7 +1498,7 @@ let transl p =
 	     Selfun.add_no_unif (att_guess, [FVar v1; FVar v2])
 	       (Selfun.never_select_weight+10);
 
-	     r) (if !Param.ignore_types || !Param.untyped_attacker then [Param.any_type] else !Param.all_types)
+	     r) (if !Param.ignore_types then [Param.any_type] else !Param.all_types)
 
   end;
   
@@ -1512,7 +1525,7 @@ let transl p =
        List.iter (fun t -> 
 	 let v = Terms.new_var Param.def_var_name t in
 	 Selfun.add_no_unif (Param.get_pred (Compromise(t)), [FVar v]) Selfun.never_select_weight
-	   ) (if !Param.ignore_types || !Param.untyped_attacker then [Param.any_type] else !Param.all_types);
+	   ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
        comp_transl_process p;
        List.iter (fun ch ->
 	 if not ch.f_private then

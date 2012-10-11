@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 

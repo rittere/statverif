@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -85,7 +85,6 @@ val non_interference : bool ref
 
 val typed_frontend : bool ref
 val ignore_types : bool ref
-val untyped_attacker : bool ref
 
 val html_output : bool ref
 val html_dir : string ref

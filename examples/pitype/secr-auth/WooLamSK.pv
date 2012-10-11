@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -40,7 +40,7 @@ The types avoid the attack.
 
 *)
 
-set ignoreTypes = attacker.
+set ignoreTypes = false.
 
 (* When types are ignored, the verification does not terminate.
 In fact, there is an attack against this protocol.

@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -490,8 +490,18 @@ let rec transl_process cur_state = function
 	     n.f_type <- ntype, snd n.f_type;
 	     r.prev_inputs_meaning <- cur_state.name_params_meaning
 	   end
-	 else if not (Terms.eq_lists (fst n.f_type) ntype) then
-	   internal_error ("Name " ^ n.f_name ^ " has bad arity");
+	 else if !Param.ignore_types then
+	   begin
+	     (* When we ignore types, the types of the arguments may vary,
+		only the number of arguments is preserved. *)
+	     if List.length (fst n.f_type) != List.length ntype then
+	       internal_error ("Name " ^ n.f_name ^ " has bad arity")
+	   end
+	 else
+	   begin
+	     if not (Terms.eq_lists (fst n.f_type) ntype) then
+	       internal_error ("Name " ^ n.f_name ^ " has bad type")
+	   end;
          r.prev_inputs <- Some (FunApp(Param.choice_fun (snd n.f_type), [ FunApp(n, cur_state.name_params_left); 
 									  FunApp(n, cur_state.name_params_right)]));
          transl_process cur_state p;
@@ -671,7 +681,10 @@ let rules_for_red f phase red_rules =
 	) red_rules
 
 let rules_for_function phase _ f =
-   if not f.f_private then
+   if (not f.f_private) &&
+     (* Don't generate clauses for type converter functions when we ignore types
+       (These functions disappear.) *)
+     (not ((f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types))) then
      let res_pred = Param.get_pred (AttackerBin(phase, snd f.f_type)) in
    match f.f_cat with
      Eq red_rules -> 
@@ -863,7 +876,7 @@ let transl p =
 	let w2 = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (AttackerBin(i-1,t)) in
 	add_rule [Pred(att_im1, [w1; w2])] (Pred(att_i, [w1; w2])) [] PhaseChange
-	  ) (if !Param.ignore_types || !Param.untyped_attacker then [Param.any_type] else !Param.all_types);
+	  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
     if i > 0 then
       let w1 = Terms.new_var_def Param.table_type in
       let w2 = Terms.new_var_def Param.table_type in
@@ -906,7 +919,7 @@ let transl p =
     add_rule [Pred(att_pred, [v2; v1]); Pred(att_pred, [v3; v1])]
       (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred))
 
-      ) (if !Param.ignore_types || !Param.untyped_attacker then [Param.any_type] else !Param.all_types);
+      ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
 
    List.iter (fun ch -> match ch.f_cat with
      Name r -> r.prev_inputs <- Some (FunApp(Param.choice_fun (snd ch.f_type), [FunApp(ch, []); FunApp(ch, [])]))

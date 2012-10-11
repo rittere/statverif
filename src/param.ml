@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -61,7 +61,6 @@ let key_compromise = ref 0
 
 let typed_frontend = ref false
 let ignore_types = ref true
-let untyped_attacker = ref true
 
 let html_output = ref false
 let html_dir = ref ""
@@ -291,13 +290,6 @@ let get_pred info =
       |	Compromise(t) -> Compromise(any_type)
       |	Equal(t) -> Equal(any_type)
       |	PolymPred(s,i,tl) -> PolymPred(s,i, List.map (fun _ -> any_type) tl)
-      |	x -> x
-    else if !untyped_attacker then
-      match info with
-	Attacker(i,t) -> Attacker(i,any_type)
-      |	AttackerBin(i,t) -> AttackerBin(i,any_type)
-      |	AttackerGuess(t) -> AttackerGuess(any_type)
-      |	Compromise(t) -> Compromise(any_type)
       |	x -> x
     else
       info

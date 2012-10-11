@@ -1,5 +1,5 @@
 Protocol verifier, copyright INRIA-LIENS-MPII, by Bruno Blanchet
-and Xavier Allamigeon, 2000-2011.
+and Xavier Allamigeon, 2000-2012.
 INRIA: 	Institut National de Recherche en Informatique et Automatique,
 	Domaine de Voluceau, Rocquencourt, 78153 Le Chesnay Cedex, France
 LIENS: 	Laboratoire d'Informatique de l'Ecole Normale Supérieure, 
@@ -20,28 +20,28 @@ higher. Objective Caml can be downloaded from
 
 Uncompress the source and documentation archives using tar:
 
-	gunzip proverif1.86pl3.tar.gz
-	tar -xf proverif1.86pl3.tar
-	gunzip proverifdoc1.86pl3.tar.gz
-	tar -xf proverifdoc1.86pl3.tar
+	gunzip proverif1.86pl4.tar.gz
+	tar -xf proverif1.86pl4.tar
+	gunzip proverifdoc1.86pl4.tar.gz
+	tar -xf proverifdoc1.86pl4.tar
 
 or if you have GNU tar:
 
-	tar -xzf proverif1.86pl3.tar.gz
-	tar -xzf proverifdoc1.86pl3.tar.gz
+	tar -xzf proverif1.86pl4.tar.gz
+	tar -xzf proverifdoc1.86pl4.tar.gz
 
-This will create a directory named proverif1.86pl3 in the current directory.
+This will create a directory named proverif1.86pl4 in the current directory.
 Go into this directory, and build the programs:
 
-	cd proverif1.86pl3
+	cd proverif1.86pl4
 	./build
 
 * under Windows NT, 2000, or XP
 
-Uncompress the archives proverif1.86pl3.tar.gz and proverifdoc1.86pl3.tar.gz
+Uncompress the archives proverif1.86pl4.tar.gz and proverifdoc1.86pl4.tar.gz
 using Winzip, in the directory of your choice. This will create a
-subdirectory named proverif1.86pl3. Open a DOS window, cd into the
-proverif1.86pl3 directory and run the build .BAT file:
+subdirectory named proverif1.86pl4. Open a DOS window, cd into the
+proverif1.86pl4 directory and run the build .BAT file:
 
 	build
 
@@ -103,23 +103,23 @@ See the file LICENSE for more information.
 BUG REPORTS
 
 Bugs and comments should be reported by e-mail to
-	Bruno.Blanchet@ens.fr
+	Bruno.Blanchet@inria.fr
 
 MAILING LIST
 
 A mailing list is available for discussions on ProVerif. New releases
 are announced on this mailing list.
 
-* If you wish to subscribe, send an email to sympa@lists.ens.fr with subject
-"subscribe proverif" (without quotes) and an empty body.
+* If you wish to subscribe, send an email to sympa@inria.fr with subject
+"subscribe proverif <your name>" (without quotes) and an empty body.
 
-* To post a message on the list, send it to proverif@ens.fr. 
+* To post a message on the list, send it to proverif@inria.fr. 
 To avoid spam, only people that have subscribed to the list can post.
 
 ACKNOWLEDGMENTS
 
 I would like to thank all users of ProVerif who contributed to the
 development of the software by their helpful remarks.
-From July 2008 to Octobre 2010, the development of ProVerif was partly 
+From July 2008 to October 2010, the development of ProVerif was partly 
 supported by DGA.
 

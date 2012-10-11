@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -37,7 +37,7 @@ Message 4 A -> B: { A; Kab }Kbs ; { Nb }Kab
 
 (* Loops if types are ignored. To avoid looping, the arguments of
 the random numbers generated for encryption should probably be removed. *)
-set ignoreTypes = attacker.
+set ignoreTypes = false.
 
 free c: channel.
 

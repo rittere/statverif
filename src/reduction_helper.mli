@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -33,7 +33,7 @@ val min_choice_phase : int ref
 val get_pat_type : pattern -> typet
 val new_var_pat1 : pattern -> binder
 val new_var_pat : pattern -> term
-val get_pat_vars : pattern -> binder list
+val get_pat_vars : binder list -> pattern -> binder list
 val occurs_var_pat : binder -> pattern -> bool
 val occurs_var_proc : binder -> process -> bool
 

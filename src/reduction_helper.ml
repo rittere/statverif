@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -56,11 +56,9 @@ let new_var_pat pat = Var (new_var_pat1 pat)
 (* Get the variables that are defined in a pattern *)
 
 let rec get_pat_vars accu = function
-    PatVar b -> b :: accu
+    PatVar b -> if List.memq b accu then accu else b :: accu
   | PatTuple(_,l) -> List.fold_left get_pat_vars accu l
   | PatEqual _ -> accu
-
-let get_pat_vars pat = get_pat_vars [] pat
 
 (* Test whether a variable occurs in a pattern/process *)
 
@@ -330,12 +328,12 @@ let public_free = ref []
 
 let corresp_att_mess p1 p2 =
   match p1.p_info, p2.p_info with
-    [Attacker(i,ta)], [Mess(j,tm)] -> i == j && (ta == tm || !Param.untyped_attacker)
+    [Attacker(i,ta)], [Mess(j,tm)] -> i == j && (ta == tm)
   | _ -> false
 
 let corresp_att_mess_bin p1 p2 =
   match p1.p_info, p2.p_info with
-    [AttackerBin(i,ta)], [MessBin(j,tm)] -> i == j && (ta == tm || !Param.untyped_attacker)
+    [AttackerBin(i,ta)], [MessBin(j,tm)] -> i == j && (ta == tm)
   | _ -> false
 
 let match_equiv next_f f1 f2 =

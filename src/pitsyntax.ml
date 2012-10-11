@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -204,6 +204,8 @@ let check_fun_decl (name, ext) argtypes restype options =
 	  opt := (!opt) lor Param.fun_TYPECONVERTER
       |	(_,ext) ->
 	input_error "for functions, the only allowed options are data, private, and typeConverter" ext) options;
+  if (!is_tuple) && (!is_private) then
+    input_error "a function cannot be declared both data and private" ext;
   let cat = if !is_tuple (* || ((arity == 0) && (not is_private)) *) then Tuple else Eq [] in
   let r = { f_name = name;
 	    f_type = tyarg, tyres;
@@ -1148,7 +1150,7 @@ let get_table_fun env (s,ext) tl =
 	p
     | _ -> input_error (s ^ " should be a table") ext
   with Not_found ->
-    input_error ("event " ^ s ^ " not defined") ext
+    input_error ("table " ^ s ^ " not defined") ext
 
 
 
@@ -1367,6 +1369,9 @@ let rec check_process env = function
 		  let (ftex, tex', ty) = interpret_cond env' t in
 		  if ty != Param.bool_type then
 		    input_error ("this term has type " ^ ty.tname ^ " but should have type bool") (snd t);
+                  (* Verify that ftex does not reference the variables bound in the pattern *)
+		  let vlist = List.fold_left (List.fold_left Reduction_helper.get_pat_vars) [] lex' in
+		  check_no_ref ext vlist (ftex, tex');
 		  let (fex, lex) = pairing_expand (fex', lex') (ftex,tex') in
 		  fex (List.map (fun (l', t') -> 
 		    Get(PatTuple(f, l'), t', check_process env' p, 
@@ -1377,9 +1382,9 @@ let rec check_process env = function
 			new_occurrence())) lex')		  
 	    end
 	| _ ->
-	    input_error ("only functions can be applied, not " ^ i) ext
+	    input_error (i ^ " should be a table") ext
       with Not_found ->
-	input_error ("function " ^ i ^ " not defined") ext
+	input_error ("table " ^ i ^ " not defined") ext
     end
   | PPhase(n, p) ->
       Phase(n, check_process env p,new_occurrence())
@@ -1788,8 +1793,7 @@ let parse_file s =
 	  | "traceDisplay", S ("short",_) -> Param.trace_display := Param.ShortDisplay
 	  | "traceDisplay", S ("long",_) -> Param.trace_display := Param.LongDisplay
 	  | "ignoreTypes", S (("all" | "true" | "yes"), _) -> Param.ignore_types := true
-	  | "ignoreTypes", S ("attacker", _) -> Param.ignore_types := false; Param.untyped_attacker := true
-	  | "ignoreTypes", S (("none" | "false" | "no"), _) -> Param.ignore_types := false; Param.untyped_attacker := false
+	  | "ignoreTypes", S (("none" | "attacker" | "false" | "no"), _) -> Param.ignore_types := false; 
 	  | _,_ -> Param.common_parameters p ext v
 	end
     | _ -> ()) decl;

@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -81,7 +81,7 @@ let elim_att_guess_xx next_stage repeat_next_stage (hyp, concl, hist, constra) =
       [] -> []
     | (Pred({ p_info = [AttackerGuess _]}, [Var v1; Var v2])) :: l when v1 == v2 ->
 	redo_all_optim := true;
-	hist' := Resolution(List.assq (if !Param.ignore_types || !Param.untyped_attacker then Param.any_type else v1.btype) (!attrulenum), n, !hist'); 
+	hist' := Resolution(List.assq (if !Param.ignore_types then Param.any_type else v1.btype) (!attrulenum), n, !hist'); 
 	(Pred(Param.get_pred (Attacker(!Param.max_used_phase, v1.btype)), [Var v1])) :: (f (n+1) l)
     | fact :: l -> fact :: (f (n+1) l)
   in

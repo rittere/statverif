@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -777,8 +777,18 @@ let record_eqs () =
     let resulting_equations = resulting_equations_linear @ resulting_equations_convergent in
     (* record the equations in each constructor *)
     List.iter (function
-      (FunApp(f, l), req) -> 
+      (FunApp(f, l), req) as eq -> 
         begin
+	  let var_list_rhs = ref [] in
+	  Terms.get_vars var_list_rhs req;
+	  if not (List.for_all (fun v -> List.exists (Terms.occurs_var v) l) (!var_list_rhs)) then
+	    begin
+	      print_string "Equation: ";
+	      Display.Text.display_eq eq;
+	      print_newline();
+	      Parsing_helper.user_error "Error: All variables of the right-hand side of an equation\nshould also occur in the left-hand side.\n"
+	    end;
+
           match f.f_cat with
             Eq leq -> f.f_cat <- Eq ((l, req) :: leq)
           | _ -> user_error "Does not support equations on non-constructors\n"
@@ -809,8 +819,18 @@ let record_eqs () =
 	Display.Text.display_item_list Display.Text.display_eq resulting_equations
       end;
     List.iter (function
-      (FunApp(f, l), req) -> 
+      (FunApp(f, l), req) as eq -> 
         begin
+	  let var_list_rhs = ref [] in
+	  Terms.get_vars var_list_rhs req;
+	  if not (List.for_all (fun v -> List.exists (Terms.occurs_var v) l) (!var_list_rhs)) then
+	    begin
+	      print_string "Equation: ";
+	      Display.Text.display_eq eq;
+	      print_newline();
+	      Parsing_helper.user_error "Error: All variables of the right-hand side of an equation\nshould also occur in the left-hand side.\n"
+	    end;
+
           match f.f_cat with
             Eq leq -> f.f_cat <- Eq ((l, req) :: leq)
           | _ -> user_error "Does not support equations on non-constructors\n"

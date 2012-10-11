@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -42,7 +42,7 @@ The heart of the protocol is messages 3, 6, 7.
 *)
 
 (* Loops if types are ignored *)
-set ignoreTypes = attacker.
+set ignoreTypes = false.
 
 free c: channel.
 

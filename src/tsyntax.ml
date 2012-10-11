@@ -4,7 +4,7 @@
  *                                                           *
  *       Bruno Blanchet and Xavier Allamigeon                *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2010          *
+ *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
  *                                                           *
  *************************************************************)
 
@@ -147,7 +147,7 @@ let check_fun_decl (name, ext) argtypes restype options =
 	    input_error "only unary functions can be declared \"typeConverter\"" ext;
 	  opt := (!opt) lor Param.fun_TYPECONVERTER
       |	(_,ext) ->
-	input_error "for functions, the only allowed options are data, private, and typeConverter" ext) options;
+	input_error "for functions, the only allowed options are data and typeConverter" ext) options;
     let cat = if !is_tuple then Tuple else Eq [] in
     Hashtbl.add fun_decls name { f_name = name;
 				 f_type = tyarg, tyres;
