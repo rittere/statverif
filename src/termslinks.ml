@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -64,26 +64,14 @@ let rec equal_closed_terms t1 t2 = match (t1,t2) with
    (f == f') && (List.for_all2 equal_closed_terms l l')  
 
 
-let equal_funspec s1 s2 =
-  match (s1,s2) with
-    Func f, Func f' -> f == f'
-  | Proj(f,n), Proj(f',n') -> f == f' && n == n'
-  | _ -> false
-
 let equal_tags t1 t2 =
   match (t1,t2) with
     ProcessRule(h1, tl1), ProcessRule(h2,tl2) ->
       (List.length h1 == List.length h2) && (List.for_all2 (=) h1 h2) &&
       (List.length tl1 == List.length tl2) && 
       (List.for_all2 equal_terms_with_links tl1 tl2)
-  | ProcessRule2(h1, tl1, tl1'), ProcessRule2(h2,tl2, tl2') ->
-      (List.length h1 == List.length h2) && (List.for_all2 (=) h1 h2) &&
-      (List.length tl1 == List.length tl2) && 
-      (List.for_all2 equal_terms_with_links tl1 tl2) &&
-      (List.length tl1' == List.length tl2') && 
-      (List.for_all2 equal_terms_with_links tl1' tl2')
-  | Apply(f1,p1), Apply(f2,p2) -> (equal_funspec f1 f2) && (p1 == p2)
-  | TestApply(f1,p1), TestApply(f2,p2) -> (equal_funspec f1 f2) && (p1 == p2)
+  | Apply(f1,p1), Apply(f2,p2) -> (f1 == f2) && (p1 == p2)
+  | TestApply(f1,p1), TestApply(f2,p2) -> (f1 == f2) && (p1 == p2)
   | TestEq p1, TestEq p2 -> p1 == p2
   | Rl(p1,p1'), Rl(p2,p2') -> p1 == p2 && p1' == p2'
   | Rs(p1,p1'), Rs(p2,p2') -> p1 == p2 && p1' == p2'
@@ -109,9 +97,11 @@ let equal_tags t1 t2 =
   | TestUnif, TestUnif -> true
   | _ -> false
 
-let equal_constra1 (Neq(t1,t1')) (Neq(t2,t2')) =
-  (equal_terms_with_links t1 t2) &&
-  (equal_terms_with_links t1' t2')
+let equal_constra1 c1 c2 = 
+  match c1,c2 with
+  | Neq(t1,t1'),Neq(t2,t2') -> 
+      (equal_terms_with_links t1 t2) &&
+      (equal_terms_with_links t1' t2')
 
 let equal_constraint c1 c2 =
   (List.length c1 == List.length c2) &&
@@ -127,11 +117,19 @@ let rec match_terms t1 t2 =
    match (t1,t2) with
      (Var { link = TLink t1' }, _) -> match_terms t1' t2
    | (_, Var { link = TLink t2' }) -> match_terms t1 t2'
-   | (_, Var _) -> Parsing_helper.internal_error "Bad link in match_terms"
+   | (_, Var _) -> Parsing_helper.internal_error "Bad link in match_terms (1)"
    | (Var v), t -> 
        begin
 	 match v.link with
-           NoLink -> Terms.link v (TLink t)
+           NoLink -> 
+             if v.unfailing
+             then link v (TLink t)
+             else
+	       begin
+	       	 match t with 
+	           | FunApp(f_symb,_) when f_symb.f_cat = Failure -> raise Unify
+	           | _ -> link v (TLink t)
+	       end
 	 | _ -> Parsing_helper.internal_error "Bad link in match_terms (2)"
        end
    | (FunApp (f1,l1')), (FunApp (f2,l2')) ->

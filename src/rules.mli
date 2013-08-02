@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -29,9 +29,9 @@ val add_not : Types.fact -> unit
 val add_elimtrue : int * Types.fact -> unit
 val add_equiv : Types.fact list * Types.fact * int -> unit
 
-exception FalseConstraint
-val simplify_constra_list : Types.fact list -> Types.constraints list list -> Types.constraints list list
-val implies_constra_list : Types.fact list -> Types.constraints list list -> Types.constraints list list -> unit -> unit
+val display_debug : bool ref
+
+val implies : Types.reduction -> Types.reduction -> bool
 val reorder : Types.fact list -> Types.fact list
 
 val completion : Types.reduction list -> unit

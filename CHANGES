@@ -1,6 +1,165 @@
 This file summarizes the most important changes between versions
 of the cryptographic protocol verifier.
 
+Version 1.87beta6
+
+- Fixed several bugs that lead to internal errors instead of 
+displaying a proper error message.
+- Elimination of redundant hypotheses now considers blocking predicates
+like events.
+
+Summary of changes between version 1.86pl4 and version 1.87beta5:
+
+- Typed and untyped pi calculus front-ends:
+  Extended definition of destructors, by Vincent Cheval. 
+  Now, destructors must be deterministic.
+- Typed pi calculus front-end:
+   - Extension of the class of observational equivalences that can be proved,
+   by encoding more operations into terms. Automatic transformation of 
+   processes to benefit from this extension, by Vincent Cheval.
+   - Query "equivalence P1 P2" to prove the observational equivalence between 
+   two processes P1 and P2, by Vincent Cheval.
+   - Functions marked "typeConverter" are now automatically marked "data" as
+   well.
+   - Added an "else" branch to the "get" construct
+- New keywords:
+   - Typed pi calculus front-end: equivalence, fail, or, otherwise
+   - Untyped pi calculus front-end: can, fail, otherwise, where
+  These keywords can no longer be used as ordinary identifiers.
+- Fixed bugs:
+   - Fixed bug in attack reconstruction
+   - Fixed bug for query noninterf...among: a clause was forgotten
+   that allows the adversary to test whether the secret is a tuple.
+   - Fixed bug in attack reconstruction with patterns =M where the
+   term M contains a destructor with several rewrite rules.
+   - Removed decompData/decompDataSelect options for user-defined
+   predicates in the pi/typed pi calculus front-ends, for several reasons:
+      * These predicates caused bugs
+      * For user-defined predicates, it is not very likely that
+      decompData/decompDataSelect are useful
+      * The same effect can be achieved by using the equivalences
+      forall x1:T1, ..., xn:Tn; p(x1) && ... && p(xn) <=> p(f(x1,...,xn))
+      for each data constructor f, in the "clauses" section.
+   - Improved termination heuristic so that it does not trigger
+   uselessly.
+   - Fixed bug with references to bound names of the form new a[x_1 = ...]
+   where the variable name x_1 ends with underscore followed by a number.
+   (This bug could lead to an error message saying x_1 was not bound,
+   when in fact it was.)
+   - Fixed bug with nested "letfun" with local variables (there was some
+   mixing between these variables)
+   - Fixed bug: choice was ignored when it occurred only in patterns.
+   - Fixed bug: "else" branches could not be omitted in "if" and 
+   "let...suchthat" terms.
+- Improved the proof of equivalences in case "if M then P else Q" 
+with Q = 0: the case in which M fails and the case in which M succeeds 
+and is false cannot be distinguished by the adversary.
+- The term "let pat = M in M'" has changed meaning: when M or the
+pattern-matching fails, its value is fail, instead of stopping the
+whole process.
+- The argument of events is always evaluated, even when the event itself
+is useless (proof of equivalences, of correspondences that do not involve
+that event).
+- Patterns (x, =M) in which M depends on x are now forbidden for simplicity.
+(Use pattern matching followed by a test to encode that.)
+- Optimized elimination of redundant hypotheses
+
+Details of the changes in the beta releases: 
+
+* Version 1.87beta5
+
+- Cosmetic changes only.
+
+* Version 1.87beta4 (not a public release)
+
+- Reactivated all front-ends
+- New destructors in the untyped front-end
+- Simplified the test that destructors are deterministic
+- Optimized elimination of redundant hypotheses
+- When proving equivalences, the arguments of names are now 
+choice[.,.] instead of pairs.
+- Fixed soundness bugs with choice and with noninterf in case of 
+inputs with pattern-matching
+- Fixed bug in the generation of Horn clauses for trace properties
+(some branches were cut too quickly)
+- Fixed bug: choice was ignored when it occurred only in patterns.
+- Fixed bug with references to bound names of the form new a[x_1 = ...]
+where the variable name x_1 ends with underscore followed by a number.
+(This bug could lead to an error message saying x_1 was not bound,
+when in fact it was.)
+- Fixed bug in the computation of rewrite rules for new
+destructors (it may have generated too many rules)
+
+* Version 1.87beta3 (not a public release; restricted to the typed
+front-end)
+
+- Optimized elimination of redundant hypotheses
+- In the definition of user-defined predicates, the meaning of clauses
+is the following: the fact in the conclusion holds when the hypotheses
+hold and all the arguments of the predicates, equalities and
+inequalities in the clause do not fail. (This is closer to the
+semantics of user-defined predicates with the old destructors.)
+- The argument of events is always evaluated, even when the event itself
+is useless (proof of equivalences, of correspondences that do not involve
+that event).
+- Patterns (x, =M) in which M depends on x are now forbidden for simplicity.
+(Use pattern matching followed by a test to encode that.)
+- Final fix for the bug that could lead to forgetting some rewrite
+rules of destructors, when the new destructors of ProVerif 1.87beta
+were combined with equational theories. (This bug was quickly patched
+in version 1.87beta2.)
+- Fixed bug in which a non-deterministic destructor was not detected as such.
+- With respect to ProVerif version 1.86, the term "let pat = M in M'" has 
+changed meaning: when M or the pattern-matching fails, its value is fail, 
+instead of stopping the whole process.
+
+* Version 1.87beta2 (not a public release; restricted to the typed
+front-end)
+
+- Re-allow proofs of trace properties, noninterf, weaksecr, 
+updated to the new destructors of ProVerif 1.87beta
+- Added an "else" branch to the "get" construct
+- Improved the proof of equivalences in case "if M then P else Q" 
+with Q = 0: the case in which M fails and the case in which M succeeds 
+and is false cannot be distinguished by the adversary.
+- Fixed bug in attack reconstruction: f(...fail...) was left as it is
+instead of reducing it to fail, when f is a constructor.
+- Fixed bug in merging of parallel processes that could lead to
+swapping the first and second processes to merge.
+- Quick patch for a bug that could lead to forgetting some rewrite
+rules of destructors, when the new destructors of ProVerif 1.87beta
+were combined with equational theories
+- Also fixed problems that occurred in ProVerif 1.86pl4:
+   - Fixed bug for query noninterf...among: a clause was forgotten
+   that allows the adversary to test whether the secret is a tuple.
+   - Fixed bug in attack reconstruction with patterns =M where the
+   term M contains a destructor with several rewrite rules.
+   - Removed decompData/decompDataSelect options for user-defined
+   predicates in the pi/typed pi calculus front-ends, for several reasons:
+      * These predicates caused bugs
+      * For user-defined predicates, it is not very likely that
+      decompData/decompDataSelect are useful
+      * The same effect can be achieved by using the equivalences
+      forall x1:T1, ..., xn:Tn; p(x1) && ... && p(xn) <=> p(f(x1,...,xn))
+      for each data constructor f, in the "clauses" section.
+   - Improved termination heuristic so that it does not trigger
+   uselessly.
+
+* Version 1.87beta (restricted to the typed front-end and to proofs of
+equivalences with choice)
+
+- Extended definition of destructors, by Vincent Cheval. 
+Now, destructors must be deterministic.
+- Extension of the class of observational equivalences that can be proved,
+by encoding more operations into terms. Automatic transformation of 
+processes to benefit from this extension, by Vincent Cheval.
+- Query "equivalence P1 P2" to prove the observational equivalence between 
+two processes P1 and P2, by Vincent Cheval.
+- Functions marked "typeConverter" are now automatically marked "data" as
+well.
+- Fixed bug in attack reconstruction
+
+
 Version 1.86pl4
 
 - Removed setting "set ignoreTypes = attacker", still accepted as a synonym

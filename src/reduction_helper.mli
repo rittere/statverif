@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -29,8 +29,8 @@ open Types
 
 val main_process : process ref
 val min_choice_phase : int ref
+val terms_to_add_in_name_params : Pitypes.term_occ list ref
 
-val get_pat_type : pattern -> typet
 val new_var_pat1 : pattern -> binder
 val new_var_pat : pattern -> term
 val get_pat_vars : binder list -> pattern -> binder list
@@ -45,7 +45,6 @@ val skip : int -> 'a list -> 'a list
 val replace_at : int -> 'a -> 'a list -> 'a list
 val remove_at : int -> 'a list -> 'a list
 val add_at : int -> 'a -> 'a list -> 'a list
-val funsymb_from_funspec : funspec -> funsymb
 
 val equal_terms_modulo : term -> term -> bool
 val equal_open_terms_modulo : term -> term -> bool
@@ -90,3 +89,9 @@ val follow_link : term -> term
 val close_tree_collect_links : (binder * linktype) list ref -> fact_tree -> unit
 
 val getphase : predicate -> int
+
+val disequation_evaluation : term * term -> bool
+val is_fail : term -> bool
+
+val transl_check_several_patterns : Pitypes.term_occ -> term -> bool
+val reduction_check_several_patterns : Pitypes.term_occ -> bool

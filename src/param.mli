@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -91,6 +91,9 @@ val html_dir : string ref
 val current_query_number : int ref
 val derivation_number : int ref
 val inside_query_number : int ref
+val process_number : int ref
+
+val simplify_process : int ref
 
 val verbose_rules : bool ref
 type explain_clauses = NoClauses | Clauses | ExplainedClauses
@@ -98,7 +101,9 @@ val verbose_explain_clauses : explain_clauses ref
 val verbose_redundant : bool ref
 val verbose_completed : bool ref
 val verbose_eq : bool ref
+val verbose_destr : bool ref
 val verbose_term : bool ref
+val abbreviate_clauses : bool ref
 
 val reconstruct_derivation : bool ref
 val simplify_derivation : bool ref
@@ -186,6 +191,7 @@ val weaksecret_mode : bool ref
 
 val choice_fun : Types.typet -> Types.funsymb
 val has_choice : bool ref
+val equivalence : bool ref
 
 (* Values computed from the input file *)
 

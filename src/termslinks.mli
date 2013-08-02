@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -30,7 +30,6 @@ val equal_facts_with_links : Types.fact -> Types.fact -> bool
 
 val equal_closed_terms : Types.term -> Types.term -> bool
 
-val equal_funspec : Types.funspec -> Types.funspec -> bool
 val equal_tags : Types.label -> Types.label -> bool
 val equal_constra : Types.constraints list list -> Types.constraints list list -> bool
 

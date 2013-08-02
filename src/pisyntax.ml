@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -33,13 +33,9 @@ open Types
 open Pitypes
 open Stringmap
 
-let occ_count = ref 0
-
-let new_occurrence () =
-  incr occ_count;
-  !occ_count
-
-(* Parse a file *)
+(*********************************************
+                Parsing files
+**********************************************)
 
 let parse filename = 
   try
@@ -60,32 +56,9 @@ let parse filename =
 
 let fun_decls = Param.fun_decls
 
-let create_name s arity is_free =
-  let cat = Name { prev_inputs = None; prev_inputs_meaning = [] } in
-   { f_name = s; 
-     f_type = 
-       if arity = -1 then
-	 Param.tmp_type, Param.any_type
-       else
-	 (Terms.copy_n arity Param.any_type), Param.any_type;
-     f_cat = cat;
-     f_initial_cat = cat;
-     f_private = not is_free;
-     f_options = 0 }
-
-let create_name_uniq s arity is_free =
-  let cat = Name { prev_inputs = None; prev_inputs_meaning = [] } in
-   { f_name = Terms.fresh_id s; 
-     f_type =  
-       if arity = -1 then
-	 Param.tmp_type, Param.any_type
-       else
-	 (Terms.copy_n arity Param.any_type), Param.any_type;
-     f_cat = cat;
-     f_initial_cat = cat;
-     f_private = not is_free;
-     f_options = 0 }
-
+(*********************************************
+         Check constructor declaration
+**********************************************)
 
 let check_fun_decl is_tuple (name,ext) arity is_private =
   if Hashtbl.mem fun_decls name then
@@ -98,6 +71,12 @@ let check_fun_decl is_tuple (name,ext) arity is_private =
       f_initial_cat = cat;
       f_private = is_private;
       f_options = 0 }
+    
+(*********************************************
+         Check destructor declaration
+**********************************************)
+
+let destructors_check_deterministic = ref []
 
 let get_var env s =
   try 
@@ -106,6 +85,13 @@ let get_var env s =
     let r = Terms.new_var s Param.any_type in
     Hashtbl.add env s r;
     r
+    
+let check_may_fail_var env s =
+  if not (Hashtbl.mem env s) then
+    begin
+      let r = Terms.new_unfailing_var s Param.any_type in
+      Hashtbl.add env s r
+    end
 
 let get_fun (s,ext) arity =
   try
@@ -130,9 +116,12 @@ let f_eq_tuple f ext =
 
 let f_any f ext = ()
 
-let rec check_eq_term f_allowed varenv (term,ext) = 
+(* Check messages *)
+
+let rec check_eq_term f_allowed fail_allowed_top fail_allowed_all varenv (term,ext) = 
   match term with
-    (PIdent (s,ext)) -> 
+    | PFail -> input_error "The constant fail should not appear in this term" ext
+    | (PIdent (s,ext)) -> 
       begin
 	try
 	  let f = Hashtbl.find fun_decls s in
@@ -144,68 +133,192 @@ let rec check_eq_term f_allowed varenv (term,ext) =
 	  f_allowed f ext;
 	  FunApp(f, [])
 	with
-	  Not_found -> Var (get_var varenv s)
+	  Not_found -> 
+	    begin
+	      let v = get_var varenv s in
+	    
+	      if (not (fail_allowed_top || fail_allowed_all)) && v.unfailing
+	      then input_error ("The may-fail variable " ^ s ^ " cannot be used in this term.") ext;
+	    
+	      Var v
+	    end
       end
   | (PFunApp (fi, tlist)) ->
       let f = get_fun fi (List.length tlist) in
       f_allowed f ext;
-      FunApp(f, List.map (check_eq_term f_allowed varenv) tlist)
+      FunApp(f, List.map (check_eq_term f_allowed false fail_allowed_all varenv) tlist)
   | (PTuple tlist) ->
       FunApp (Terms.get_tuple_fun (List.map (fun _ -> Param.any_type) tlist), 
-              List.map (check_eq_term f_allowed varenv) tlist)
+              List.map (check_eq_term f_allowed false fail_allowed_all varenv) tlist)
 
+(* Check may-fail message *)  
+
+let check_may_fail_term env (mterm,ext) = match mterm with
+  | PFail -> Terms.get_fail_term Param.any_type
+  | _ -> check_eq_term f_eq_tuple true false env (mterm,ext)
+
+             
+(* Equations *)  
+  
 let check_equation (t1, t2) =
    let var_env = Hashtbl.create 7 in
-   let t1' = check_eq_term f_eq_tuple var_env t1 in
-   let t2' = check_eq_term f_eq_tuple var_env t2 in
+   let t1' = check_eq_term f_eq_tuple false false var_env t1 in
+   let t2' = check_eq_term f_eq_tuple false false var_env t2 in
    TermsEq.register_equation (t1',t2')
+   
+(* Definition of the destructors using Otherwise. *)
+
+let rec new_n_list f = function
+  | 0 -> []
+  | n -> (f ())::(new_n_list f (n-1))
+  
+let check_red_may_fail tlist is_private =
+ 
+  let f,arity = match tlist with
+    | [] -> input_error "A destructor should have at least one rewrite rule." Parsing_helper.dummy_ext;
+    | ((PFunApp((f,ext),l),_),_,_)::_ -> 
+        if Hashtbl.mem fun_decls f then
+          input_error ("identifier " ^ f ^ " already defined (as a free name, a function, a predicate, or a type)") ext;
+        if f = "choice specident" then
+          input_error "choice not allowed here" ext;
+        f, List.length l
+    | ((_, ext1),_,_)::_ -> input_error "In \"reduc\", all rewrite rules should begin with function application" ext1
+  in
+   
+  let rec generate_rules prev_args red_list = match red_list with
+     | [] -> [],prev_args
+     | ((PFunApp((f',ext'),l1),_), t2, may_fail_env)::q ->
+         if f <> f' then 
+           input_error ("In \"reduc\", all rewrite rules should begin with the same function " ^ f) ext';
+         
+         if List.length l1 <> arity
+         then input_error ("In \"reduc\", all rewrite rules should have the same number of arguments") ext';
+         let env = Hashtbl.create 7 in
+         List.iter (fun (v,_) -> check_may_fail_var env v) may_fail_env;
+         let lhs = List.map (check_may_fail_term env) l1
+         and rhs = check_may_fail_term env t2 in
+         
+         (* Generate the destructors with side condition *)
+         
+         if arity = 0
+         then ([[],rhs,[]],[])
+         else
+           begin try
+             let destructors = Terms.generate_destructor_with_side_cond prev_args lhs rhs ext' in
+             let next_destructors,all_args = generate_rules (lhs::prev_args) q in 
+             (destructors @ next_destructors), all_args
+           with Terms.False_inequality ->
+             ([],prev_args)
+           end
+     | ((_, ext1), _, _)::_ -> input_error ("In \"reduc\", all rewrite rules should begin with function application") ext1
+  in
+  
+  let red_list,all_args = generate_rules [] tlist in
+  
+  (* Generate the failing case *)
+  let may_fail_vars = new_n_list (fun () -> Terms.new_unfailing_var_def Param.any_type) arity
+  and fail_term = Terms.get_fail_term Param.any_type in
+  let complete_red_list = 
+    if arity = 0
+    then red_list
+    else
+      begin try
+        red_list @ (Terms.generate_destructor_with_side_cond all_args may_fail_vars fail_term Parsing_helper.dummy_ext)
+      with Terms.False_inequality -> red_list
+      end
+  in    
+  assert (complete_red_list != []);
+  let cat = Red complete_red_list in  
+  let fsymb = 
+    { 
+      f_name = f;
+      f_type = new_n_list (fun () -> Param.any_type) arity, Param.any_type;
+      f_private = is_private;
+      f_options = 0;
+      f_cat = cat;
+      f_initial_cat = cat
+    } in
+	
+  (* Adding the destructor in environment *)
+  (*Display.Text.display_red fsymb complete_red_list;*)
+  Hashtbl.add fun_decls f fsymb
+  
+(* Old definition of destructors, without otherwise *)
 
 let check_red tlist is_private =
-  match tlist with 
-    ((PFunApp((f,ext),l),_),_)::_ ->
-      begin 
-	if f = "choice specident" then
-	  input_error "choice not allowed here" ext;	
+  let f,arity = match tlist with
+    | [] -> input_error "A destructor should have at least one rewrite rule." Parsing_helper.dummy_ext;
+    | ((PFunApp((f,ext),l),_),_)::_ -> 
         if Hashtbl.mem fun_decls f then
           input_error ("function " ^ f ^ " already defined") ext;
-	let red_list = List.map 
-              (function ((PFunApp((f',ext'),l1),_), t2) -> 
-                if f <> f' then 
-                  input_error ("In reductions, all rules should begin with the same function " ^ f) ext';
-                let var_env = Hashtbl.create 7 in
-                let ((lhs, rhs) as red) = (List.map (check_eq_term f_eq_tuple var_env) l1, 
-					   check_eq_term f_eq_tuple var_env t2)
-		in
-		let var_list_rhs = ref [] in
-		Terms.get_vars var_list_rhs rhs;
-		if not (List.for_all (fun v -> List.exists (Terms.occurs_var v) lhs) (!var_list_rhs)) then
-		  Parsing_helper.input_error "All variables of the right-hand side of a \"reduc\" definition\nshould also occur in the left-hand side." ext';
-		red
-                | (_, ext1), _ -> input_error ("In reductions, all rules should begin with function application") ext1) tlist
-	in
-	begin
-	  match red_list with
-	    [] -> internal_error "reduction with empty list"
-	  | (lhs,_)::r ->
-	      let arity = List.length lhs in
-	      List.iter (fun (lhs',_) ->
-		if List.length lhs' != arity then
-		  input_error ("the function " ^ f ^ " does not have the same number of arguments in all rewrite rules") ext) r
-	end;
-	let cat = Red red_list in
-        let fsymb = { f_name = f;
-                      f_type = (List.map (fun _ -> Param.any_type) l), Param.any_type;
-                      f_private = is_private;
-		      f_options = 0;
-                      f_cat = cat;
-		      f_initial_cat = cat
-		    }
-        in
-        Hashtbl.add fun_decls f fsymb
-      end
-  | ((_, ext1), _) :: l -> input_error ("In reductions, all rules should begin with function application") ext1
-  | [] -> internal_error "reduction with empty list"
-
+        if f = "choice specident" then
+          input_error "choice not allowed here" ext;
+          
+        f, List.length l
+    | ((_, ext1),_)::_ -> input_error "In \"reduc\", all rewrite rules should begin with function application" ext1
+  in
+  
+  let tylhs = new_n_list (fun () -> Param.any_type) arity
+  and tyrhs = Param.any_type in
+  
+  let red_list = List.map (function
+    | ((PFunApp((f',ext'),l1),_), t2) -> 
+        if f <> f'
+        then input_error ("In \"reduc\", all rewrite rules should begin with the same function " ^ f) ext';
+                
+        if List.length l1 <> arity
+        then input_error ("In \"reduc\", all rewrite rules should have the same number of arguments") ext';
+              
+        let env = Hashtbl.create 7 in
+              
+        let lhs = List.map (check_eq_term f_eq_tuple false false env) l1
+        and rhs = check_eq_term f_eq_tuple false false env t2 in
+          
+        let var_list_rhs = ref [] in
+        Terms.get_vars var_list_rhs rhs;
+              
+        if not (List.for_all (fun v -> List.exists (Terms.occurs_var v) lhs) (!var_list_rhs)) then
+          Parsing_helper.input_error "All variables of the right-hand side of a \"reduc\" definition\nshould also occur in the left-hand side." ext';
+                  
+        (lhs, rhs,[])
+    | _,(_, ext1)-> input_error ("In \"reduc\", all rewrite rules should begin with function application") ext1
+    ) tlist
+  in
+          
+  let red_list' = 
+    let var_list = List.map (fun ty -> Terms.new_var_def ty) tylhs
+    and fail = Terms.get_fail_term tyrhs
+    and tuple_symb = Terms.get_tuple_fun tylhs in
+    let tuple = FunApp(tuple_symb, var_list) in
+    assert (!Terms.current_bound_vars == []);
+    let side_cond = 
+      List.map (fun (arg_list,_,_) -> 
+        tuple,FunApp(tuple_symb, List.map (Terms.generalize_vars_not_in []) arg_list)
+      ) red_list 
+    in
+    Terms.cleanup ();
+    red_list @ ((var_list,fail,side_cond)::(Terms.complete_semantics_constructors tylhs tyrhs))
+  in
+	        				
+  let cat = Red red_list' in
+  
+  let fsymb = { 
+    f_name = f;
+    f_type = tylhs, tyrhs;
+    f_private = is_private;
+    f_options = 0;
+    f_cat = cat;
+    f_initial_cat = cat
+  } in
+		
+  (* Adding the destructor for checking *)
+  
+  destructors_check_deterministic := fsymb::(!destructors_check_deterministic);
+		
+  (*Display.Text.display_red fsymb red_list';*)
+	        
+  Hashtbl.add fun_decls f fsymb
+  
 (* Check clauses *)
 	
 let pred_env = Param.pred_env
@@ -215,8 +328,6 @@ let rec interpret_info arity r = function
 	if arity != 2 then
 	  input_error "memberOptim makes sense only for predicates of arity 2" ext;
 	r.p_prop <- r.p_prop lor Param.pred_ELEM
-    | ("decompData",ext) -> r.p_prop <- r.p_prop lor Param.pred_TUPLE
-    | ("decompDataSelect",_) -> r.p_prop <- r.p_prop lor Param.pred_TUPLE lor Param.pred_TUPLE_SELECT
     | ("block",_) -> r.p_prop <- r.p_prop lor Param.pred_BLOCKING
 	  (* add other qualifiers here *)
     | (s,ext) -> input_error ("unknown predicate qualifier " ^ s) ext
@@ -252,13 +363,13 @@ let add_rule hyp concl constra tag =
 let equal_pred = Param.get_pred (Equal(Param.any_type))
 
 let check_cterm env (p,t) =
-   (get_pred p (List.length t), List.map (check_eq_term f_any env) t)
+   (get_pred p (List.length t), List.map (check_eq_term f_any  false true env) t)
 
 let rec check_one_hyp (hyp_accu,constra_accu) env (fact, ext) = 
   match fact with
-  | PSNeq(t1,t2) -> (hyp_accu, [Neq(check_eq_term f_any env t1, check_eq_term f_any env t2)] ::
+  | PSNeq(t1,t2) -> (hyp_accu, [Neq(check_eq_term f_any  false true env t1, check_eq_term f_any  false true  env t2)] ::
 		     constra_accu)
-  | PSEqual(t1,t2) -> (Pred(equal_pred, [check_eq_term f_any env t1; check_eq_term f_any env t2])::hyp_accu, constra_accu)
+  | PSEqual(t1,t2) -> (Pred(equal_pred, [check_eq_term f_any  false true env t1; check_eq_term f_any false true env t2])::hyp_accu, constra_accu)
   | PSimpleFact(p,l) ->
       let (p',l') = check_cterm env (p,l) in
       (Pred(p',l')::hyp_accu, constra_accu)
@@ -271,19 +382,20 @@ let check_simple_fact env (fact, ext) =
       let (p',l') = check_cterm env (p,l) in
       Pred(p',l')
 
-let check_clause = function
+let check_clause (cl, may_fail_env) = 
+  let env = Hashtbl.create 7 in
+  List.iter (fun (v,_) -> check_may_fail_var env v) may_fail_env;
+  match cl with
     PClause(i,c) ->
       begin
       try 
-	let env = Hashtbl.create 7 in
 	let (hyp, constra) = List.fold_right (fun onehyp accu -> check_one_hyp accu env onehyp) i ([],[]) in
 	let concl = check_simple_fact env c in
 	add_rule hyp concl
-	  (Rules.simplify_constra_list (concl :: hyp) constra) LblClause
-      with Rules.FalseConstraint -> ()
+	  (TermsEq.simplify_constra_list (concl :: hyp) constra) LblClause
+      with TermsEq.FalseConstraint -> ()
       end
   | PEquiv(i,c,select) ->
-      let env = Hashtbl.create 7 in
       let hyp = List.map (check_simple_fact env) i in
       let concl = check_simple_fact env c in
       add_rule hyp concl [] LblEquiv;
@@ -330,7 +442,7 @@ let check_single ext s =
 let freenames = Param.freenames
 
 let add_free_name is_pub s =
-  let r = create_name s 0 is_pub in 
+  let r = Terms.create_name s ([], Param.any_type) (not is_pub) in 
   Hashtbl.add glob_table s (EName r);
   freenames := r :: !freenames;
   r
@@ -364,7 +476,8 @@ let free_name s ext =
 
 let rec check_ni_term varenv (term,ext) = 
   match term with
-    (PIdent (s,ext)) -> 
+    | PFail -> input_error "The constant fail should not appear in this term" ext
+    | (PIdent (s,ext)) -> 
       begin
 	try
 	  let f = Hashtbl.find fun_decls s in
@@ -436,9 +549,10 @@ let get_fun (s,ext) arity env =
     input_error ("function " ^ s ^ " not defined") ext
 
 
-let rec check_term env (term, _) =
+let rec check_term env (term, ext) =
   match term with 
-    (PIdent (s,ext)) -> get_ident_any s env ext
+  | PFail -> input_error "The constant fail should not appear in this term" ext
+  | (PIdent (s,ext)) -> get_ident_any s env ext
   | (PFunApp((s,ext) as fi,l)) -> 
       let f = 
 	if s = "choice specident" then 
@@ -455,29 +569,29 @@ let check_fl_term env (p,t) =
 
 let pdeftbl = (Hashtbl.create 7 : (string, Piptree.process) Hashtbl.t)
 
-let rec check_pat env = function
+let rec check_pat old_env env = function
   PPatVar (s,e) -> 
     if (StringMap.mem s env) && (!Param.tulafale != 1) then
       input_warning ("identifier " ^ s ^ " rebound") e;
     let v = Terms.new_var s Param.any_type in
     (PatVar v, StringMap.add s (EVar v) env)
 | PPatTuple l ->
-    let (l',env') = check_pat_list env l in
+    let (l',env') = check_pat_list old_env env l in
     (PatTuple(Terms.get_tuple_fun (List.map (fun _ -> Param.any_type) l), l'), env')
 | PPatFunApp((s,ext) as fi,l) ->
-    let (l',env') = check_pat_list env l in
+    let (l',env') = check_pat_list old_env env l in
     let f = get_fun fi (List.length l) env  in
     if f.f_cat <> Tuple then
       input_error ("only data functions are allowed in patterns, not " ^ s) ext;
     (PatTuple(f, l'), env')
 | PPatEqual t ->
-    (PatEqual(check_term env t), env)
+    (PatEqual(check_term old_env t), env)
 
-and check_pat_list env = function
+and check_pat_list old_env env = function
   [] -> ([], env)
 | (a::l) -> 
-    let (a',env') = check_pat env a in
-    let (l',env'') = check_pat_list env' l in
+    let (a',env') = check_pat old_env env a in
+    let (l',env'') = check_pat_list old_env env' l in
     (a'::l', env'')
 	
 
@@ -509,9 +623,9 @@ let rec check_process env = function
       let p2' = check_process env p2 in
       Par(p1', p2')
   | PRepl p -> 
-      Repl(check_process env p, new_occurrence())
+      Repl(check_process env p, Terms.new_occurrence())
   | PTest((f,_),p1,p2) -> 
-      let occ' = new_occurrence() in
+      let occ' = Terms.new_occurrence() in
       begin
 	match f with
 	  PSimpleFact(pred,l) ->
@@ -522,13 +636,13 @@ let rec check_process env = function
 	| PSEqual(t1,t2) ->
 	    let p1' = check_process env p1 in
 	    let p2' = check_process env p2 in
-	    Test(check_term env t1, check_term env t2,
+	    Test(FunApp(Terms.equal_fun Param.any_type, [check_term env t1; check_term env t2]),
 		 p1', p2', occ')
 	| PSNeq(t1,t2) ->
-	    let p2' = check_process env p2 in
 	    let p1' = check_process env p1 in
-	    Test(check_term env t1, check_term env t2,
-		 p2', p1', occ')
+	    let p2' = check_process env p2 in
+	    Test(FunApp(Terms.diff_fun Param.any_type, [check_term env t1; check_term env t2]),
+		 p1', p2', occ')
       end
   | PLetDef (s,ext) ->
       begin
@@ -538,23 +652,23 @@ let rec check_process env = function
           input_error ("process " ^ s ^ " not defined") ext
       end
   | PRestr((s,ext),p) -> 
-      let r = create_name_uniq s (-1) false in
+      let r = Terms.create_name (Terms.fresh_id s) (Param.tmp_type, Param.any_type) true in
       Hashtbl.add glob_table s (EName r);
       if (StringMap.mem s env) && (!Param.tulafale != 1) then
 	input_warning ("identifier " ^ s ^ " rebound") ext;
       Restr(r, check_process (StringMap.add s (EName r) env) p, 
-	    new_occurrence())
+	    Terms.new_occurrence())
   | PInput(tc,pat,p) ->
-      let (pat',env') = check_pat env pat in
+      let (pat',env') = check_pat env env pat in
       Input(check_term env tc, pat',
-	    check_process env' p, new_occurrence())
+	    check_process env' p, Terms.new_occurrence())
   | POutput(tc,t,p) ->
       Output(check_term env tc,
 	     check_term env t,
-	     check_process env p, new_occurrence())
+	     check_process env p, Terms.new_occurrence())
   | PLet(pat,t,p,p') ->
-      let (pat', env') = check_pat env pat in
-      let occ' = new_occurrence() in
+      let (pat', env') = check_pat env env pat in
+      let occ' = Terms.new_occurrence() in
       let p1 = check_process env' p in
       let p1' = check_process env p' in
       Let(pat',check_term env t, p1, p1', occ')
@@ -574,19 +688,19 @@ let rec check_process env = function
 	  let (pred',l') = check_fl_term env' (pred,l) in
 	  Pred(pred',l')
       in
-      let occ' = new_occurrence() in
+      let occ' = Terms.new_occurrence() in
       let p' = check_process env' p in
       let q' = check_process env q in
       LetFilter(vlist, f', p', q', occ')
   | PEvent((i,ext),l,p) ->
       if !Param.key_compromise == 0 then
 	let f = get_event_fun i (List.length l) ext in
-	Event(FunApp(f, List.map (check_term env) l), check_process env p, new_occurrence())
+	Event(FunApp(f, List.map (check_term env) l), check_process env p, Terms.new_occurrence())
       else
 	let f = get_event_fun i (1+List.length l) ext in
-	Event(FunApp(f, (Terms.new_var_def Param.any_type) :: (List.map (check_term env) l)), check_process env p, new_occurrence())
+	Event(FunApp(f, (Terms.new_var_def Param.any_type) :: (List.map (check_term env) l)), check_process env p, Terms.new_occurrence())
   | PPhase(n, p) ->
-      let occ' = new_occurrence() in
+      let occ' = Terms.new_occurrence() in
       Phase(n, check_process env p, occ')
 
 let get_non_interf (id, lopt) =
@@ -695,57 +809,55 @@ let rec nvn_f (f,ext0) =
 
 let nvn_ff (id,fl,n) =
   List.iter nvn_f fl
+  
+let set_need_vars_in_names () =
+  List.iter (List.iter nvn_q) (!query_list);
+  List.iter (fun (fact,_,bl) ->
+	nvn_ff fact;
+	List.iter (fun (_,t) -> nvn_f t) bl) (!nounif_list);
+  List.iter (fun (f,b) ->
+	nvn_e f;
+	List.iter (fun (_,t) -> nvn_t t) b) (!not_list)
 
 (* Handle all declarations *)
 
-let rec check_all = function
-    (FunDecl (f,i,is_private))::l -> 
-      check_fun_decl false f i is_private;
-      check_all l
-  | (DataFunDecl (f,i))::l -> 
-      check_fun_decl true f i false;
-      check_all l
-  | (Equation eq)::l ->
-      check_equation eq;
-      check_all l
-  | (Reduc (r,is_private))::l -> 
-      check_red r is_private; 
-      check_all l
-  | (PredDecl (p, arity, info)) :: l ->
-      check_pred p arity info;
-      check_all l
-  | (PDef ((s,ext),p)) :: l -> 
-      Hashtbl.add pdeftbl s p; 
-      check_all l
-  | (Query q) :: l -> 
-      query_list := q :: (!query_list); 
-      check_all l
-  | (Noninterf lnoninterf) :: l -> 
-      noninterf_list := (List.map get_non_interf lnoninterf) :: (!noninterf_list); 
-      check_all l
-  | (Weaksecret i) :: l ->
-      weaksecret_list := (get_non_interf_name i) ::(!weaksecret_list);
-      check_all l
-  | (NoUnif (fact,n,bl)) :: l ->
-      nounif_list := (fact, n, bl) :: (!nounif_list);
-      check_all l
-  | (Elimtrue fact) :: l ->
+let rec check_one = function
+    (FunDecl (f,i,is_private)) -> 
+      check_fun_decl false f i is_private
+  | (DataFunDecl (f,i)) -> 
+      check_fun_decl true f i false
+  | (Equation eq) ->
+      check_equation eq
+  | (Reduc (r,is_private)) -> 
+      check_red r is_private
+  | (ReducFail (r,is_private)) -> 
+      check_red_may_fail r is_private
+  | (PredDecl (p, arity, info)) ->
+      check_pred p arity info
+  | (PDef ((s,ext),p)) -> 
+      Hashtbl.add pdeftbl s p
+  | (Query q) -> 
+      query_list := q :: (!query_list)
+  | (Noninterf lnoninterf) -> 
+      noninterf_list := (List.map get_non_interf lnoninterf) :: (!noninterf_list)
+  | (Weaksecret i) ->
+      weaksecret_list := (get_non_interf_name i) ::(!weaksecret_list)
+  | (NoUnif (fact,n,bl)) ->
+      nounif_list := (fact, n, bl) :: (!nounif_list)
+  | (Elimtrue (fact,may_fail_env)) ->
       let env = Hashtbl.create 7 in
-      Param.elim_true := (check_simple_fact env fact) :: (!Param.elim_true);
-      check_all l
-  | (Not (((_,e) as f,n),b)) :: l -> 
-      not_list := ((f,n),b) :: (!not_list); 
-      check_all l
-  | (Free (il,b)) :: l -> 
+      List.iter (fun (v,_) -> check_may_fail_var env v) may_fail_env;
+      Param.elim_true := (check_simple_fact env fact) :: (!Param.elim_true)
+  | (Not (((_,e) as f,n),b)) -> 
+      not_list := ((f,n),b) :: (!not_list)
+  | (Free (il,b)) -> 
       List.iter (fun (i,ext) -> 
 	if (List.exists (fun r -> r.f_name = i) (!freenames)) && (!Param.tulafale != 1) then
 	  input_error ("free name " ^ i ^ " already declared") ext;
-	ignore(add_free_name (not b) i)) il;
-      check_all l
-  | (Clauses c) :: l ->
-      List.iter check_clause c;
-      check_all l
-  | (Param((p,ext),v)) :: l -> 
+	ignore(add_free_name (not b) i)) il
+  | (Clauses c) ->
+      List.iter check_clause c
+  | (Param((p,ext),v)) -> 
       begin
 	match (p,v) with
 	  "attacker", S ("passive",_) -> Param.active_attacker := false
@@ -760,9 +872,7 @@ let rec check_all = function
 	| "explainDerivation", _ -> Param.boolean_param Param.explain_derivation p ext v
 	| "predicatesImplementable", S("check",_) -> Param.check_pred_calls := true
 	| "predicatesImplementable", S("nocheck",_) -> Param.check_pred_calls := false
-	| "eqInNames", _ ->
-	    Param.boolean_param Param.eq_in_names p ext v;
-	    if !Param.eq_in_names then Param.reconstruct_trace := false
+	| "eqInNames", _ -> Param.boolean_param Param.eq_in_names p ext v
 	| "reconstructTrace", _ -> Param.boolean_param Param.reconstruct_trace p ext v
 	| "traceBacktracking", _ -> Param.boolean_param Param.trace_backtracking p ext v
 	| "unifyDerivation", _ -> Param.boolean_param Param.unify_derivation p ext v
@@ -770,19 +880,8 @@ let rec check_all = function
 	| "traceDisplay", S ("short",_) -> Param.trace_display := Param.ShortDisplay
 	| "traceDisplay", S ("long",_) -> Param.trace_display := Param.LongDisplay
 	| _, _ -> Param.common_parameters p ext v
-      end;
-      check_all l
-  | [Process p] -> 
-      let r = check_process (init_env()) p in
-      List.iter (List.iter nvn_q) (!query_list);
-      List.iter (fun (fact,_,bl) ->
-	nvn_ff fact;
-	List.iter (fun (_,t) -> nvn_f t) bl) (!nounif_list);
-      List.iter (fun (f,b) ->
-	nvn_e f;
-	List.iter (fun (_,t) -> nvn_t t) b) (!not_list);
-      r
-  | _ -> internal_error "The first process part is not the last element of the file"
+      end
+  
 
 (* Get the maximum phase number *)
 
@@ -791,7 +890,7 @@ let rec set_max_used_phase = function
   | Par(p1,p2) -> set_max_used_phase p1; set_max_used_phase p2
   | Repl (p,_) ->  set_max_used_phase p
   | Restr(n,p,_) -> set_max_used_phase p
-  | Test(_,_,p1,p2,_) -> set_max_used_phase p1; set_max_used_phase p2
+  | Test(_,p1,p2,_) -> set_max_used_phase p1; set_max_used_phase p2
   | Input(_,_, p,_) -> set_max_used_phase p
   | Output(_,_,p,_) -> set_max_used_phase p
   | Let(_,_,p1, p2,_) -> set_max_used_phase p1; set_max_used_phase p2
@@ -803,13 +902,17 @@ let rec set_max_used_phase = function
 	Param.max_used_phase := n;
       set_max_used_phase p
 
+      
+      
 let parse_file s = 
-  let p = check_all (parse s) in
-  if !Param.key_compromise = 2 then
-    Param.max_used_phase := 1
-  else
-    set_max_used_phase p;
-  p
+  let decl,p = parse s in
+  List.iter check_one decl;
+  let r = check_process (init_env()) p in
+  if !Param.key_compromise = 2 
+  then Param.max_used_phase := 1
+  else set_max_used_phase r;
+  set_need_vars_in_names ();
+  r
 
 let display () =
    print_string "Functions ";

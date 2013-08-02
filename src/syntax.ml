@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -192,14 +192,7 @@ let get_name s arity ext =
                    (string_of_int r_arity)) ext;
     r
   with Not_found ->
-    let cat = Name { prev_inputs = None; prev_inputs_meaning = [] } in
-    let r = { f_name = s; 
-	      f_type = (Terms.copy_n arity Param.any_type), Param.any_type; 
-              f_cat = cat;
-	      f_initial_cat = cat;
-              f_private = true;
-	      f_options = 0 } 
-    in
+    let r = Terms.create_name s ((Terms.copy_n arity Param.any_type), Param.any_type) true in
     Hashtbl.add name_env s r;
     r
 
@@ -272,11 +265,11 @@ let rec check_red = function
 	incr rule_counter;
 	let (hyp, constra) = List.fold_right (fun onehyp accu -> check_one_hyp accu env onehyp) i ([],[]) in
 	let concl = check_simple_fact env c in
-	let constra = Rules.simplify_constra_list (concl :: hyp) constra in
+	let constra = TermsEq.simplify_constra_list (concl :: hyp) constra in
 	rules := (hyp, concl, 
 	 Rule(!rule_counter, LblNone, hyp, concl, constra), constra) :: (!rules)
 
-      with Rules.FalseConstraint -> ()
+      with TermsEq.FalseConstraint -> ()
       end
   | (Equiv(i,c,select)::l) -> 
       check_red l;
@@ -307,9 +300,9 @@ let gen_data_clauses () =
   in
 
   let gen_fun pred f =
-    output_rule_hist (Apply(Func(f), pred));
+    output_rule_hist (RApplyFunc(f, pred));
     for n = 0 to (List.length (fst f.f_type))-1 do
-      output_rule_hist (Apply(Proj(f,n), pred))
+      output_rule_hist (RApplyProj(f, n, pred))
     done
   in
 

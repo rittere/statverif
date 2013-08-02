@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -29,12 +29,21 @@ open Parsing_helper
 open Types
 open Pitypes
 
+(*********************************************
+          Function For Phases
+**********************************************)
+
 (* Find the minimum phase in which choice is used *)
 
 let rec has_choice = function
     Var _ -> false
   | FunApp(f,l) -> 
       (f.f_cat == Choice) || (List.exists has_choice l)
+
+let rec has_choice_pat = function
+    PatVar _ -> false
+  | PatTuple(_,l) -> List.exists has_choice_pat l
+  | PatEqual t -> has_choice t
 
 let min_choice_phase = ref max_int
 
@@ -47,8 +56,8 @@ let rec find_min_choice_phase current_phase = function
       find_min_choice_phase current_phase p
   | Restr(n,p,_) ->
       find_min_choice_phase current_phase p
-  | Test(t1,t2,p,q,_) ->
-      if has_choice t1 || has_choice t2 then
+  | Test(t,p,q,_) ->
+      if has_choice t then
 	begin
 	  if current_phase < !min_choice_phase then
 	    min_choice_phase := current_phase
@@ -56,7 +65,7 @@ let rec find_min_choice_phase current_phase = function
       find_min_choice_phase current_phase p;
       find_min_choice_phase current_phase q
   | Input(tc,pat,p,_) ->
-      if has_choice tc then 
+      if (has_choice tc) || (has_choice_pat pat) then 
 	begin
 	  if current_phase < !min_choice_phase then
 	    min_choice_phase := current_phase
@@ -71,7 +80,7 @@ let rec find_min_choice_phase current_phase = function
       find_min_choice_phase current_phase p
       
   | Let(pat,t,p,q,_) ->
-      if has_choice t then
+      if (has_choice t) || (has_choice_pat pat) then
 	begin
 	  if current_phase < !min_choice_phase then
 	    min_choice_phase := current_phase
@@ -80,66 +89,87 @@ let rec find_min_choice_phase current_phase = function
       find_min_choice_phase current_phase q
   | LetFilter(vlist,f,p,q,_) ->
       user_error "Predicates are currently incompatible with proofs of equivalences.\n"
-  | Event(_,p,_) ->
+  | Event(t,p,_) ->
+      if has_choice t then
+	begin
+	  if current_phase < !min_choice_phase then
+	    min_choice_phase := current_phase
+	end;      
       find_min_choice_phase current_phase p
-  | Insert(_,p,_) ->
+  | Insert(t,p,_) ->
+      if has_choice t then
+	begin
+	  if current_phase < !min_choice_phase then
+	    min_choice_phase := current_phase
+	end;      
       find_min_choice_phase current_phase p
-  | Get(_,_,p,_) ->
-      find_min_choice_phase current_phase p
+  | Get(pat,t,p,q,_) ->
+      if (has_choice t) || (has_choice_pat pat) then
+	begin
+	  if current_phase < !min_choice_phase then
+	    min_choice_phase := current_phase
+	end;
+      find_min_choice_phase current_phase p;
+      find_min_choice_phase current_phase q
   | Phase(n,p,_) ->
       find_min_choice_phase n p
       
-(* Rule base *)
+(*********************************************
+          Function For Rules
+**********************************************)
 
+(** Indicate the number of rules created *)
 let nrule = ref 0
-let red_rules = ref ([] : reduction list)
 
-let no_gen_var = ref []
+(** List of the rules created *)
+let red_rules = ref ([] : reduction list)
 
 let mergelr = function
     Pred(p,[t1;t2]) as x ->
       begin
 	match p.p_info with
-	  [AttackerBin(i,t)] -> 
-	    if i >= (!min_choice_phase) then x else
-	    let att1_i = Param.get_pred (Attacker(i,t)) in
-	    Terms.unify t1 t2;
-	    Pred(att1_i, [t1])
-	| [TableBin(i)] ->
-	    if i >= (!min_choice_phase) then x else
-	    let tbl1_i = Param.get_pred (Table(i)) in
-	    Terms.unify t1 t2;
-	    Pred(tbl1_i, [t1])
-	| [InputPBin(i)] ->
-	    if i >= (!min_choice_phase) then x else
-	    let input1_i = Param.get_pred (InputP(i)) in
-	    Terms.unify t1 t2;
-	    Pred(input1_i, [t1])
-	| [OutputPBin(i)] ->
-	    if i >= (!min_choice_phase) then x else
-	    let output1_i = Param.get_pred (OutputP(i)) in
-	    Terms.unify t1 t2;
-	    Pred(output1_i, [t1])
-	| _ -> x
+	  | [AttackerBin(i,t)] -> 
+	      if i >= (!min_choice_phase) then x else
+	      let att1_i = Param.get_pred (Attacker(i,t)) in
+	      Terms.unify t1 t2;
+	      Pred(att1_i, [t1])
+	  | [TableBin(i)] ->
+	      if i >= (!min_choice_phase) then x else
+	      let tbl1_i = Param.get_pred (Table(i)) in
+	      Terms.unify t1 t2;
+	      Pred(tbl1_i, [t1])
+	  | [InputPBin(i)] ->
+	      if i >= (!min_choice_phase) then x else
+	      let input1_i = Param.get_pred (InputP(i)) in
+	      Terms.unify t1 t2;
+	      Pred(input1_i, [t1])
+	  | [OutputPBin(i)] ->
+	      if i >= (!min_choice_phase) then x else
+	      let output1_i = Param.get_pred (OutputP(i)) in
+	      Terms.unify t1 t2;
+	      Pred(output1_i, [t1])
+	  | _ -> x
       end
   | Pred(p,[t1;t2;t3;t4]) as x ->
       begin
 	match p.p_info with
-	  [MessBin(i,t)] ->
-	    if i >= (!min_choice_phase) then x else
-	    let mess1_i = Param.get_pred (Mess(i,t)) in
-	    Terms.unify t1 t3;
-	    Terms.unify t2 t4;
-	    Pred(mess1_i, [t1;t2])
-	| _ -> x
+	  | [MessBin(i,t)] ->
+	      if i >= (!min_choice_phase) then x else
+	      let mess1_i = Param.get_pred (Mess(i,t)) in
+	      Terms.unify t1 t3;
+	      Terms.unify t2 t4;
+	      Pred(mess1_i, [t1;t2])
+	  | _ -> x
       end
   | x -> x
+  
+let rec nb_rule_total = ref 0
+
 
 let add_rule hyp concl constra tags =
   if !min_choice_phase > 0 then
     begin
-      if !Terms.current_bound_vars != [] then
-	Parsing_helper.internal_error "bound vars should be cleaned up (pitranslweak4)";
+      assert (!Terms.current_bound_vars == []);
       try
 	let hyp' = List.map mergelr hyp in
 	let concl' = mergelr concl in
@@ -148,46 +178,65 @@ let add_rule hyp concl constra tags =
 	let constra'' = List.map Terms.copy_constra2 constra in
 	let tags'' = 
 	  match tags with
-	    ProcessRule _ -> Parsing_helper.internal_error "ProcessRule should not be generated by pitranslweak"
-	  | ProcessRule2(hsl, nl1, nl2) -> ProcessRule2(hsl, List.map Terms.copy_term2 nl1, List.map Terms.copy_term2 nl2)
+	    ProcessRule(hsl, nl) -> ProcessRule(hsl, List.map Terms.copy_term2 nl)
 	  | x -> x 
 	in
-	Terms.cleanup();	
-	let constra'' = Rules.simplify_constra_list (concl''::hyp'') constra'' in
-	red_rules := (hyp'', concl'', 
-		      Rule (!nrule, tags'', hyp'', concl'', constra''), constra'') 
-	  :: (!red_rules);
-	incr nrule
-      with Terms.Unify -> Terms.cleanup()
-      |	Rules.FalseConstraint -> ()
+	Terms.cleanup();
+
+        let constra''' = TermsEq.simplify_constra_list (concl''::hyp'') constra'' in
+        let rule = (hyp'', concl'', Rule (!nrule, tags'', hyp'', concl'', constra'''), constra''') in
+	red_rules := rule :: !red_rules;
+	incr nrule;
+      with 
+        | Terms.Unify ->  Terms.cleanup ()
+        | TermsEq.FalseConstraint -> ()
     end
   else
     begin
-      red_rules := (hyp, concl, Rule (!nrule, tags, hyp, concl, constra), constra) :: (!red_rules);
-      incr nrule
+      try
+        let constra' = TermsEq.simplify_constra_list (concl::hyp) constra in
+      	let rule = (hyp, concl, Rule (!nrule, tags, hyp, concl, constra'), constra') in
+      	red_rules := rule :: !red_rules;
+      	incr nrule;
+      with
+      	TermsEq.FalseConstraint -> ()
     end
 
+(*********************************************
+           Preliminary functions
+**********************************************)   
+    
 type transl_state = 
-    { hypothesis : fact list; (* Current hypotheses of the rule *)
-      constra : constraints list list; (* Current constraints of the rule *)
-      unif : (term * term) list; (* Current unifications to do *)
-      last_step_unif_left : (term * term) list; 
-      last_step_unif_right : (term * term) list; 
-      (* Unifications to do for the last group of destructor applications. 
-         last_step_unif will be appended to unif before emitting clauses. *)
-      success_conditions_left : (term * term) list list ref option;
-      success_conditions_right : (term * term) list list ref option;
-      (* List of constraints that should be false for the evaluation
-	 of destructors to succeed *)
-      name_params_left : term list; (* List of parameters of names *)
-      name_params_right : term list;
-      name_params_meaning : string list;
-      repl_count : int;
-      input_pred : predicate;
-      output_pred : predicate;
-      cur_phase : int; (* Current phase *)
-      hyp_tags : hypspec list
-    }
+  { hypothesis : fact list; (* Current hypotheses of the rule *)
+    constra : constraints list list; (* Current constraints of the rule *)
+      
+    name_params : term list; (* List of parameters of names *)
+    name_params_types : typet list;
+    name_params_meaning : string list; 
+    repl_count : int; (* Counter for replication *)
+      
+    input_pred : predicate;
+    output_pred : predicate;
+    cur_phase : int; (* Current phase *)
+      
+    hyp_tags : hypspec list
+  }
+      
+let display_transl_state cur_state = 
+   Printf.printf "\n--- Display current state ---\n";
+   Printf.printf "\nHypothesis:\n";
+   Display.Text.display_list (Display.Text.WithLinks.fact) " ; " cur_state.hypothesis;
+   Printf.printf "\nConstraint:\n";
+   Display.Text.WithLinks.constra_list cur_state.constra
+   
+(* Tools *)
+
+let get_type_from_pattern = function
+  | PatVar(v) -> v.btype
+  | PatTuple(f,_) -> snd f.f_type
+  | PatEqual(t) -> Terms.get_term_type t
+    
+(* Creation of fact of attacker', mess' and table. *)
 
 let att_fact phase t1 t2 =
   Pred(Param.get_pred (AttackerBin(phase, Terms.get_term_type t1)), [t1; t2])
@@ -197,183 +246,121 @@ let mess_fact phase tc1 tm1 tc2 tm2 =
 
 let table_fact phase t1 t2 =
   Pred(Param.get_pred (TableBin(phase)), [t1;t2])
+  
+(* Outputing a rule *)  
 
-let output_rule { hypothesis = prev_input; constra = constra; unif = unif;
-		  last_step_unif_left = lsu_l; last_step_unif_right = lsu_r;
-		  name_params_left = name_params_left; 
-		  name_params_right = name_params_right; hyp_tags = hyp_tags } 
-    out_fact =
-  try
-     if (lsu_l != []) || (lsu_r != []) then
-       Parsing_helper.internal_error "last_step_unif should have been appended to unif";
-     if !Terms.current_bound_vars != [] then
-       Parsing_helper.internal_error "bound vars should be cleaned up (pitranslweak2)";
-      List.iter (fun (p1,p2) -> Terms.unify p1 p2) unif;
-      let hyp = List.map Terms.copy_fact2 prev_input in
-      let concl = Terms.copy_fact2 out_fact in
-      let constra2 = List.map Terms.copy_constra2 constra in
-      let name_params_left2 = List.map Terms.copy_term2 name_params_left in
-      let name_params_right2 = List.map Terms.copy_term2 name_params_right in
-      Terms.cleanup();
-      begin
-	try
-	  add_rule hyp concl (Rules.simplify_constra_list (concl::hyp) constra2)
-	    (ProcessRule2(hyp_tags, name_params_left2, name_params_right2))
-	with Rules.FalseConstraint -> ()
-      end
-   with Terms.Unify -> 
-      Terms.cleanup()
-
-
-let start_destructor_group next_f occ cur_state =
-  if (cur_state.last_step_unif_left != []) || (cur_state.last_step_unif_right != []) then
-    Parsing_helper.internal_error "last_step_unif should have been appended to unif (start_destructor_group)";
-  let sc_left = ref [] in
-  let sc_right = ref [] in
-  next_f { cur_state with
-           success_conditions_left = Some sc_left;
-           success_conditions_right = Some sc_right };
-  if List.memq [] (!sc_left) && List.memq [] (!sc_right) then
+let output_rule cur_state out_fact =
+  Terms.auto_cleanup (fun _ -> 
+    (* Apply the unification *)
+    let hyp = List.map Terms.copy_fact2 cur_state.hypothesis in
+    let concl = Terms.copy_fact2 out_fact in
+    let constra = List.map Terms.copy_constra2 cur_state.constra in
+    let name_params = List.map Terms.copy_term2 cur_state.name_params in
+    Terms.cleanup();
     begin
-      (* Both sides always succeed: the condition so that both side fail is false *)
-      [[]]
+      try
+        let constra2 = (TermsEq.simplify_constra_list (concl::hyp) constra) in
+        add_rule hyp concl constra2 (ProcessRule(cur_state.hyp_tags, name_params))
+      with TermsEq.FalseConstraint -> 
+         ()
     end
-  else
-    begin
-      (* Get all vars in cur_state.hypothesis/unif/constra *)
-      let var_list = ref (!no_gen_var) in
-      List.iter (Terms.get_vars_fact var_list) cur_state.hypothesis;
-      List.iter (fun (t1,t2) -> Terms.get_vars var_list t1; Terms.get_vars var_list t2) cur_state.unif;
-      List.iter (List.iter (Terms.get_vars_constra var_list)) cur_state.constra;
-      (* Generalize all vars not in cur_state.hypothesis/unif/constra *)
-      let l_l = List.map (List.map (fun (t1,t2) -> Neq(Terms.generalize_vars_not_in (!var_list) t1,
-						       Terms.generalize_vars_not_in (!var_list) t2))) (!sc_left) in
-      let l_r = List.map (List.map (fun (t1,t2) -> Neq(Terms.generalize_vars_not_in (!var_list) t1,
-						       Terms.generalize_vars_not_in (!var_list) t2))) (!sc_right) in
-      Terms.cleanup();
-      (* When the phase is smaller than min_choice_phase, both sides behave the same way by definition
-         so it is not necessary to generate the clauses below *)
-      if cur_state.cur_phase >= !min_choice_phase then
-	begin
-          (* Left side succeeds, right side fails *)
-	  List.iter (fun u_left ->
-	    output_rule { cur_state with 
-                          unif = u_left @ cur_state.unif;
-                          constra = l_r @ cur_state.constra;
-                          hyp_tags = TestUnifTag2(occ):: cur_state.hyp_tags }
-	      (Pred(Param.bad_pred, []))
-	      ) (!sc_left);
-          (* Right side succeeds, left side fails *)
-          List.iter (fun u_right ->
-	    output_rule { cur_state with 
-                          unif = u_right @ cur_state.unif;
-		          constra = l_l @ cur_state.constra;
-                          hyp_tags = TestUnifTag2(occ):: cur_state.hyp_tags }
-	      (Pred(Param.bad_pred, []))
-	      ) (!sc_right)
-	end;
-      (* Conditions so that both sides fail *)
-      l_l @ l_r
-    end
+      )
 
-let start_destructor_group_i next_f occ cur_state =
-  ignore (start_destructor_group next_f occ cur_state)
+  
+(*********************************************
+               Translate Terms
+**********************************************) 
 
-let end_destructor_group next_f cur_state =
-  next_f { cur_state with 
-	   unif = cur_state.last_step_unif_right @ cur_state.last_step_unif_left @ cur_state.unif;
-	   last_step_unif_left = [];
-	   last_step_unif_right = [];
-	   success_conditions_left = None;
-           success_conditions_right = None };
-  begin
-    match cur_state.success_conditions_left with
-      None -> internal_error "Group ended but not started"
-    | Some r -> r:= cur_state.last_step_unif_left :: (!r)
-  end;
-  begin
-    match cur_state.success_conditions_right with
-      None -> internal_error "Group ended but not started"
-    | Some r -> r:= cur_state.last_step_unif_right :: (!r)
-  end
+(* [transl_term : (transl_state -> Types.terms -> Types.terms -> unit) -> transl_state -> Types.term -> unit
+[transl_term f cur t] represent the translation of [t] in the current state [cur]. The two patterns that [f]
+accepts as argument reprensent the result of the evalution 
+on open term on the left part and right part of [t].
 
-(* Functions that modify last_step_unif, and that should
-   therefore be followed by a call to end_destructor_group 
-
-   transl_term
-   transl_term_list
-   transl_term_incl_destructor
-   transl_term_list_incl_destructor
-   transl_pat
-
+Invariant : All variables should be linked with two closed terms when applied on the translation (due to closed processes)
 *)
-
-(* Translate term *)
-
-(* next_f takes a state and two patterns as parameter *)
-let rec transl_term next_f cur_state = function 
-    Var v -> 
+let rec transl_term next_f cur_state term = match term with
+  | Var v ->
       begin
-	match v.link with
-          TLink (FunApp(_, [t1;t2])) -> next_f cur_state t1 t2
-	| _ -> internal_error "unexpected link in transl_term"
+        match  v.link with
+          | TLink (FunApp(_,[t1;t2])) -> next_f cur_state t1 t2
+          | _ -> internal_error "unexpected link in translate_term (1)"
       end
-  | FunApp(f,l) ->
+  | FunApp(f,args) -> 
       let transl_red red_rules =
-        transl_term_list (fun cur_state1 patlist1 patlist2 -> 
-	  if cur_state.cur_phase < !min_choice_phase then
-	    List.iter (fun red_rule ->
-              let (left_list1, right1) = Terms.copy_red red_rule in
-              let (left_list2, right2) = Terms.copy_red red_rule in
-	      next_f { cur_state1 with 
-                       last_step_unif_left = List.fold_left2(fun accu_unif pat left ->
-			 (pat,left)::accu_unif) cur_state1.last_step_unif_left patlist1 left_list1;
-		       last_step_unif_right = List.fold_left2(fun accu_unif pat left ->
-			 (pat,left)::accu_unif) cur_state1.last_step_unif_right patlist2 left_list2} right1 right2
-		) red_rules
+      	transl_term_list (fun cur_state1 term_list1 term_list2 -> 
+      	  if cur_state.cur_phase < !min_choice_phase then
+      	    List.iter (fun red_rule ->
+      	      let (left_list1, right1, side_c1) = Terms.auto_cleanup (fun _ -> Terms.copy_red red_rule) in
+      	      let (left_list2, right2, side_c2) = Terms.auto_cleanup (fun _ -> Terms.copy_red red_rule) in
+      	      
+      	      Terms.auto_cleanup (fun _ -> 
+		try
+		  List.iter2 Terms.unify term_list1 left_list1;
+		  List.iter2 Terms.unify term_list2 left_list2;
+      	          let cur_state2 = 
+      	          { cur_state1 with 
+	            constra = 
+	              (List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1) @ 
+	              (List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c2) @ cur_state1.constra
+		  } in
+		  
+		  ignore (TermsEq.check_constraint_list cur_state2.constra);	
+      	          next_f cur_state2 right1 right2
+                with Terms.Unify -> ()
+	      )
+	    ) red_rules
 	  else
 	    List.iter (fun red_rule1 ->
 	      List.iter (fun red_rule2 ->
-		let (left_list1, right1) = Terms.copy_red red_rule1 in
-		let (left_list2, right2) = Terms.copy_red red_rule2 in
-		next_f { cur_state1 with 
-                         last_step_unif_left = List.fold_left2(fun accu_unif pat left ->
-			   (pat,left)::accu_unif) cur_state1.last_step_unif_left patlist1 left_list1;
-		         last_step_unif_right = List.fold_left2(fun accu_unif pat left ->
-			   (pat,left)::accu_unif) cur_state1.last_step_unif_right patlist2 left_list2} right1 right2
-		  ) red_rules
-	        ) red_rules
-	    ) cur_state l
-      in	
-      match f.f_cat with
-	Name n ->  
-	  begin
-            match n.prev_inputs with
-              Some (FunApp(_, [t1;t2])) -> next_f cur_state t1 t2
-            | _ -> internal_error "unexpected prev_inputs in transl_term"
-	  end
-      | Tuple -> 
-          transl_term_list (fun cur_state1 patlist1 patlist2 -> 
-	    next_f cur_state1 (FunApp(f, patlist1)) (FunApp(f, patlist2))) cur_state l
-      | Eq red_rules ->
-	  let vars1 = Terms.var_gen (fst f.f_type) in
-	  transl_red ((vars1, FunApp(f, vars1)) :: red_rules)
-      | Red red_rules ->
-	  transl_red red_rules
-      |	Choice ->
-	  begin
-	    match l with
-	      [t1;t2] ->
-		transl_term (fun cur_state1 t11 t12 ->
-		  transl_term (fun cur_state2 t21 t22 ->
-		    next_f { cur_state2 with last_step_unif_left = cur_state1.last_step_unif_left } t11 t22
-		    ) { cur_state1 with last_step_unif_right = cur_state.last_step_unif_right } t2
-		  ) cur_state t1
-	    | _ -> Parsing_helper.internal_error "Choice should have two arguments"
-	  end
-      | _ ->
-           Parsing_helper.internal_error "function symbols of these categories should not appear in input terms"
+	        (* Fresh rewrite rules *)
+	        let (left_list1, right1, side_c1) = Terms.auto_cleanup (fun _ -> Terms.copy_red red_rule1) in
+	        let (left_list2, right2, side_c2) = Terms.auto_cleanup (fun _ -> Terms.copy_red red_rule2) in
 
+	        Terms.auto_cleanup (fun _ -> 
+		  try
+		    List.iter2 Terms.unify term_list1 left_list1;
+		    List.iter2 Terms.unify term_list2 left_list2;
+	            let cur_state2 =
+	            { cur_state1 with 
+	              constra = 
+	                (List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1) @ 
+	                (List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c2) @ cur_state1.constra
+		    } in
+		    
+		    ignore (TermsEq.check_constraint_list cur_state2.constra);
+	            next_f cur_state2 right1 right2
+		  with Terms.Unify -> ()
+	        )
+	      ) red_rules
+	    ) red_rules
+	) cur_state args
+      in
+
+      match f.f_cat with
+      	| Name n ->  
+      	    (* Parameters of names are now equals on the left and right side *)
+      	    begin
+      	      match n.prev_inputs with
+      	        | Some (name_term) -> next_f cur_state name_term name_term
+      	        | _ -> internal_error "unexpected prev_inputs in transl_term"
+      	    end
+      	| Tuple | Eq _ | Red _ -> 
+      	    transl_red (Terms.red_rules_fun f)
+	| Choice ->
+	    begin
+	      match args with
+	        | [t1;t2] ->
+		  transl_term (fun cur_state1 t11 t12 ->
+		    transl_term (fun cur_state2 t21 t22 ->
+		      next_f cur_state2 t11 t22
+		    ) cur_state1 t2
+		  ) cur_state t1
+		| _ -> Parsing_helper.internal_error "Choice should have two arguments"
+	    end
+	| Failure -> next_f cur_state (FunApp(f,[]))  (FunApp(f,[]))
+	
+	| _ ->
+	    Parsing_helper.internal_error "function symbols of these categories should not appear in input terms (pitranslweak)"
 
 (* next_f takes a state and two lists of patterns as parameter *)
 and transl_term_list next_f cur_state = function
@@ -382,395 +369,883 @@ and transl_term_list next_f cur_state = function
       transl_term (fun cur_state1 p1 p2 ->
 	transl_term_list (fun cur_state2 patlist1 patlist2 -> 
 	  next_f cur_state2 (p1::patlist1) (p2::patlist2)) cur_state1 l) cur_state a
-
-let rec check_several_types = function
-    Var _ -> false
-  | FunApp(f,l) ->
-      (List.exists check_several_types l) || 
-      (if !Param.eq_in_names then
-	 (* Re-allow an old setting, which was faster on some examples *)
-	 match f.f_cat with
-       	   Red rules -> List.length rules > 1
-	 | Eq rules -> List.length rules > 0
-	 | _ -> false
-      else
-	 match f.f_initial_cat with
-       	   Red rules -> List.length rules > 1
-         | _ -> false)
-
-let transl_term_incl_destructor f t cur_state =
-  let may_have_several_types = check_several_types t in
-  transl_term (fun cur_state1 pat1 pat2 ->
-    if may_have_several_types then
-      f pat1 pat2 { cur_state1 with 
-                    name_params_left = pat1::cur_state1.name_params_left;
-		    name_params_right = pat2::cur_state1.name_params_right;
-                    name_params_meaning = "" :: cur_state1.name_params_meaning }
+	  
+let transl_term_incl_destructor next_f cur_state occ term =
+  let may_have_several_patterns = Reduction_helper.transl_check_several_patterns occ term in
+  transl_term (fun cur_state1 term1 term2 ->
+    if may_have_several_patterns
+    then
+      let type_t = Terms.get_term_type term1 in      
+      next_f { cur_state1 with 
+          name_params = FunApp(Param.choice_fun type_t,[term1;term2])::cur_state1.name_params;
+          name_params_types = type_t (* this type may not be accurate when types are ignored 
+					(a type conversion function may have been removed); we 
+					don't use it since it is not associated to a variable *) 
+                                     :: cur_state1.name_params_types;
+          name_params_meaning = "" :: cur_state1.name_params_meaning 
+        } term1 term2
     else
-      f pat1 pat2 cur_state1
-    ) cur_state t
+      next_f cur_state1 term1 term2 
+  ) cur_state term
 
-(*
-let transl_term_list_incl_destructor f tl cur_state =
-  let may_have_several_types = List.exists check_several_types tl in
-  transl_term_list (fun cur_state1 patlist1 patlist2 ->
-    if may_have_several_types then
-      f patlist1 patlist2 { cur_state1 with 
-			    name_params_left = patlist1 @ cur_state1.name_params_left;
-			    name_params_right = patlist2 @ cur_state1.name_params_right;
-			    name_params_meaning = (List.map (fun _ -> "") patlist1) @ cur_state1.name_params_meaning }
-    else
-      f patlist1 patlist2 cur_state1
-    ) cur_state tl
-*)
 
-(* Translate pattern *)
-
-let rec transl_pat put_var f pat pat1' pat2' cur_state =
-  match pat with
-    PatVar b ->
-      b.link <- TLink (FunApp(Param.choice_fun b.btype, [pat1'; pat2']));
-      f (if put_var then
-	  { cur_state with 
-	    name_params_left = pat1' :: cur_state.name_params_left;
-	    name_params_right = pat2' :: cur_state.name_params_right;
-            name_params_meaning = b.sname :: cur_state.name_params_meaning }
-         else
-	  cur_state);
-      b.link <- NoLink
-  | PatTuple (fsymb,patlist) ->
-      let patlist1' = List.map Reduction_helper.new_var_pat patlist in
-      let patlist2' = List.map Reduction_helper.new_var_pat patlist in
-      let pat21 = FunApp(fsymb, patlist1') in
-      let pat22 = FunApp(fsymb, patlist2') in
-      transl_pat_list put_var f patlist patlist1' patlist2'
-	{ cur_state with 
-	  last_step_unif_left = (pat1', pat21)::cur_state.last_step_unif_left;
-	  last_step_unif_right = (pat2', pat22)::cur_state.last_step_unif_right
-	};
-  | PatEqual t ->
-      transl_term_incl_destructor (fun pat1 pat2 cur_state ->
-	f { cur_state with 
-	    last_step_unif_left = (pat1,pat1')::cur_state.last_step_unif_left;
-	    last_step_unif_right = (pat2,pat2')::cur_state.last_step_unif_right;
-	  }
-	    ) t cur_state
-
-and transl_pat_list put_var f patlist patlist1' patlist2' cur_state =
-  match (patlist, patlist1', patlist2') with
-    ([],[],[]) -> f cur_state
-  | (p::pl, p1'::pl1', p2'::pl2') ->
-      transl_pat_list put_var (transl_pat put_var f p p1' p2') pl pl1' pl2' cur_state
-  | _ -> internal_error "not same length in transl_pat_list"
+(*********************************************
+              Translate Patterns
+**********************************************)
       
+let rec transl_pat next_f cur_state pattern = 
+  match pattern with
+  | PatVar b ->
+      let x_left = Var (Terms.copy_var b)
+      and x_right = Var (Terms.copy_var b) in
+      b.link <- TLink (FunApp(Param.choice_fun b.btype, [x_left; x_right]));
+      next_f cur_state (Var b) [b];
+      b.link <- NoLink
+  | PatTuple(fsymb,pat_list) ->
+      transl_pat_list (fun cur_state2 term_list binder_list ->
+        next_f cur_state2 (FunApp(fsymb,term_list)) binder_list
+      ) cur_state pat_list 
+  | PatEqual t -> next_f cur_state t []
+      
+and transl_pat_list next_f cur_state = function
+  | [] -> next_f cur_state [] []
+  | pat::q -> 
+      transl_pat (fun cur_state2 term binders2 ->
+        transl_pat_list (fun cur_state3 term_list binders3  ->
+          next_f cur_state3 (term::term_list) (binders2@binders3)
+        ) cur_state2 q 
+      ) cur_state pat 
 
-(* Translate process *)
+(*********************************************
+        Equation of success or failure
+**********************************************) 
 
-let rec transl_process cur_state = function
-   Nil -> ()
- | Par(p,q) -> transl_process cur_state p;
-               transl_process cur_state q
- | Repl (p,occ) -> 
-     (* Always introduce session identifiers ! *)
-     let v1 = Terms.new_var "@sid" Param.sid_type in
-     no_gen_var := v1 :: (!no_gen_var);
-     transl_process { cur_state with
-                      repl_count = cur_state.repl_count + 1;
-		      name_params_left = (Var v1) :: cur_state.name_params_left;
-		      name_params_right = (Var v1) :: cur_state.name_params_right;
-                      name_params_meaning = ("!" ^ (string_of_int (cur_state.repl_count+1))) :: cur_state.name_params_meaning;
-                      hyp_tags = (ReplTag(occ, List.length cur_state.name_params_left)) :: cur_state.hyp_tags } p
- | Restr(n,p,occ) -> 
-     begin
-     match n.f_cat with
-       Name r -> 
-	 let ntype = List.map Terms.get_term_type cur_state.name_params_left in
-	 if fst n.f_type == Param.tmp_type then 
-	   begin
-	     n.f_type <- ntype, snd n.f_type;
-	     r.prev_inputs_meaning <- cur_state.name_params_meaning
-	   end
-	 else if !Param.ignore_types then
-	   begin
-	     (* When we ignore types, the types of the arguments may vary,
-		only the number of arguments is preserved. *)
-	     if List.length (fst n.f_type) != List.length ntype then
-	       internal_error ("Name " ^ n.f_name ^ " has bad arity")
-	   end
-	 else
-	   begin
-	     if not (Terms.eq_lists (fst n.f_type) ntype) then
-	       internal_error ("Name " ^ n.f_name ^ " has bad type")
-	   end;
-         r.prev_inputs <- Some (FunApp(Param.choice_fun (snd n.f_type), [ FunApp(n, cur_state.name_params_left); 
-									  FunApp(n, cur_state.name_params_right)]));
-         transl_process cur_state p;
-         r.prev_inputs <- None
-     | _ -> internal_error "A restriction should have a name as parameter"
-     end
+exception Failure_Unify
 
- | Test(t1,t2,p,q,occ) ->
-     start_destructor_group_i (fun cur_state ->
-       transl_term_incl_destructor (fun pat1_l pat1_r cur_state1 ->
-	 transl_term_incl_destructor (fun pat2_l pat2_r cur_state2 ->
-           end_destructor_group (fun cur_state3 ->
-	     (* Left side equal but not the right side *)
-	     output_rule { cur_state3 with 
-                           unif = (pat1_l, pat2_l) :: cur_state3.unif;
-                           constra = [Neq(pat1_r,pat2_r)] :: cur_state3.constra;
-                           hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags } (Pred(Param.bad_pred, []));
-	     (* Right side equal but not the left side *)
-	     output_rule { cur_state3 with 
-                           unif = (pat1_r, pat2_r) :: cur_state3.unif;
-                           constra = [Neq(pat1_l,pat2_l)] :: cur_state3.constra;
-                           hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags } (Pred(Param.bad_pred, []));
-	     (* Both sides equal *)
-             transl_process { cur_state3 with 
-                              unif = (pat1_l,pat2_l) :: (pat1_r,pat2_r) :: cur_state3.unif;
-                              hyp_tags = (TestTag occ) :: cur_state3.hyp_tags } p;
-	     (* Both sides different *)
-	     transl_process { cur_state3 with 
-                              constra = [Neq(pat1_l, pat2_l)] :: [Neq(pat1_r,pat2_r)] :: cur_state3.constra;
-                              hyp_tags = (TestTag occ) :: cur_state3.hyp_tags } q
-               ) cur_state2
-	     ) t2 cur_state1
-	   ) t1 cur_state
-	 ) occ cur_state
+(* Unify term t with a message variable.
+   Raises Unify in case t is fail. *)
 
- | Input(tc,pat,p,occ) ->
-      let v1 = Reduction_helper.new_var_pat pat in
-      let v2 = Reduction_helper.new_var_pat pat in
+let unify_var t =
+  let x = Terms.new_var_def (Terms.get_term_type t) in
+  Terms.unify t x
+
+(* Unify term t with fail *)
+
+let unify_fail t =
+  let fail = Terms.get_fail_term (Terms.get_term_type t) in
+  Terms.unify fail t
+
+let transl_both_side_succeed nextf cur_state list_left list_right  = 
+  Terms.auto_cleanup (fun _ -> 
+    try
+      List.iter unify_var list_left;
+      List.iter unify_var list_right;
+      nextf cur_state
+    with Terms.Unify -> ()
+  )
+  
+let transl_both_side_fail nextf cur_state list_left list_right  =
+  List.iter (fun t_left ->
+    List.iter (fun t_right ->
+      Terms.auto_cleanup (fun _ -> 
+        try
+          unify_fail t_left;
+          unify_fail t_right;
+          nextf cur_state
+        with Terms.Unify -> ()
+            )
+      ) list_right;
+  ) list_left
+  
+  
+let transl_one_side_fails nextf cur_state list_failure list_success  =
+  List.iter (fun t ->
+    Terms.auto_cleanup (fun _ ->
+      try
+	List.iter unify_var list_success;
+      	unify_fail t;
+	nextf cur_state
+      with Terms.Unify -> ()
+	  )
+  ) list_failure 
+  
+(**********************************************************
+        Generation of pattern with universal variables 
+***********************************************************)
+
+let generate_pattern_with_uni_var binders_list term_pat_left term_pat_right =
+  let var_pat_l,var_pat_r = 
+    List.split (
+      List.map (fun b -> 
+        match b.link with 
+          | TLink(FunApp(_,[Var(x1);Var(x2)])) -> (x1,x2)
+          | _ -> internal_error "unexpected link in translate_term (2)"
+      ) binders_list
+    ) in  
+             
+  (* TO DO this code may cause internal errors in the presence of patterns
+     let (b, =g(b)) = .... when b gets unified with a term that is not a variable.
+     However, such patterns are forbidden, so this is not a problem. *) 
+
+  let new_var_pat_l = List.map (fun v ->
+    match Terms.follow_link (fun b -> Var b) (Var v) with
+      |Var v' -> v'
+      |_ -> internal_error "unexpected term in translate_process (3)") var_pat_l
+                
+  and new_var_pat_r = List.map (fun v ->
+    match Terms.follow_link (fun b -> Var b) (Var v) with
+      |Var v' -> v'
+      |_ -> internal_error "unexpected term in translate_process (4)") var_pat_r in
+                
+  let new_term_pat_left = Terms.follow_link (fun b -> Var b) term_pat_left
+  and new_term_pat_right = Terms.follow_link (fun b -> Var b) term_pat_right in
+              
+  let gen_pat_l = Terms.auto_cleanup (fun _ -> Terms.generalize_vars_in new_var_pat_l new_term_pat_left)
+  and gen_pat_r = Terms.auto_cleanup (fun _ -> Terms.generalize_vars_in new_var_pat_r new_term_pat_right) in
+            
+  gen_pat_l,gen_pat_r
+       
+(*********************************************
+              Translate Process
+**********************************************) 
+
+let rec transl_process cur_state process = 
+
+  (* DEBUG mode *)
+  
+  (*Printf.printf "\n\n**********************\n\n";
+  Display.Text.display_process_occ "" process;
+  display_transl_state cur_state;
+  flush_all ();*)
+
+  match process with
+  | Nil -> ()
+  | Par(proc1,proc2) -> 
+      transl_process cur_state proc1; 
+      transl_process cur_state proc2
+  | Repl(proc,occ) ->
+      (* Always introduce session identifiers ! *)
+      let var = Terms.new_var "@sid" Param.sid_type in
+      let cur_state' = 
+        {
+          cur_state with
+          repl_count = cur_state.repl_count + 1;
+          name_params = (Var var)::cur_state.name_params;
+          name_params_types = Param.sid_type ::cur_state.name_params_types;
+          name_params_meaning = (Printf.sprintf "!%d" (cur_state.repl_count + 1))::cur_state.name_params_meaning;
+          hyp_tags = (ReplTag(occ, List.length cur_state.name_params)) :: cur_state.hyp_tags 
+        } in
+      transl_process cur_state' proc
+      
+  | Restr(name,proc,occ) ->
       begin
-        match tc with
-          FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker ->
-	    start_destructor_group_i (fun cur_state ->
-	      transl_pat true (
-	        end_destructor_group (fun cur_state1 -> 
-		  transl_process cur_state1 p)
-		)
-		pat v1 v2 cur_state
-		) occ { cur_state with 
-                        hypothesis = (att_fact cur_state.cur_phase v1 v2) :: cur_state.hypothesis;
-                        hyp_tags = (InputTag(occ)) :: cur_state.hyp_tags }
-	    (* When the channel is a public name, and the same name a on both sides,
-               generating h -> input2:a,a is useless since
-	       attacker2:a,a and attacker2:x,x' -> input2:x,x' *)
-        | _ -> 
-	    start_destructor_group_i (fun cur_state ->
-	      transl_term_incl_destructor (fun pat1 pat2 cur_state1 ->
-		end_destructor_group (fun cur_state2 ->
-		  start_destructor_group_i (fun cur_state2 ->
-	      	    transl_pat true (end_destructor_group (fun cur_state3 -> 
-                      transl_process cur_state3 p)) pat v1 v2 cur_state2
-		      ) occ { cur_state2 with 
-                              hypothesis = (mess_fact cur_state.cur_phase pat1 v1 pat2 v2) :: cur_state2.hypothesis;
-                              hyp_tags = (InputTag(occ)) :: cur_state2.hyp_tags };
-                  output_rule { cur_state2 with
-                                hyp_tags = (InputPTag(occ)) :: cur_state2.hyp_tags }
-		    (Pred(cur_state.input_pred, [pat1; pat2]))
-		    ) cur_state1
-		  ) tc cur_state
-		) occ cur_state
+        match name.f_cat with
+          | Name r -> 
+              let name_prev_type = cur_state.name_params_types in
+              if Terms.eq_lists (fst name.f_type) Param.tmp_type
+              then
+                begin 
+                  name.f_type <- name_prev_type, snd name.f_type;
+                  r.prev_inputs_meaning <- cur_state.name_params_meaning
+                end
+  	      else if !Param.ignore_types then
+		begin
+	          (* When we ignore types, the types of the arguments may vary,
+                     only the number of arguments is preserved. *)
+		  if List.length (fst name.f_type) != List.length name_prev_type then
+		    internal_error ("Name " ^ name.f_name ^ " has bad arity")
+		end
+	      else
+		begin
+		  if not (Terms.eq_lists (fst name.f_type) name_prev_type) then
+  		    internal_error ("Name " ^ name.f_name ^ " has bad type")
+		end;
+  	      if List.length r.prev_inputs_meaning <> List.length cur_state.name_params
+  	      then internal_error "prev_inputs_meaning and name_params should have the same size";
+		
+  	      r.prev_inputs <- Some (FunApp(name, cur_state.name_params));
+  	      transl_process cur_state proc;
+  	      r.prev_inputs <- None
+
+          | _ -> internal_error "A restriction should have a name as parameter"
       end
+      
+  | Test(term1,proc_then,proc_else,occ) ->
+      (* This case is equivalent to :
+         Let z = equals(condition,True) in proc_then else proc_else *)
+      
+      if proc_else == Nil then
+        (* We optimize the case q == Nil.
+	   In this case, the adversary cannot distinguish the situation
+	   in which t fails from the situation in which t is false. *)
+	transl_term_incl_destructor (fun cur_state1 term1_left term1_right ->
+            (* Branch THEN (both sides are true) *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_left Terms.true_term;
+		Terms.unify term1_right Terms.true_term;
+		transl_process { cur_state1 with
+		                 hyp_tags = (TestTag occ)::cur_state1.hyp_tags
+			       } proc_then;
+              with Terms.Unify -> ()
+            );
+           
+            (* BAD (Left is true / Right is false) *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_left Terms.true_term;
+		unify_var term1_right;
+                output_rule { cur_state1 with
+		              constra = [Neq(term1_right,Terms.true_term)]::cur_state1.constra;
+		              hyp_tags = (TestUnifTag2 occ)::cur_state1.hyp_tags
+                            } (Pred(Param.bad_pred, []));
+              with Terms.Unify -> ()
+            );
+            
+            (* BAD (Left is true / Right fails) *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_left Terms.true_term;
+		unify_fail term1_right;
+                output_rule { cur_state1 with
+		              hyp_tags = (TestUnifTag2 occ)::cur_state1.hyp_tags
+                            } (Pred(Param.bad_pred, []));
+              with Terms.Unify -> ()
+            );
 
- | Output(tc,t,p,occ) ->
+            (* BAD (Left is false / Right is true) *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_right Terms.true_term;
+		unify_var term1_left;
+                output_rule { cur_state1 with
+                              constra = [Neq(term1_left,Terms.true_term)]::cur_state1.constra;
+                              hyp_tags = (TestUnifTag2 occ)::cur_state1.hyp_tags
+                            } (Pred(Param.bad_pred, []));
+              with Terms.Unify -> ()
+            );
+           
+            (* BAD (Left fails / Right is true) *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_right Terms.true_term;
+		unify_fail term1_left;
+                output_rule { cur_state1 with
+                              hyp_tags = (TestUnifTag2 occ)::cur_state1.hyp_tags
+                            } (Pred(Param.bad_pred, []));
+              with Terms.Unify -> ()
+            )
+
+        ) cur_state (OTest(occ)) term1 
+      else
+	transl_term_incl_destructor (fun cur_state1 term1_left term1_right ->
+          (* Case both sides succeed *)
+          transl_both_side_succeed (fun cur_state2 ->
+            (* Branch THEN *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_left Terms.true_term;
+		Terms.unify term1_right Terms.true_term;
+		transl_process { cur_state2 with
+		                 hyp_tags = (TestTag occ)::cur_state2.hyp_tags
+			       } proc_then;
+              with Terms.Unify -> ()
+            );
+           
+            (* Branch ELSE *)
+            transl_process { cur_state2 with
+              constra = [Neq(term1_left,Terms.true_term)]::[Neq(term1_right,Terms.true_term)]::cur_state2.constra;
+              hyp_tags = (TestTag occ)::cur_state2.hyp_tags
+            } proc_else;
+             
+            (* BAD (Left ok / Right ko) *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_left Terms.true_term;
+                output_rule { cur_state2 with
+		              constra = [Neq(term1_right,Terms.true_term)]::cur_state2.constra;
+		              hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+                            } (Pred(Param.bad_pred, []));
+              with Terms.Unify -> ()
+            );
+            
+            (* BAD (Left ko / Right ok) *)
+            Terms.auto_cleanup (fun _ -> 
+	      try
+		Terms.unify term1_right Terms.true_term;
+                output_rule { cur_state2 with
+                              constra = [Neq(term1_left,Terms.true_term)]::cur_state2.constra;
+                              hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+                            } (Pred(Param.bad_pred, []));
+              with Terms.Unify -> ()
+            )
+          ) cur_state1 [term1_left] [term1_right];
+           
+          (* Case left side succeed and right side fail *)
+          transl_one_side_fails (fun cur_state2 ->
+            (* BAD *)
+            output_rule { cur_state2 with
+              hyp_tags = TestUnifTag2(occ)::cur_state2.hyp_tags
+            } (Pred(Param.bad_pred, []));
+          ) cur_state1 [term1_right] [term1_left];
+          
+          (* Case right side succeed and left side fail *)
+          transl_one_side_fails (fun cur_state2 ->
+            (* BAD *)
+            output_rule { cur_state2 with
+              hyp_tags = TestUnifTag2(occ)::cur_state2.hyp_tags
+            } (Pred(Param.bad_pred, []));
+          ) cur_state1 [term1_left] [term1_right]
+        ) cur_state (OTest(occ)) term1 
+      
+  | Let(pat,term,proc_then,proc_else, occ) ->
+      
+      transl_term_incl_destructor (fun cur_state1 term_left term_right ->
+        transl_pat (fun cur_state2 term_pattern binders_list ->
+          transl_term (fun cur_state3 term_pat_left term_pat_right ->
+            (* Generate the pattern with universal_variable *)
+            let gen_pat_l, gen_pat_r = generate_pattern_with_uni_var binders_list term_pat_left term_pat_right in
+            
+            (* Case both sides succeed *)
+            transl_both_side_succeed (fun cur_state4 ->
+              (* Branch THEN *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_left term_pat_left;
+		  Terms.unify term_right term_pat_right;
+		  transl_process { cur_state4 with
+                    hyp_tags = (LetTag occ)::cur_state4.hyp_tags
+                  } proc_then;
+                with Terms.Unify -> ()
+              );
+              
+              (* Branch ELSE *)
+              transl_process { cur_state4 with
+                constra = [Neq(gen_pat_l,term_left)]::[Neq(gen_pat_r,term_right)]::cur_state4.constra;
+                hyp_tags = (LetTag occ)::cur_state4.hyp_tags
+              } proc_else;
+              
+              (* BAD (Left ok / Right ko) *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_left term_pat_left;
+		  output_rule { cur_state4 with
+                    constra = [Neq(gen_pat_r,term_right)]::cur_state4.constra;
+                    hyp_tags = TestUnifTag2(occ)::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                with Terms.Unify -> ()
+              );
+              
+              (* BAD (Left ko / Right ok) *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_right term_pat_right;
+                  output_rule { cur_state4 with
+                    constra = [Neq(gen_pat_l,term_left)]::cur_state4.constra;
+                    hyp_tags = TestUnifTag2(occ)::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []));
+                with Terms.Unify -> ()
+              )
+            ) cur_state3 [term_pat_left;term_left] [term_pat_right;term_right];
+          
+            (* Case both sides fail *)
+	    transl_both_side_fail (fun cur_state4 ->
+              transl_process { cur_state4 with
+                hyp_tags = (LetTag occ)::cur_state4.hyp_tags
+              } proc_else
+            ) cur_state3 [term_pat_left;term_left] [term_pat_right;term_right];
+            
+            (* Case left side succeed and right side fail *)
+            transl_one_side_fails (fun cur_state4 ->
+              (* Branch ELSE *)
+              transl_process { cur_state4 with
+                constra = [Neq(gen_pat_l,term_left)]::cur_state4.constra;
+                hyp_tags = (LetTag occ)::cur_state4.hyp_tags
+              } proc_else;
+              
+              (* BAD (Left ok) *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+                  Terms.unify term_left term_pat_left;
+                  output_rule { cur_state4 with
+                    hyp_tags = TestUnifTag2(occ)::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                with Terms.Unify -> ()
+              )
+            ) cur_state3 [term_pat_right;term_right] [term_pat_left;term_left];
+            
+            (* Case right side succeed and left side fail *)
+            transl_one_side_fails (fun cur_state4 ->
+              (* Branch ELSE *)
+              transl_process { cur_state4 with
+                constra = [Neq(gen_pat_r,term_right)]::cur_state4.constra;
+                hyp_tags = (LetTag occ)::cur_state4.hyp_tags
+              } proc_else;
+              
+              (* BAD (Left ko) *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_right term_pat_right;
+		  output_rule { cur_state4 with
+                    hyp_tags = TestUnifTag2(occ)::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                with Terms.Unify -> ()
+              )
+            ) cur_state3 [term_pat_left;term_left] [term_pat_right;term_right]
+          ) cur_state2 term_pattern
+        ) cur_state1 pat 
+      ) cur_state (OLet(occ)) term 
+
+  | Input(tc,pat,proc,occ) -> 
+      begin 
+	match tc with
+        | FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker ->
+            transl_pat (fun cur_state1 term_pattern binders ->
+              transl_term (fun cur_state2 term_pat_left term_pat_right ->
+                (* Generate the basic pattern variables *)
+                let x_right = Terms.new_var_def (Terms.get_term_type term_pat_right)
+                and x_left = Terms.new_var_def (Terms.get_term_type term_pat_left) in 
+              
+                (* Generate the pattern with universal_variable *)
+                let gen_pat_l, gen_pat_r = generate_pattern_with_uni_var binders term_pat_left term_pat_right in
+              
+                (* Case both sides succeed *)
+                transl_both_side_succeed (fun cur_state3 ->
+                
+                  (* Pattern satisfied in both sides *)
+                  transl_process { cur_state3 with
+                    name_params = (List.map 
+                      (fun b -> match b.link with
+                         | TLink t -> t
+                         | _ ->internal_error "unexpected link in translate_term (3)"
+                      ) binders) @ cur_state3.name_params;
+                    name_params_types = (List.map (fun b -> b.btype) binders)@cur_state3.name_params_types;
+                    name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state3.name_params_meaning;
+                    hypothesis = (att_fact cur_state.cur_phase term_pat_left term_pat_right) :: cur_state3.hypothesis;
+                    hyp_tags = (InputTag occ)::cur_state3.hyp_tags
+                  } proc;
+                  
+                  (* Pattern satisfied only on left side *)
+                  output_rule { cur_state3 with
+                    constra = [Neq(gen_pat_r,x_right)]::cur_state3.constra;
+                    hypothesis = (att_fact cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
+                    hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state3.hyp_tags
+                  } (Pred(Param.bad_pred, []));  
+                  
+                  (* Pattern satisfied only on right side *)
+                  output_rule { cur_state3 with
+                    constra = [Neq(gen_pat_l,x_left)]::cur_state3.constra;
+                    hypothesis = (att_fact cur_state3.cur_phase x_left term_pat_right) :: cur_state3.hypothesis;
+                    hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state3.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                  
+                ) cur_state2 [term_pat_left] [term_pat_right];
+                
+                (* Case left side succeed and right side fail *)
+                transl_one_side_fails (fun cur_state3 ->
+                  output_rule { cur_state3 with
+                    hypothesis = (att_fact cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
+                    hyp_tags = (TestUnifTag2 occ)::(InputTag occ)::cur_state3.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                ) cur_state2 [term_pat_right] [term_pat_left]; 
+                
+                (* Case right side succeed and left side fail *)
+                transl_one_side_fails (fun cur_state3 ->
+                  output_rule { cur_state3 with
+                    hypothesis = (att_fact cur_state3.cur_phase x_left term_pat_right) :: cur_state3.hypothesis;
+                    hyp_tags = (TestUnifTag2 occ)::(InputTag occ)::cur_state3.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                ) cur_state2 [term_pat_left] [term_pat_right] 
+              ) cur_state1 term_pattern 
+            ) cur_state pat 
+            
+        | _ ->
+          transl_term_incl_destructor (fun cur_state1 channel_left channel_right ->
+            (* Case both channel succeed *)
+            transl_both_side_succeed (fun cur_state2 ->
+              transl_pat (fun cur_state3 term_pattern binders ->
+                transl_term (fun cur_state4 term_pat_left term_pat_right ->
+                  (* Generate the basic pattern variables *)
+                  let x_right = Terms.new_var_def (Terms.get_term_type term_pat_right)
+                  and x_left = Terms.new_var_def (Terms.get_term_type term_pat_left) in 
+              
+                  (* Generate the pattern with universal_variable *)
+                  let gen_pat_l, gen_pat_r = generate_pattern_with_uni_var binders term_pat_left term_pat_right in
+                  
+                  (* Case where both pattern succeed *)
+                  
+                  transl_both_side_succeed (fun cur_state5 ->
+                    let cur_state6 = { cur_state5 with
+                      name_params = (List.map 
+                        (fun b -> match b.link with
+                           | TLink t -> t
+                           | _ ->internal_error "unexpected link in translate_term (4)"
+                      ) binders) @ cur_state5.name_params;
+                      name_params_types = (List.map (fun b -> b.btype) binders)@cur_state5.name_params_types;
+                      name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state5.name_params_meaning;
+                
+                    } in
+                  
+                    (* Pattern satisfied in both sides *)
+                    transl_process { cur_state6 with 
+                      hypothesis = (mess_fact cur_state.cur_phase channel_left term_pat_left channel_right term_pat_right)::cur_state6.hypothesis;
+                      hyp_tags = (InputTag occ)::cur_state6.hyp_tags
+                    } proc;
+                    
+                    output_rule { cur_state6 with
+                      hyp_tags = (InputPTag occ) :: cur_state6.hyp_tags
+                    } (Pred(cur_state6.input_pred, [channel_left; channel_right]));
+                    
+                    (* Pattern satisfied only on left side *)
+                    output_rule { cur_state5 with
+                      constra = [Neq(gen_pat_r,x_right)]::cur_state5.constra;
+                      hypothesis = (mess_fact cur_state.cur_phase channel_left term_pat_left channel_right x_right)::cur_state5.hypothesis;
+                      hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
+                    } (Pred(Param.bad_pred, []));  
+                  
+                    (* Pattern satisfied only on right side *)
+                    output_rule { cur_state5 with
+                      constra = [Neq(gen_pat_l,x_left)]::cur_state5.constra;
+                      hypothesis = (mess_fact cur_state.cur_phase channel_left x_left channel_right term_pat_right)::cur_state5.hypothesis;
+                      hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
+                    } (Pred(Param.bad_pred, []))
+                  
+                  ) cur_state4  [term_pat_left] [term_pat_right];
+                  
+                  (*  Case with left pattern succeed but right fail *)
+                  
+                  transl_one_side_fails (fun cur_state5 ->
+                    output_rule { cur_state5 with
+                      hypothesis = (mess_fact cur_state.cur_phase channel_left term_pat_left channel_right x_right)::cur_state5.hypothesis;
+                      hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
+                    } (Pred(Param.bad_pred, []))
+                  ) cur_state4 [term_pat_right] [term_pat_left]; 
+                  
+                  (*  Case with right pattern succeed but left fail *)
+                  
+                  transl_one_side_fails (fun cur_state5 ->
+                    output_rule { cur_state5 with
+                      hypothesis = (mess_fact cur_state.cur_phase channel_left x_left channel_right term_pat_right)::cur_state5.hypothesis;
+                      hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
+                    } (Pred(Param.bad_pred, []))
+                  ) cur_state4 [term_pat_left] [term_pat_right]
+                ) cur_state3 term_pattern 
+              ) cur_state2 pat 
+            ) cur_state1 [channel_left] [channel_right];
+      
+            (* Case left channel succeed and right channel fail *)
+            transl_one_side_fails (fun cur_state2 ->
+              output_rule { cur_state2 with
+                hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+              } (Pred(Param.bad_pred, []))
+            ) cur_state1 [channel_right] [channel_left]; 
+                
+            (* Case right side succeed and left side fail *)
+            transl_one_side_fails (fun cur_state2 ->
+              output_rule { cur_state2 with
+                hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+              } (Pred(Param.bad_pred, []))
+            ) cur_state1 [channel_left] [channel_right]
+          ) cur_state (OInChannel(occ)) tc 
+      end 
+     
+  | Output(term_ch, term, proc, occ) ->
       begin
-        match tc with 
-          FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker -> 
-	    (* Same remark as for input *)
-	    start_destructor_group_i (fun cur_state ->
-	      transl_term (fun cur_state1 pat1 pat2 ->
-		end_destructor_group (fun cur_state2 ->
-                  output_rule { cur_state2 with hyp_tags = (OutputTag occ) :: cur_state2.hyp_tags }
-		    (att_fact cur_state.cur_phase pat1 pat2)
-		    ) cur_state1
-		  ) cur_state t
-		) occ cur_state
-        | _ -> 
-	    start_destructor_group_i (fun cur_state ->
-	      transl_term (fun cur_state1 patc1 patc2 ->
-                transl_term (fun cur_state2 pat1 pat2 ->
-                  end_destructor_group (fun cur_state3 ->
+        match term_ch with
+          | FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker -> 
+              transl_term (fun cur_state1 term_left term_right ->
+                (* Case both sides succeed *)
+                transl_both_side_succeed (fun cur_state2 ->
+                  transl_process { cur_state2 with
+                      hyp_tags = (OutputTag occ)::cur_state2.hyp_tags
+                    } proc;
+                    
+                  output_rule { cur_state2 with
+                      hyp_tags = (OutputTag occ)::cur_state2.hyp_tags
+                    } (att_fact cur_state2.cur_phase term_left term_right)
+                ) cur_state1 [term_left] [term_right];
+                
+                (* Case left side succeed and right side fail *)
+                transl_one_side_fails (fun cur_state2 ->
+                  output_rule { cur_state2 with
+                    hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                ) cur_state1 [term_right] [term_left]; 
+                
+                (* Case right side succeed and left side fail *)
+                transl_one_side_fails (fun cur_state2 ->
+                  output_rule { cur_state2 with
+                    hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                ) cur_state1 [term_left] [term_right] 
+              ) cur_state term 
+          | _ ->
+              transl_term (fun cur_state1 channel_left channel_right ->
+                transl_term (fun cur_state2 term_left term_right ->
+                  (* Case both sides succeed *)
+                  transl_both_side_succeed (fun cur_state3 ->
+                    transl_process { cur_state3 with
+                        hyp_tags = (OutputTag occ)::cur_state3.hyp_tags
+                      } proc;
+                      
                     output_rule { cur_state3 with
-                                  hyp_tags = (OutputPTag occ) :: cur_state3.hyp_tags }
-		      (Pred(cur_state.output_pred, [patc1; patc2]));
+                        hyp_tags = (OutputPTag occ) :: cur_state3.hyp_tags
+                      } (Pred(cur_state3.output_pred, [channel_left; channel_right]));
+                    
                     output_rule { cur_state3 with
-                                  hypothesis = cur_state3.hypothesis;
-                                  hyp_tags = (OutputTag occ) :: cur_state2.hyp_tags }
-		      (mess_fact cur_state.cur_phase patc1 pat1 patc2 pat2)
-                      ) cur_state2
-                    ) cur_state1 t
-		  ) cur_state tc
-		) occ cur_state
-      end;
-      transl_process { cur_state with
-                       hyp_tags = (OutputTag occ) :: cur_state.hyp_tags } p
+                        hyp_tags = (OutputTag occ)::cur_state3.hyp_tags
+                      } (mess_fact cur_state3.cur_phase channel_left term_left channel_right term_right)
+                  ) cur_state2 [channel_left;term_left] [channel_right;term_right];
+                
+                  (* Case left side succeed and right side fail *)
+                  transl_one_side_fails (fun cur_state3 ->
+                    output_rule { cur_state3 with
+                      hyp_tags = (TestUnifTag2 occ)::cur_state3.hyp_tags
+                    } (Pred(Param.bad_pred, []))
+                  ) cur_state2 [channel_right;term_right] [channel_left;term_left]; 
+                
+                  (* Case right side succeed and left side fail *)
+                  transl_one_side_fails (fun cur_state3 ->
+                    output_rule { cur_state3 with
+                      hyp_tags = (TestUnifTag2 occ)::cur_state3.hyp_tags
+                    } (Pred(Param.bad_pred, []))
+                  ) cur_state2 [channel_left;term_left] [channel_right;term_right] 
+                ) cur_state1 term
+              ) cur_state term_ch          
+      end 
+              
+  | LetFilter(_,_,_,_,_) ->    
+      user_error "Predicates are currently incompatible with proofs of equivalences.\n"
+      
+  | Event(t,p,occ) -> 
+      (* Even if the event does nothing, the term t is evaluated *)
+      transl_term (fun cur_state1 term_left term_right ->
+        (* Case both sides succeed *)
+        transl_both_side_succeed (fun cur_state2 ->
+	  transl_process cur_state2 p
+	    ) cur_state1 [term_left] [term_right];
 
- | Let(pat,t,p,p',occ) ->
-     let failure_conditions =
-     start_destructor_group (fun cur_state ->
-       transl_term_incl_destructor (fun pat1 pat2 cur_state1 ->
-	 transl_pat false (end_destructor_group (fun cur_state2 -> transl_process cur_state2 p))
-	   pat pat1 pat2 cur_state1
-	   ) t cur_state
-	 ) occ { cur_state with hyp_tags = (LetTag occ) :: cur_state.hyp_tags }
-     in
-     transl_process { cur_state with
-                      constra = failure_conditions @ cur_state.constra;
-                      hyp_tags = (LetTag occ) :: cur_state.hyp_tags } p'
+        (* Case left side succeeds and right side fails *)
+        transl_one_side_fails (fun cur_state2 ->
+          output_rule { cur_state2 with
+            hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+            } (Pred(Param.bad_pred, []))
+        ) cur_state1 [term_right] [term_left];
 
- | LetFilter(vlist,f,p,q,occ) ->
-       user_error "Predicates are currently incompatible with proofs of equivalences.\n"
+        (* Case right side succeeds and left side fails *)
+        transl_one_side_fails (fun cur_state2 ->
+          output_rule { cur_state2 with
+            hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+            } (Pred(Param.bad_pred, []))
+        ) cur_state1 [term_left] [term_right]
 
- | Event(_, p, _) ->
-     transl_process cur_state p
+	  ) cur_state t
 
- | Insert(t,p,occ) ->
-     start_destructor_group_i (fun cur_state ->
-       transl_term (fun cur_state1 pat1 pat2 ->
-	 end_destructor_group (fun cur_state2 ->
-           output_rule { cur_state2 with hyp_tags = (InsertTag occ) :: cur_state2.hyp_tags }
-	     (table_fact cur_state.cur_phase pat1 pat2)
-	     ) cur_state1
-	   ) cur_state t
-	 ) occ cur_state;
-     transl_process { cur_state with
-                      hyp_tags = (InsertTag occ) :: cur_state.hyp_tags } p
+  | Insert(term,proc,occ) ->
+      transl_term (fun cur_state1 term_left term_right ->
+        (* Case both sides succeed *)
+        transl_both_side_succeed (fun cur_state2 ->
+          output_rule { cur_state2 with
+            hyp_tags = (InsertTag occ) :: cur_state2.hyp_tags
+          } (table_fact cur_state2.cur_phase term_left term_right);
+          
+          transl_process { cur_state2 with
+            hyp_tags = (InsertTag occ) :: cur_state2.hyp_tags
+          } proc;
+        ) cur_state1 [term_left] [term_right];
+        
+        (* Case left side succeeds and right side fails *)
+        transl_one_side_fails (fun cur_state2 ->
+          output_rule { cur_state2 with
+            hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+            } (Pred(Param.bad_pred, []))
+        ) cur_state1 [term_right] [term_left];
+        
+        (* Case right side succeeds and left side fails *)
+        transl_one_side_fails (fun cur_state2 ->
+          output_rule { cur_state2 with
+            hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+            } (Pred(Param.bad_pred, []))
+        ) cur_state1 [term_left] [term_right]
+      ) cur_state term 
 
- | Get(pat,t,p,occ) ->
-      let v1 = Reduction_helper.new_var_pat pat in
-      let v2 = Reduction_helper.new_var_pat pat in
-      start_destructor_group_i (fun cur_state ->
-	transl_pat true (fun cur_state1 ->
-	  transl_term (fun cur_state2 patt1 patt2 ->
-	    end_destructor_group (fun cur_state3 -> transl_process cur_state3 p)
-	      { cur_state2 with
-                last_step_unif_left = (patt1, FunApp(Terms.true_cst, [])) :: cur_state2.last_step_unif_left;
-                last_step_unif_right = (patt2, FunApp(Terms.true_cst, [])) :: cur_state2.last_step_unif_right }
-	      ) cur_state1 t
-	    ) pat v1 v2 cur_state
-	  ) occ { cur_state with 
-                  hypothesis = (table_fact cur_state.cur_phase v1 v2) :: cur_state.hypothesis;
-                  hyp_tags = (GetTag(occ)) :: cur_state.hyp_tags }
+  | Get(pat,term,proc,proc_else,occ) ->
+      transl_pat (fun cur_state1 term_pattern binders ->
+        transl_term (fun cur_state2 term_pat_left term_pat_right ->
 
- | Phase(n,p,_) ->
+          let x_right = Terms.new_var_def (Terms.get_term_type term_pat_right)
+          and x_left = Terms.new_var_def (Terms.get_term_type term_pat_right) in 
+          
+          (* Generate the pattern with universal_variable *)
+          let gen_pat_l, gen_pat_r = generate_pattern_with_uni_var binders term_pat_left term_pat_right in
+              
+          transl_term (fun cur_state3 term_left term_right ->
+            
+            (* Case both sides succeed *)
+            transl_both_side_succeed (fun cur_state4 ->
+              (* Success *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_left Terms.true_term;
+		  Terms.unify term_right Terms.true_term;
+		  transl_process { cur_state4 with
+                    name_params = (List.map 
+                      (fun b -> match b.link with
+                         | TLink t -> t
+                         | _ ->internal_error "unexpected link in translate_term (6)"
+                      ) binders) @ cur_state4.name_params;
+                    name_params_types = (List.map (fun b -> b.btype) binders)@cur_state4.name_params_types;
+                    name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state4.name_params_meaning;
+                    hypothesis = (table_fact cur_state4.cur_phase term_pat_left term_pat_right) :: cur_state4.hypothesis;
+                    hyp_tags = (GetTag(occ)) :: cur_state4.hyp_tags;
+                  } proc;
+                with Terms.Unify -> ()
+              );
+              
+              (* BAD (Left ok / Right ko) *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_left Terms.true_term;
+		  output_rule { cur_state4 with
+                    hypothesis = (table_fact cur_state4.cur_phase term_pat_left term_pat_right) :: cur_state4.hypothesis;
+                    constra = [Neq(term_right,Terms.true_term)]::cur_state4.constra;
+                    hyp_tags = TestUnifTag2(occ)::(GetTag occ)::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []));
+                with Terms.Unify -> ()
+              );
+              
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_left Terms.true_term;
+		  output_rule { cur_state4 with
+                    hypothesis = (table_fact cur_state4.cur_phase term_pat_left x_right) :: cur_state4.hypothesis;
+                    constra = [Neq(x_right,gen_pat_r)]::cur_state4.constra;
+                    hyp_tags = TestUnifTag2(occ)::(GetTag(occ))::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []));
+                with Terms.Unify -> ()
+              );
+               
+              (* BAD (Left ko / Right ok) *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_right Terms.true_term;
+		  output_rule { cur_state4 with
+                    hypothesis = (table_fact cur_state4.cur_phase term_pat_left term_pat_right) :: cur_state4.hypothesis;
+                    constra = [Neq(term_left,Terms.true_term)]::cur_state4.constra;
+                    hyp_tags = TestUnifTag2(occ)::(GetTag(occ))::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []));
+                with Terms.Unify -> ()
+              );
+              
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_right Terms.true_term;
+		  output_rule { cur_state4 with
+                    hypothesis = (table_fact cur_state4.cur_phase x_left term_pat_right) :: cur_state4.hypothesis;
+                    constra = [Neq(x_left,gen_pat_l)]::cur_state4.constra;
+                    hyp_tags = TestUnifTag2(occ)::(GetTag(occ))::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                with Terms.Unify -> ()
+              )
+            ) cur_state3 [term_pat_left;term_left] [term_pat_right;term_right];
+        
+            (* Case left side succeed and right side fail *)
+            transl_one_side_fails (fun cur_state4 ->
+              (* BAD *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_left Terms.true_term;
+		  output_rule { cur_state4 with
+                    hypothesis = (table_fact cur_state4.cur_phase term_pat_left x_right) :: cur_state4.hypothesis;
+                    hyp_tags = TestUnifTag2(occ)::(GetTag(occ))::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                with Terms.Unify -> ()
+              )
+            ) cur_state3 [term_pat_right;term_right] [term_pat_left;term_left]; 
+            
+            (* Case right side succeed and left side fail *)
+            transl_one_side_fails (fun cur_state4 ->
+              (* BAD *)
+              Terms.auto_cleanup (fun _ -> 
+		try
+		  Terms.unify term_right Terms.true_term;
+                  output_rule { cur_state4 with
+                    hypothesis = (table_fact cur_state4.cur_phase x_left term_pat_right) :: cur_state4.hypothesis;
+                    hyp_tags = TestUnifTag2(occ)::(GetTag(occ))::cur_state4.hyp_tags
+                  } (Pred(Param.bad_pred, []))
+                with Terms.Unify -> ()
+              )
+            ) cur_state3 [term_pat_left;term_left] [term_pat_right;term_right]
+
+          ) cur_state2 term 
+       ) cur_state1 term_pattern
+     ) cur_state pat;
+     transl_process { cur_state with hyp_tags = GetTagElse(occ) :: cur_state.hyp_tags } proc_else
+     
+ | Phase(n,proc,_) ->
      transl_process { cur_state with 
                       input_pred = Param.get_pred (InputPBin(n));
                       output_pred = Param.get_pred (OutputPBin(n));
-                      cur_phase = n } p
+                      cur_phase = n } proc
+  
+                      
+(***********************************
+	The attacker clauses
+************************************)
 
-let rules_for_red f phase red_rules =
-  let res_pred = Param.get_pred (AttackerBin(phase, snd f.f_type)) in
-  if phase < !min_choice_phase then 
+
+(* Clauses corresponding to an application of a function 
+
+   [rules_Rf_for_red] does not need the rewrite rules f(...fail...) -> fail
+   for categories Eq and Tuple in [red_rules]. Indeed, clauses
+   that come from these rewrite rules are useless:
+       1/ if we use twice the same of these rewrite rules, we get
+       att(u1,u1') & ... & att(fail_ti, fail_ti) & ... & att(un,un') -> att(fail, fail)
+       which is subsumed by att(fail, fail)
+       2/ if we use two distinct such rewrite rules, we get
+       att(u1,u1') & ... & att(fail_ti, ui') & ... & att(uj, fail_tj) & ... & att(un,un') -> att(fail, fail)
+       which is subsumed by att(fail, fail)
+       3/ if we use one such rewrite rule and another rewrite rule, we get
+       att(u1,M1) & ... & att(fail_ti, Mi) & ... & att(un, Mn) -> att(fail, M')
+       which is subsumed by att(fail_ti, x) -> bad (recall that bad subsumes all conclusions)
+       Mi are messages, they are not fail nor may-fail variables. *)
+
+let rules_Rf_for_red phase f_symb red_rules = 
+  let result_predicate = Param.get_pred (AttackerBin(phase, snd f_symb.f_type)) in
+  if phase < !min_choice_phase then
     (* Optimize generation when no choice in the current phase *)
-    List.iter (fun red1 ->
-      let (hyp1, concl1) = Terms.copy_red red1 in
-      add_rule (List.map (fun t -> att_fact phase t t) hyp1)
-	(att_fact phase concl1 concl1) []
-	(Apply(Func(f), res_pred))
-	) red_rules
+    List.iter (fun red_rule ->
+      let (hyp1, concl1, side_c1) = Terms.copy_red red_rule in
+      
+      add_rule (List.map (fun t1 -> att_fact phase t1 t1) hyp1)
+      	(att_fact phase concl1 concl1) 
+      	(List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1)
+      	(Apply(f_symb, result_predicate))
+        ) red_rules
   else
-    List.iter (fun red1 ->
-      List.iter (fun red2 ->
-	let (hyp1, concl1) = Terms.copy_red red1 in
-	let (hyp2, concl2) = Terms.copy_red red2 in
-	add_rule (List.map2 (att_fact phase) hyp1 hyp2)
-	  (att_fact phase concl1 concl2) []
-	  (Apply(Func(f), res_pred))
-	  ) red_rules
-	) red_rules
-
-let rules_for_function phase _ f =
-   if (not f.f_private) &&
-     (* Don't generate clauses for type converter functions when we ignore types
-       (These functions disappear.) *)
-     (not ((f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types))) then
-     let res_pred = Param.get_pred (AttackerBin(phase, snd f.f_type)) in
-   match f.f_cat with
-     Eq red_rules -> 
-	let vars1 = Terms.var_gen (fst f.f_type) in
-        rules_for_red f phase ((vars1, FunApp(f, vars1)) :: red_rules)
-   | Red red_rules ->
-       rules_for_red f phase red_rules;
-       List.iter (fun red ->
-	  let (hyp, _) = Terms.copy_red red in
-	  let vlist = List.map Terms.new_var_def (List.map Terms.get_term_type hyp) in
-	  let make_constra red =
-	    let (hyp, _) = Terms.copy_red red in
-	    if !Terms.current_bound_vars != [] then
-	      Parsing_helper.internal_error "bound vars should be cleaned up (pitranslweak3)";
-	    let hyp' = List.map (Terms.generalize_vars_not_in []) hyp in
-	    Terms.cleanup();
-	    List.map2 (fun v t -> Neq(v,t)) vlist hyp'
-	  in  
-	  add_rule 
-            (List.map2 (att_fact phase) hyp vlist)
-	    (Pred(Param.bad_pred, []))
-	    (List.map make_constra red_rules)
-	    (TestApply(Func(f), res_pred));
-
-	  let (hyp, _) = Terms.copy_red red in
-	  let vlist = List.map Terms.new_var_def (List.map Terms.get_term_type hyp) in
-	  let make_constra red =
-	    let (hyp, _) = Terms.copy_red red in
-	    if !Terms.current_bound_vars != [] then
-	      Parsing_helper.internal_error "bound vars should be cleaned up (pitranslweak3)";
-	    let hyp' = List.map (Terms.generalize_vars_not_in []) hyp in
-	    Terms.cleanup();
-	    List.map2 (fun v t -> Neq(v,t)) vlist hyp'
-	  in  
-	  add_rule 
-            (List.map2 (att_fact phase) vlist hyp)
-	    (Pred(Param.bad_pred, []))
-	    (List.map make_constra red_rules)
-	    (TestApply(Func(f), res_pred))
-
-		  ) red_rules
-   | Tuple -> 
-	(* For tuple constructor *)
-	let vars1 = Terms.var_gen (fst f.f_type) in
-	let vars2 = Terms.var_gen (fst f.f_type) in
-	add_rule (List.map2 (att_fact phase) vars1 vars2)
-	  (att_fact phase (FunApp(f, vars1)) (FunApp(f, vars2))) []
-	  (Apply(Func(f), res_pred));
-
-	(* For corresponding projections *)
-	for n = 0 to (List.length (fst f.f_type))-1 do
-	  let vars1 = Terms.var_gen (fst f.f_type) in
-	  let vars2 = Terms.var_gen (fst f.f_type) in
-	  let v1 = List.nth vars1 n in
-	  let v2 = List.nth vars2 n in
-	  add_rule [att_fact phase (FunApp(f, vars1)) (FunApp(f, vars2))]
-	    (att_fact phase v1 v2) []
-	    (Apply(Proj(f,n),res_pred))
-	done;
-
-	let vars1 = Terms.var_gen (fst f.f_type) in
-	let v = Terms.new_var_def (snd f.f_type) in
-	let gvars1 = List.map (fun ty -> FunApp(Terms.new_gen_var ty,[])) (fst f.f_type) in
-	add_rule [att_fact phase (FunApp(f, vars1)) v]
-	  (Pred(Param.bad_pred, [])) [[Neq(v, FunApp(f, gvars1))]] 
-	  (TestApply(Proj(f,0),res_pred));
-	  
-	let vars1 = Terms.var_gen (fst f.f_type) in
-	let v = Terms.new_var_def (snd f.f_type) in
-	let gvars1 = List.map (fun ty -> FunApp(Terms.new_gen_var ty,[])) (fst f.f_type) in
-	add_rule [att_fact phase v (FunApp(f, vars1))]
-	  (Pred(Param.bad_pred, [])) [[Neq(v, FunApp(f, gvars1))]] 
-	  (TestApply(Proj(f,0),res_pred))
-
-    | _ -> ()
-
+    List.iter (fun red_rule1 ->
+      List.iter (fun red_rule2 ->
+        let (hyp1, concl1, side_c1) = Terms.copy_red red_rule1
+        and (hyp2, concl2, side_c2) = Terms.copy_red red_rule2 in
+                  
+        add_rule (List.map2 (fun t1 t2 -> att_fact phase t1 t2) hyp1 hyp2)
+      	  (att_fact phase concl1 concl2) 
+      	  ((List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1) @ (List.map (function (t1,t2) -> [Neq(t1,t2)]) side_c2))
+      	  (Apply(f_symb, result_predicate))
+      	  ) red_rules
+      	) red_rules 
+    
 let transl_attacker phase =
+
   (* The attacker can apply all functions, including tuples *)
-  Hashtbl.iter (rules_for_function phase) Param.fun_decls;
-  Hashtbl.iter (rules_for_function phase) Terms.tuple_table;
+  Hashtbl.iter (Terms.clauses_for_function (rules_Rf_for_red phase)) Param.fun_decls;
+  Hashtbl.iter (Terms.clauses_for_function (rules_Rf_for_red phase)) Terms.tuple_table;
 
   List.iter (fun t ->
     let att_pred = Param.get_pred (AttackerBin(phase,t)) in
     let mess_pred = Param.get_pred (MessBin(phase,t)) in
 
-    (* The attacker has any message sent on a channel he has *)
+    (* The attacker has any message sent on a channel he has (Rule Rl)*)
     let v1 = Terms.new_var_def t in
     let vc1 = Terms.new_var_def Param.channel_type in
     let v2 = Terms.new_var_def t in
@@ -780,7 +1255,7 @@ let transl_attacker phase =
 
     if (!Param.active_attacker) then
       begin
-        (* The attacker can send any message he has on any channel he has *)
+        (* The attacker can send any message he has on any channel he has (Rule Rs) *)
 	let v1 = Terms.new_var_def t in
 	let vc1 = Terms.new_var_def Param.channel_type in
 	let v2 = Terms.new_var_def t in
@@ -791,8 +1266,22 @@ let transl_attacker phase =
 
     (* Clauses for equality *)
     let v = Terms.new_var_def t in
-    add_rule [] (Pred(Param.get_pred (Equal(t)), [v;v])) [] LblEq
-	) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+    add_rule [] (Pred(Param.get_pred (Equal(t)), [v;v])) [] LblEq;
+    
+    (* Check for destructor failure (Rfailure) *)
+    
+    if phase >= !min_choice_phase 
+    then
+      begin
+        let x = Terms.new_var_def t
+        and fail = Terms.get_fail_term t in
+        
+        add_rule [Pred(att_pred, [x; fail])] (Pred(Param.bad_pred, [])) [] (Rfail(att_pred));
+        add_rule [Pred(att_pred, [fail; x])] (Pred(Param.bad_pred, [])) [] (Rfail(att_pred))
+      end;
+    
+    
+  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
 
   if phase >= !min_choice_phase then 
     begin
@@ -800,7 +1289,7 @@ let transl_attacker phase =
       let input_pred = Param.get_pred (InputPBin(phase)) in
       let output_pred = Param.get_pred (OutputPBin(phase)) in
  
-      (* The attacker can do communications *)
+      (* The attacker can do communications (Rule Ri and Ro)*)
       let vc1 = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
       add_rule [Pred(att_pred, [vc1; vc2])] (Pred(input_pred, [vc1;vc2])) [] (Ri(att_pred, input_pred));
@@ -808,7 +1297,7 @@ let transl_attacker phase =
       let vc2 = Terms.new_var_def Param.channel_type in
       add_rule [Pred(att_pred, [vc1; vc2])] (Pred(output_pred, [vc1; vc2])) [] (Ro(att_pred, output_pred));
 
-      (* Check communications do not reveal secrets *)
+      (* Check communications do not reveal secrets (Rule Rcom and Rcom')*)
       let vc = Terms.new_var_def Param.channel_type in
       let vc1 = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
@@ -827,23 +1316,160 @@ let transl_attacker phase =
 
      end
 
+(* Convert terms (possibly with choice) to one term or to
+   a pair of terms.
+   You need to cleanup links after calling convert_to_1 and
+   convert_to_2. *)
 
+let rec convert_to_2 = function
+    Var x -> 
+      begin
+	match x.link with
+	  TLink (FunApp(_,[t1;t2])) -> (t1,t2)
+	| NoLink -> 
+	    let x1 = Var (Terms.copy_var x) in
+	    let x2 = Var (Terms.copy_var x) in
+	    Terms.link x (TLink (FunApp(Param.choice_fun x.btype, [x1; x2])));
+	    (x1, x2)
+	| _ -> assert false
+      end
+  | FunApp(f, [t1;t2]) when f.f_cat == Choice ->
+      let (t1',_) = convert_to_2 t1 in
+      let (_,t2') = convert_to_2 t2 in
+      (t1', t2')
+  | FunApp(f, l) -> 
+      match f.f_cat with
+	Name { prev_inputs_meaning = pim } ->
+	  let l' = List.map2 (fun t s ->
+	    if (s <> "") && (s.[0] = '!') then
+	      try
+		convert_to_1 t
+	      with Terms.Unify -> 
+		user_error "Error: In not declarations, session identifiers should be variables.\n"
+	    else
+	      (* The arguments of names are always choice, except for session identifiers *)
+	      let (t1,t2) = convert_to_2 t in
+	      FunApp(Param.choice_fun (Terms.get_term_type t1), [t1;t2])
+	      ) l pim
+	  in
+	  (FunApp(f, l'), FunApp(f, l'))
+      |	_ ->
+	  let (l1, l2) = List.split (List.map convert_to_2 l) in
+	  (FunApp(f, l1), FunApp(f, l2))
+
+(* convert_to_1 raises Terms.Unify when there is a choice
+   that cannot be unified into one term. *)
+
+and convert_to_1 t = 
+  let (t1, t2) = convert_to_2 t in
+  Terms.unify t1 t2;
+  t1
+
+let convert_to_2 t =
+  let (t1, t2) = convert_to_2 t in
+  (Terms.copy_term2 t1, Terms.copy_term2 t2)
+
+let convert_to_1 t =
+  Terms.copy_term2 (convert_to_1 t)
+
+(* Convert formats (possibly with choice) to one format or to
+   a pair of formats.
+   Since nounif cannot be used for a phase earlier than the
+   one mentioned in the nounif declaration, it is not essential
+   that we can convert a nounif made with choice into a single format.
+   Moreover, we do not have a unification for formats ready,
+   so we prefer forbidding choice when a single format is needed.
+ *)
+
+let rec convertformat_to_1 = function
+    FVar x -> FVar x
+  | FAny x -> FAny x
+  | FFunApp(f, [t1;t2]) when f.f_cat == Choice ->
+      Parsing_helper.user_error "Error: choice not allowed in nounif declarations for phases in which choice is not used in the process\n"
+  | FFunApp(f, l) -> 
+      match f.f_cat with
+	Name { prev_inputs_meaning = pim } ->
+	  (* The arguments of names are always choice *)
+	  let l' = List.map2 (fun t s ->
+	    if (s <> "") && (s.[0] = '!') then
+	      convertformat_to_1 t
+	    else
+	      let t' = convertformat_to_1 t in
+	      FFunApp(Param.choice_fun (Terms.get_format_type t'), [t';t'])
+		) l pim
+	  in
+	  FFunApp(f, l')
+      |	_ ->
+	  FFunApp(f, List.map convertformat_to_1 l)
+
+(* You need to cleanup links after calling convertformat_to_2 *)
+
+let rec convertformat_to_2 = function
+    FVar x ->
+      begin
+	match x.link with
+	  TLink (FunApp(_,[Var x1;Var x2])) -> (FVar x1,FVar x2)
+	| NoLink -> 
+	    if x.btype == Param.sid_type then
+	      Parsing_helper.internal_error "convertformat_to_2: session identifiers should occur only inside names (1)\n";
+	    let x1 = Terms.copy_var x in
+	    let x2 = Terms.copy_var x in
+	    Terms.link x (TLink (FunApp(Param.choice_fun x.btype, [Var x1; Var x2])));
+	    (FVar x1, FVar x2)
+	| _ -> assert false
+      end
+  | FAny x -> 
+      begin
+	match x.link with
+	  TLink (FunApp(_,[Var x1;Var x2])) -> (FAny x1,FAny x2)
+	| NoLink -> 
+	    if x.btype == Param.sid_type then
+	      Parsing_helper.internal_error "convertformat_to_2: session identifiers should occur only inside names (2)\n";
+	    let x1 = Terms.copy_var x in
+	    let x2 = Terms.copy_var x in
+	    Terms.link x (TLink (FunApp(Param.choice_fun x.btype, [Var x1; Var x2])));
+	    (FAny x1, FAny x2)
+	| _ -> assert false
+      end
+  | FFunApp(f, [t1;t2]) when f.f_cat == Choice ->
+      let (t1',_) = convertformat_to_2 t1 in
+      let (_,t2') = convertformat_to_2 t2 in
+      (t1', t2')
+  | FFunApp(f, l) -> 
+      match f.f_cat with
+	Name { prev_inputs_meaning = pim } ->
+	  (* The arguments of names are always choice, except for
+	     session identifiers *)
+	  let l' = List.map2 (fun t s ->
+	    if (s <> "") && (s.[0] = '!') then
+	      begin
+		match t with
+		  FVar x -> assert (x.btype == Param.sid_type); FVar x
+		| FAny x -> assert (x.btype == Param.sid_type); FAny x
+		| _ -> Parsing_helper.user_error "Error: In nounif declarations, session identifiers should be variables.\n"
+	      end
+	    else
+	      let (t1,t2) = convertformat_to_2 t in
+	      FFunApp(Param.choice_fun (Terms.get_format_type t1), [t1;t2])
+		) l pim
+	  in
+	  (FFunApp(f, l'), FFunApp(f, l'))
+      |	_ ->
+	  let (l1, l2) = List.split (List.map convertformat_to_2 l) in
+	  (FFunApp(f, l1), FFunApp(f, l2))
 
 (* Global translation *)
 
 let transl p = 
   Rules.reset ();
   Reduction_helper.main_process := p;
+  Reduction_helper.terms_to_add_in_name_params := [];
   nrule := 0;
   red_rules := [];
-  (*
-  List.iter (fun (hyp1, concl1, constra1, tag1) -> 
-    TermsEq.close_rule_destr_eq (fun (hyp, concl, constra) ->
-      add_rule hyp concl constra tag1) (hyp1, concl1, constra1))
-    (!Pisyntax.red_rules);
-    *)
+
   find_min_choice_phase 0 p;
   Reduction_helper.min_choice_phase := !min_choice_phase;
+  
   (* Initialize the selection function.
      In particular, when there is a predicate
        member:x,y -> member:x,cons(z,y)
@@ -854,38 +1480,51 @@ let transl p =
   List.iter (fun r -> ignore(Selfun.selection_fun r)) (!red_rules);
 
   for i = 0 to !Param.max_used_phase do
+    
     transl_attacker i;
+    
     List.iter (fun t ->
+      (* The attacker has the fail constants *)
+      let fail_term = Terms.get_fail_term t in
+      add_rule [] (att_fact i fail_term fail_term) [] Init;
+    
       let att_i = Param.get_pred (AttackerBin(i,t)) in
       if i < !min_choice_phase then
-	begin
-	(* Phase coded by unary predicates *)
+        begin
+	  (* Phase coded by unary predicates *)
 	  let v = Terms.new_var Param.def_var_name t in
 	  let att_i = Param.get_pred (Attacker(i,t)) in
 	  Selfun.add_no_unif (att_i, [FVar v]) Selfun.never_select_weight
 	end
       else
 	begin
-	(* Phase coded by binary predicates *)
+	  (* Phase coded by binary predicates *)
 	  let v1 = Terms.new_var Param.def_var_name t in
 	  let v2 = Terms.new_var Param.def_var_name t in
 	  Selfun.add_no_unif (att_i, [FVar v1; FVar v2]) Selfun.never_select_weight
 	end;
+	
       if i > 0 then
+	(* It is enough to transmit only messages from one phase to the next,
+	   because the attacker already has (fail, fail) in all phases
+	   and the cases (fail, x) and (x, fail) immediately lead
+	   to bad in all cases. *)
 	let w1 = Terms.new_var_def t in
 	let w2 = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (AttackerBin(i-1,t)) in
 	add_rule [Pred(att_im1, [w1; w2])] (Pred(att_i, [w1; w2])) [] PhaseChange
-	  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+    ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+
     if i > 0 then
       let w1 = Terms.new_var_def Param.table_type in
       let w2 = Terms.new_var_def Param.table_type in
       let tbl_i = Param.get_pred (TableBin(i)) in
       let tbl_im1 = Param.get_pred (TableBin(i-1)) in
       add_rule [Pred(tbl_im1, [w1; w2])] (Pred(tbl_i, [w1; w2])) [] TblPhaseChange
+
   done;
 
-
+  
    (* Knowing the free names and creating new names is necessary only in phase 0.
       The subsequent phases will get them by attacker'_i(x,y) -> attacker'_{i+1}(x,y) *)
 
@@ -894,103 +1533,143 @@ let transl p =
       if not ch.f_private then
         add_rule [] (att_fact 0 (FunApp(ch, [])) (FunApp(ch, []))) [] Init) (!Param.freenames);
 
-  List.iter (fun t ->
-    (* The attacker can create new names *)
-    let v1 = Terms.new_var_def Param.sid_type in
-    let new_name_fun = Terms.new_name_fun t in
-    add_rule [] (att_fact 0 (FunApp(new_name_fun, [v1])) (FunApp(new_name_fun, [v1]))) 
-      [] (Rn (Param.get_pred (AttackerBin(0, t))));
+   List.iter (fun t ->
+     (* The attacker can create new names *)
+     let v1 = Terms.new_var_def Param.sid_type in
+     let new_name_fun = Terms.new_name_fun t in			
+     add_rule [] (att_fact 0 (FunApp(new_name_fun, [v1])) (FunApp(new_name_fun, [v1]))) 
+       [] (Rn (Param.get_pred (AttackerBin(0, t))));
 
-    (* Rules that derive bad are necessary only in the last phase.
-       Previous phases will get them by attacker'_i(x,y) -> attacker'_{i+1}(x,y) *)
+     (* Rules that derive bad are necessary only in the last phase.
+        Previous phases will get them by attacker'_i(x,y) -> attacker'_{i+1}(x,y) *)
+	
+     let att_pred = Param.get_pred (AttackerBin(!Param.max_used_phase, t)) in
 
-    let att_pred = Param.get_pred (AttackerBin(!Param.max_used_phase, t)) in
+     (* The attacker can perform equality tests *)
+     let v1 = Terms.new_var_def t in
+     let v2 = Terms.new_var_def t in
+     let v3 = Terms.new_var_def t in
+     add_rule [Pred(att_pred, [v1; v2]); Pred(att_pred, [v1; v3])]
+       (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred));
 
-    (* The attacker can perform equality tests *)
-    let v1 = Terms.new_var_def t in
-    let v2 = Terms.new_var_def t in
-    let v3 = Terms.new_var_def t in
-    add_rule [Pred(att_pred, [v1; v2]); Pred(att_pred, [v1; v3])]
-      (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred));
+     let v1 = Terms.new_var_def t in
+     let v2 = Terms.new_var_def t in
+     let v3 = Terms.new_var_def t in
+     add_rule [Pred(att_pred, [v2; v1]); Pred(att_pred, [v3; v1])]
+       (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred))
 
-    let v1 = Terms.new_var_def t in
-    let v2 = Terms.new_var_def t in
-    let v3 = Terms.new_var_def t in
-    add_rule [Pred(att_pred, [v2; v1]); Pred(att_pred, [v3; v1])]
-      (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred))
-
-      ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
-
-   List.iter (fun ch -> match ch.f_cat with
-     Name r -> r.prev_inputs <- Some (FunApp(Param.choice_fun (snd ch.f_type), [FunApp(ch, []); FunApp(ch, [])]))
-   | _ -> internal_error "should be a name 1")
-	(!Param.freenames);
-   transl_process 
-     { hypothesis = []; constra = []; unif = []; 
-       last_step_unif_left = []; last_step_unif_right = [];
-       success_conditions_left = None; success_conditions_right = None;  
-       name_params_left = []; name_params_right = []; 
-       name_params_meaning = [];
+   ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);  
+      
+   List.iter (fun ch -> 
+     match ch.f_cat with
+       | Name r -> r.prev_inputs <- Some (FunApp(ch, []))
+       | _ -> internal_error "should be a name 1"
+   ) (!Param.freenames);
+  
+   (* Translate the process into clauses *)
+  
+   Terms.auto_cleanup (fun _ -> transl_process 
+     { hypothesis = []; constra = []; 
+       name_params = []; name_params_types = []; name_params_meaning = [];
        repl_count = 0; 
        input_pred = Param.get_pred (InputPBin(0));
        output_pred = Param.get_pred (OutputPBin(0));
        cur_phase = 0;
-       hyp_tags = [] } p;
+       hyp_tags = [] 
+     } p;
+   );
+     
    List.iter (fun ch -> match ch.f_cat with
-                          Name r -> r.prev_inputs <- None
-                        | _ -> internal_error "should be a name 2")
-        (!Param.freenames);
+     Name r -> r.prev_inputs <- None
+   | _ -> internal_error "should be a name 2")
+    (!Param.freenames);
 
-  List.iter (function 
-      QFact({ p_info = [Attacker(i,ty)] },[t]) ->
-	(* For attacker: not declarations, the not declaration is also
-	   valid in previous phases, because of the implication
-	   attacker_p(i):x => attacker_p(i+1):x
-	   Furthermore, we have to translate unary to binary not declarations 
-	   *)
-	for j = 0 to i do
-	  if j < !min_choice_phase then
-		(* Phase coded by unary predicate, since it does not use choice *)
-	    let att_j = Param.get_pred (Attacker(j,ty)) in
-	    Rules.add_not(Pred(att_j,[t]))
-	  else
-		(* Phase coded by binary predicate *)
-	    let att2_j = Param.get_pred (AttackerBin(j,ty)) in
-	    Rules.add_not(Pred(att2_j,[t;t]))
-	done
-    | QFact({ p_info = [Mess(i,ty)] } as p,[t1;t2]) ->
-	(* translate unary to binary not declarations *)
-	if i < !min_choice_phase then
-		(* Phase coded by unary predicate, since it does not use choice *)
-	  Rules.add_not(Pred(p, [t1;t2]))
-	else
-		(* Phase coded by binary predicate *)
-	  let mess2_i = Param.get_pred (MessBin(i,ty)) in
-	  Rules.add_not(Pred(mess2_i,[t1;t2;t1;t2]))
-    | _ -> Parsing_helper.user_error "The only allowed facts in \"not\" declarations are attacker: and mess: predicates (for process equivalences, user-defined predicates are forbidden).\n"
-	  ) (if !Param.typed_frontend then Pitsyntax.get_not() else Pisyntax.get_not());
+   (* Take into account "not fact" declarations (secrecy assumptions) *)
+        
+   List.iter (function 
+       QFact({ p_info = [Attacker(i,ty)] },[t]) ->
+      	 (* For attacker: not declarations, the not declaration is also
+	    valid in previous phases, because of the implication
+	      attacker_p(i):x => attacker_p(i+1):x
+	    Furthermore, we have to translate unary to binary not declarations *)
+	 for j = 0 to i do
+	   if j < !min_choice_phase then
+	     (* Phase coded by unary predicate, since it does not use choice *)
+	     let att_j = Param.get_pred (Attacker(j,ty)) in
+	     try
+	       Rules.add_not(Pred(att_j,[Terms.auto_cleanup (fun () -> convert_to_1 t)]))
+	     with Terms.Unify -> ()
+	   else
+	     (* Phase coded by binary predicate *)
+	     let att2_j = Param.get_pred (AttackerBin(j,ty)) in
+	     let (t',t'') = Terms.auto_cleanup (fun () -> convert_to_2 t) in
+	     Rules.add_not(Pred(att2_j,[t';t'']))
+	 done
+     | QFact({ p_info = [Mess(i,ty)] } as p,[t1;t2]) ->
+	 (* translate unary to binary not declarations *)
+	 if i < !min_choice_phase then
+	   (* Phase coded by unary predicate, since it does not use choice *)
+	   try 
+	     let t1', t2' = Terms.auto_cleanup (fun () ->
+	       convert_to_1 t1, convert_to_1 t2)
+	     in
+	     Rules.add_not(Pred(p, [t1'; t2']))
+	   with Terms.Unify -> ()
+	 else
+	   (* Phase coded by binary predicate *)
+	   let mess2_i = Param.get_pred (MessBin(i,ty)) in
+	   let (t1', t1''), (t2', t2'') = Terms.auto_cleanup (fun () ->
+	     convert_to_2 t1, convert_to_2 t2)
+	   in
+	   Rules.add_not(Pred(mess2_i,[t1';t2';t1'';t2'']))
+     | _ -> Parsing_helper.user_error "The only allowed facts in \"not\" declarations are attacker: and mess: predicates (for process equivalences, user-defined predicates are forbidden).\n"
+	   ) (if !Param.typed_frontend then Pitsyntax.get_not() else Pisyntax.get_not());
 
+  (* Take into account "nounif" declarations *)
+	
   List.iter (function (f,n) ->
     (* translate unary to binary nounif declarations *)
     match f with
-      ({ p_info = [Attacker(i,ty)] }, [t]) -> 
+      ({ p_info = [Attacker(i,ty)] } as pred, [t]) -> 
 	if i < !min_choice_phase then
-		(* Phase coded by unary predicate, since it does not use choice *)
-	  Selfun.add_no_unif f n
+	  (* Phase coded by unary predicate, since it does not use choice *)
+	  Selfun.add_no_unif (pred, [convertformat_to_1 t]) n
 	else
-		(* Phase coded by binary predicate *)
+	  (* Phase coded by binary predicate *)
 	  let att2_i = Param.get_pred (AttackerBin(i,ty)) in
-	  Selfun.add_no_unif (att2_i, [t;t]) n
-    | ({ p_info = [Mess(i,ty)] }, [t1;t2]) ->
+	  let (t', t'') = Terms.auto_cleanup (fun () -> convertformat_to_2 t) in
+	  Selfun.add_no_unif (att2_i, [t';t'']) n
+    | ({ p_info = [Mess(i,ty)] } as pred, [t1;t2]) ->
 	if i < !min_choice_phase then
-		(* Phase coded by unary predicate, since it does not use choice *)
-	  Selfun.add_no_unif f n
+	  (* Phase coded by unary predicate, since it does not use choice *)
+	  Selfun.add_no_unif (pred, [convertformat_to_1 t1; convertformat_to_1 t2]) n
 	else
-		(* Phase coded by binary predicate *)
+	  (* Phase coded by binary predicate *)
 	  let mess2_i = Param.get_pred (MessBin(i,ty)) in
-	  Selfun.add_no_unif (mess2_i,[t1;t2;t1;t2]) n
+	  let (t1', t1''), (t2', t2'') = 
+	    Terms.auto_cleanup (fun () -> 
+	      convertformat_to_2 t1, 
+	      convertformat_to_2 t2)
+	  in
+	  Selfun.add_no_unif (mess2_i,[t1';t2';t1'';t2'']) n
     | _ -> Parsing_helper.user_error "The only allowed facts in \"nounif\" declarations are attacker: and mess: predicates (for process equivalences, user-defined predicates are forbidden).\n"
-      ) (if !Param.typed_frontend then Pitsyntax.get_nounif() else Pisyntax.get_nounif());
+	  ) (if !Param.typed_frontend then Pitsyntax.get_nounif() else Pisyntax.get_nounif());
 
   List.rev (!red_rules)
 
+(* This code was used to renumber the clauses when 
+   we simplified them before displaying them.
+   It is currently useless. We keep it just in case.
+
+  let red_rule_old_nb = List.rev (!red_rules) in
+	
+  let rec change_nb n = function
+    | [] -> []
+    | (hyp,cl,Rule(_,tag,hyp',cl',cons'),cons)::q ->
+	(hyp,cl,Rule(n,tag,hyp',cl',cons'),cons)::(change_nb (n+1) q)
+    | t::q -> t::(change_nb n q) in
+	  
+  change_nb 1 red_rule_old_nb
+	
+  red_rule_old_nb
+*)

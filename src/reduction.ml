@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -49,6 +49,11 @@ let debug_find_io_rule = ref false
 let debug_backtracking = ref false
 let debug_print s = ()
   (*  print_string s; Display.Text.newline() *)
+
+(* Set when we should take the else branch of Get but we cannot
+   because an element has already been inserted so that the in branch
+   is taken. In this case, we try delaying the inserts. *)
+let has_backtrack_get = ref false
 
 let rec count_name_params = function
     [] -> 0
@@ -104,8 +109,9 @@ let display_rule (n, sons, hsl, nl, concl) =
 (* Display the trace *)
 
 let noninterftest_to_string = function
-    ProcessTest _ -> " process performs a test that may give the attacker some information on the secret."
+    ProcessTest _ | InputProcessTest _ -> " process performs a test that may give the attacker some information on the secret"
   | ApplyTest _ -> "This gives the attacker some information on the secret."
+  | NIFailTest _ -> Parsing_helper.internal_error "Unexpected FailTest for noninterf"
   | CommTest _ -> "The success or failure of the communication may give the attacker some information on the secret."
   | InputTest _ -> "The success or failure of the input may give the attacker some information on the secret."
   | OutputTest _ -> "The success or failure of the output may give the attacker some information on the secret."
@@ -116,7 +122,7 @@ let display_trace final_state =
     Param.NoDisplay -> ()
   | Param.ShortDisplay ->   
       if !Param.html_output then
-	Display.Html.display_labeled_trace (fun x -> x) final_state
+	Display.Html.display_labeled_trace final_state
       else
 	begin
 	  if !Param.display_init_state then
@@ -128,7 +134,7 @@ let display_trace final_state =
 		print_string "  param traceDisplay = long.\n";
 	      Display.Text.newline()
 	    end;
-	  Display.Text.display_labeled_trace (fun x -> x) final_state
+	  Display.Text.display_labeled_trace final_state
 	end
   | Param.LongDisplay -> 
       if !Param.html_output then
@@ -190,164 +196,117 @@ let find_io_rule next_f hypspeclist hyplist name_params1 var_list io_rules =
   in 
   find_io_rule_aux io_rules
 
-(* Evaluate a term possibly containing destructors
-   Raises Unify when the term evaluation fails.
-   The function next_f may raise No_result when it finds no result.
-   In this case, term_evaluation also raises No_result *)
+(* Evaluate a term possibly containing destructors.
+   It always succeeds, perhaps returning Fail. *)
 
-let rec term_evaluation next_f = function
+let rec term_evaluation = function
     Var v -> 
       begin
         match v.link with
-          TLink t -> term_evaluation next_f t
+          TLink t -> term_evaluation t
         | _ -> Parsing_helper.internal_error "Error: term should be closed in attack reconstruction";
       end
   | FunApp(f,l) ->
       (* for speed, use the initial definition of destructors, not the one enriched with the equational theory *)
       match f.f_initial_cat with
-	Eq _ | Tuple -> term_evaluation_list (fun l' -> next_f (FunApp(f,l'))) l
-      | Name _ -> next_f (FunApp(f,[]))
-      | Red redl -> term_evaluation_list (fun l' ->
-	  let evaluation_succeeds = ref false in
+	Eq _ | Tuple -> 
+	  let l' = List.map term_evaluation l in
+	  if List.exists is_fail l' then
+	    Terms.get_fail_term (snd f.f_type)
+	  else
+	    FunApp(f, l')
+      | Name _ | Failure -> FunApp(f,[])
+      | Red redl -> 
+	  let l' = List.map term_evaluation l in
 	  let rec try_red_list = function
 	      [] -> 
-		if !evaluation_succeeds then
-		  raise No_result
-		else
-		  raise Unify
+		Parsing_helper.internal_error "Term evaluation should always succeeds (perhaps returning Fail)"
 	    | (red1::redl) ->
-		let (left, right) = auto_cleanup (fun () -> Terms.copy_red red1) in
+		let (left, right, side_c) = auto_cleanup (fun () -> Terms.copy_red red1) in
 		try 
 		  auto_cleanup (fun () ->
-		  match_modulo_list (fun () -> 
-		    try
-		      (* TO DO (for speed) should I remove_syntactic, or keep it,
-			 but take it into account elsewhere (when doing
-			 function symbol comparisons, accept functions that
-			 differ by their syntactic status) *)
- 		      next_f (let t = TermsEq.remove_syntactic_term right in
-		              close_term t; 
-		              t)
-		    with No_result ->
-			evaluation_succeeds := true;
+		    match_modulo_list (fun () -> 
+		      if List.for_all disequation_evaluation side_c then
+			begin 
+		          (* TO DO (for speed) should I remove_syntactic, or keep it,
+			     but take it into account elsewhere (when doing
+			     function symbol comparisons, accept functions that
+			     differ by their syntactic status) *)
+			  close_term right;
+ 			  TermsEq.remove_syntactic_term right
+			end
+		      else 
 			raise Unify
-				    ) left l')
+			  ) left l')
 		with Unify -> try_red_list redl
 	  in
 	  try_red_list redl
-	  ) l
       | _ -> Parsing_helper.internal_error "unexpected function symbol in term_evaluation"
-
-and term_evaluation_list next_f = function
-    [] -> next_f []
-  | (a::l) -> 
-      term_evaluation_list (fun l' -> 
-	term_evaluation (fun a' ->
-	  next_f (a'::l')
-	) a
-      ) l
 
 (* Evaluates t1 and tests if it is equal to t2. *)
  
 let equal_terms_modulo_eval t1 t2 =
-  try
-    auto_cleanup (fun () ->
-      term_evaluation (fun t1' ->
-	if equal_terms_modulo t1' t2 then true else raise No_result
-	  ) t1)
-  with No_result | Unify ->
-    false
+  let t1' = term_evaluation t1 in
+  if is_fail t1' then false else equal_terms_modulo t1' t2
 
 
-(*
-Note: it is important that nothing is added in name_params for constructors 
-with an equational theory. Indeed, these constructors are substituted during the
-evaluation of the process, so the result of check_several_types would not be
-the same in pitransl and in reduction, leading to different values of name_params,
-so errors
-*)
+(* Evaluates a term. Raises Unify when the result is fail. *)
 
-let rec check_several_types = function
-    Var { link = TLink t } -> check_several_types t
-  | Var _ -> false
-  | FunApp(f,l) ->
-      (List.exists check_several_types l) || 
-      (match f.f_initial_cat with
-       	 Red rules -> List.length rules > 1
-       | Eq rules -> 
-	   if !Param.eq_in_names then
-	     Parsing_helper.internal_error "Setting eqInNames should have disabled trace reconstruction";
-	   false
-       | _ -> false)
+let term_evaluation_fail t =
+  let r = term_evaluation t in
+  if is_fail r then 
+    raise Unify
+  else
+    r
 
-let term_evaluation_name_params next_f t hypspeclist hyplist name_params io_rules =
-  let may_have_several_types = check_several_types t in
-  term_evaluation (fun t' ->
-    if may_have_several_types then
-      (* We check that a clause in io_rule justifies our choice when adding 
-         elements to name_params -> This makes it possible to detect wrong 
-         choices very quickly and avoid losing too much time in backtracking. *)
-      find_io_rule (fun _ ->
-        next_f t' (Always("",t') :: name_params)) hypspeclist hyplist (Always("",t')::name_params) [] io_rules
-    else
-      next_f t' name_params
-    ) t
+let term_evaluation_name_params occ t name_params =
+  let may_have_several_types = reduction_check_several_patterns occ in
+  let t' = term_evaluation_fail t in
+  if may_have_several_types then
+    t', (Always("",t') :: name_params)
+  else
+    t', name_params
 
-let rec term_evaluation_letfilter next_f = function
-    Var { link = TLink t } -> term_evaluation_letfilter next_f t
-  | Var v ->  next_f (Var v)
+let rec term_evaluation_letfilter = function
+    Var { link = TLink t } -> term_evaluation_letfilter t
+  | Var v ->  Var v
   | FunApp(f,l) ->
       match f.f_cat with
-	Eq _ | Tuple -> term_evaluation_list_letfilter (fun l' -> next_f (FunApp(f,l'))) l
-      | Name _ -> next_f (FunApp(f,[]))
-      | Red redl -> term_evaluation next_f (FunApp(f,l))
+	Eq _ | Tuple -> FunApp(f, term_evaluation_list_letfilter l)
+      | Name _ -> FunApp(f,[])
+      |	Failure -> raise Unify
+      | Red redl -> term_evaluation_fail (FunApp(f,l))
       | _ -> Parsing_helper.internal_error "unexpected function symbol in term_evaluation_letfilter"
 
-and term_evaluation_list_letfilter next_f = function
-    [] -> next_f []
-  | (a::l) -> 
-      term_evaluation_list_letfilter (fun l' -> 
-	term_evaluation_letfilter (fun a' -> next_f (a'::l')) a
-      ) l
+and term_evaluation_list_letfilter l = 
+    List.map term_evaluation_letfilter l 
 
-let term_evaluation_letfilter next_f l name_params =
-  let may_have_several_types = List.exists check_several_types l in
-  term_evaluation_list_letfilter (fun l' ->
-    if may_have_several_types then
-      (* The fact that the newly added name_params are justified by a clause
-	 in the derivation tree will be checked in next_f, when looking
-         for the result of letfilter *)
-      next_f l' ((List.map (fun t -> Always("",t)) l') @ name_params)
-    else
-      next_f l' name_params
-    ) l
+let term_evaluation_letfilter occ l name_params =
+  let may_have_several_types = reduction_check_several_patterns occ in
+  let l' = term_evaluation_list_letfilter l in
+  if may_have_several_types then
+    l', ((List.map (fun t -> Always("",t)) l') @ name_params)
+  else
+    l', name_params
 
 (* Match a pattern
    Raises Unify when the matching fails *)
 
-let rec match_pattern next_f p t = 
+let rec match_pattern p t = 
   match p with
-    PatVar b -> Terms.link b (TLink t); next_f ()
+    PatVar b -> Terms.link b (TLink t)
   | PatTuple(f,l) ->
       let vl = Terms.var_gen (fst f.f_type) in
-      match_modulo (fun () ->
-	let tl = List.map copy_closed_remove_syntactic vl in
-        match_pattern_list next_f l tl
-	  ) (FunApp(f, vl)) t
+      let tl = 
+	match_modulo (fun () ->
+	  List.map copy_closed_remove_syntactic vl 
+	    ) (FunApp(f, vl)) t
+      in
+      List.iter2 match_pattern l tl
   | PatEqual t' ->
-      term_evaluation (fun t'' ->
-	match_modulo (fun () -> ()) t'' t
-	  ) t';
-      next_f ()
+      let t'' = term_evaluation_fail t' in
+      match_modulo (fun () -> ()) t'' t
 	
-and match_pattern_list next_f pl tl = 
-  match (pl, tl) with
-    [],[] -> next_f ()
-  | (p1::pl,t1::tl) ->
-      match_pattern (fun () ->
-        match_pattern_list next_f pl tl) p1 t1
-  | _ -> Parsing_helper.internal_error "Different length in match_pattern_list"
-
 type put_var_type =
     PutAlways | PutIfQueryNeedsIt
 
@@ -455,13 +414,14 @@ and add_public_list state = function
     [] -> state
   | (a::l) -> add_public_list (add_public state a) l
 
-(* Do reductions that do not involve interactions *)
-(* f takes as input
+(* Do reductions that do not involve interactions 
+   f takes as input
       - a boolean indicating whether the attacker knowledge has changed
       - the new state 
+
+   When the goal is reached, do_red_nointeract returns the final state.
+   Otherwise, raises an exception No_result. 
 *)
-(* When the goal is reached, returns the final state.
-   Otherwise, raises an exception No_result. *)
 
 let rec do_red_nointeract f prev_state n =
   let (proc, name_params, occs, facts, cache_info) =
@@ -473,8 +433,8 @@ let rec do_red_nointeract f prev_state n =
            is TestUnifTag *)
 	begin
 	  match proc with
-	    Test(_,_,_,_,occ) | Let(_,_,_,_,occ) | Input(_,_,_,occ) | Output(_,_,_,occ) 
-	  | LetFilter(_,_,_,_,occ) | Event(_,_,occ) | Insert(_,_,occ) | Get(_,_,_,occ) ->
+	    Test(_,_,_,occ) | Let(_,_,_,_,occ) | Input(_,_,_,occ) | Output(_,_,_,occ) 
+	  | LetFilter(_,_,_,_,occ) | Event(_,_,occ) | Insert(_,_,occ) | Get(_,_,_,_,occ) ->
 	      let l = List.length name_params in
 	      let lg = List.length name_params_goal in
 	      if (occ == occ_goal) && 
@@ -531,50 +491,46 @@ let rec do_red_nointeract f prev_state n =
       begin
       try 
         auto_cleanup (fun () -> 
-        term_evaluation_name_params (fun t' name_params' ->
-          match_pattern (fun () -> 
-            let p' = copy_process p in
-            let name_params'' = update_name_params PutIfQueryNeedsIt name_params' pat in 
+          let (t', name_params') = term_evaluation_name_params (OLet(occ)) t name_params in
+          match_pattern pat t';
+          let p' = copy_process p in
+          let name_params'' = update_name_params PutIfQueryNeedsIt name_params' pat in 
           do_red_nointeract f { prev_state with
 	    subprocess = replace_at n (p', name_params'', new_occs, facts, Nothing) prev_state.subprocess;
             comment = RLet1(n, pat, t);
             previous_state = Some prev_state } n
-	      ) pat t'
-           ) t new_occs facts name_params prev_state.io_rule)
+	    )
       with Unify ->
         do_red_nointeract f { prev_state with
 	  subprocess = replace_at n (q, name_params, new_occs, facts, Nothing) prev_state.subprocess;
           comment = RLet2(n, pat, t);
           previous_state = Some prev_state } n
       end
-  | Test(t1,t2,p,q,occ) ->
+  | Test(t,p,q,occ) ->
       debug_print "Doing Test";
       made_forward_step := true;
       begin
 	try
           auto_cleanup (fun () ->
 	    let new_occs = (TestTag occ) :: occs in
-            term_evaluation_name_params (fun t1' name_params' ->
-	      term_evaluation_name_params (fun t2' name_params'' ->
-                if equal_terms_modulo t1' t2' then
-	          do_red_nointeract f 
-		    { prev_state with
-	              subprocess = replace_at n (p, name_params'', new_occs, facts, Nothing) prev_state.subprocess;
-                      comment = RTest1(n, t1, t2);
+            let (t', name_params') = term_evaluation_name_params (OTest(occ)) t name_params in
+            if equal_terms_modulo t' Terms.true_term then
+	      do_red_nointeract f 
+		{ prev_state with
+	              subprocess = replace_at n (p, name_params', new_occs, facts, Nothing) prev_state.subprocess;
+                      comment = RTest1(n, t);
                       previous_state = Some prev_state } n
-                else
-                  do_red_nointeract f 
-		    { prev_state with
-	              subprocess = replace_at n (q, name_params'', new_occs, facts, Nothing) prev_state.subprocess;
-                      comment = RTest2(n, t1, t2);
+            else
+              do_red_nointeract f 
+		{ prev_state with
+	              subprocess = replace_at n (q, name_params', new_occs, facts, Nothing) prev_state.subprocess;
+                      comment = RTest2(n, t);
                       previous_state = Some prev_state } n
-	      ) t2 new_occs facts name_params' prev_state.io_rule
-            ) t1 new_occs facts name_params prev_state.io_rule
-	  )
+		)
         with Unify ->
 	  f false { prev_state with
 	      subprocess = remove_at n prev_state.subprocess;
-              comment = RTest3(n, t1, t2);
+              comment = RTest3(n, t);
               previous_state = Some prev_state } 
       end
   | Output(tc,t,p,occ) ->
@@ -627,15 +583,13 @@ let rec do_red_nointeract f prev_state n =
 	  | Nothing ->
 	      try
 		auto_cleanup (fun () ->
-		  term_evaluation (fun tc' ->
-		    let tclist = decompose_term tc' in
-		    term_evaluation (fun t' ->
-		      f false { prev_state with 
-                                subprocess = replace_at n (Output(tc',t',p,occ), name_params, occs, facts, 
-							   (OutputInfo(tclist, prev_state.public))) 
-                                               prev_state.subprocess }
-			) t
-		      ) tc
+		  let tc' = term_evaluation_fail tc in
+		  let tclist = decompose_term tc' in
+		  let t' = term_evaluation_fail t in
+		  f false { prev_state with 
+                            subprocess = replace_at n (Output(tc',t',p,occ), name_params, occs, facts, 
+						       (OutputInfo(tclist, prev_state.public))) 
+                            prev_state.subprocess }
 		    )
               with Unify ->
 	        f false { prev_state with
@@ -669,28 +623,26 @@ let rec do_red_nointeract f prev_state n =
 	  | Nothing ->
 	      try
 		auto_cleanup (fun () ->
-		  term_evaluation (fun tc' ->
-		    let tclist = decompose_term tc' in
-		    let tclist' = remove_first_in_public prev_state.public tclist in
-		    term_evaluation (fun t' ->
-		      if tclist' = [] then
-			begin
-			  made_forward_step := true;
-			  let prev_state' = add_public prev_state t' in
-			  do_red_nointeract (if prev_state.public == prev_state'.public then f else 
-			  (fun mod_public cur_state -> f true cur_state))
-				{ prev_state' with
-                                  subprocess = replace_at n (p, name_params, new_occs, facts, Nothing) prev_state.subprocess;
-			          comment = ROutput1(n, tc, t);
-			          previous_state = Some prev_state } n
-			end
-		      else
-			f false { prev_state with 
-                                  subprocess = replace_at n (Output(tc',t',p,occ), name_params, occs, facts, 
-							   (OutputInfo(tclist', prev_state.public))) 
+		  let tc' = term_evaluation_fail tc in
+		  let tclist = decompose_term tc' in
+		  let tclist' = remove_first_in_public prev_state.public tclist in
+		  let t' = term_evaluation_fail t in
+		  if tclist' = [] then
+		    begin
+		      made_forward_step := true;
+		      let prev_state' = add_public prev_state t' in
+		      do_red_nointeract (if prev_state.public == prev_state'.public then f else 
+		      (fun mod_public cur_state -> f true cur_state))
+			{ prev_state' with
+                          subprocess = replace_at n (p, name_params, new_occs, facts, Nothing) prev_state.subprocess;
+			  comment = ROutput1(n, tc, t);
+			  previous_state = Some prev_state } n
+		    end
+		  else
+		    f false { prev_state with 
+                              subprocess = replace_at n (Output(tc',t',p,occ), name_params, occs, facts, 
+							 (OutputInfo(tclist', prev_state.public))) 
                                                prev_state.subprocess }
-			  ) t
-		      ) tc
 		    )
               with Unify ->
 	        f false { prev_state with
@@ -709,8 +661,7 @@ let rec do_red_nointeract f prev_state n =
 	    begin
 	      (* Check that the argument of the event can be evaluated but otherwise ignore it *)
 	      try
-		auto_cleanup (fun () ->
-		  term_evaluation (fun t' -> ()) t);
+		let _ = term_evaluation_fail t in
 	     	let new_occs = (BeginEvent (occ)) :: occs in
 		do_red_nointeract f { prev_state with
 	                              subprocess = replace_at n (p, name_params, new_occs, facts, Nothing) prev_state.subprocess;
@@ -724,19 +675,17 @@ let rec do_red_nointeract f prev_state n =
 	    end
 	| NonInj | Inj ->
 	    try
-	    auto_cleanup (fun () ->
-	      term_evaluation_name_params (fun t' name_params' ->
-		  let new_occs = BeginFact :: (BeginEvent (occ)) :: occs in
-		  let new_facts = (Out(t', [])) :: facts in
-		  auto_cleanup (fun () ->
-		    find_io_rule (fun _ ->
-			do_red_nointeract f { prev_state with
-	                                      subprocess = replace_at n (p, name_params', new_occs, new_facts, Nothing) prev_state.subprocess;
-                                              comment = RBegin1(n, t);
-				              previous_state = Some prev_state } n
-				 ) new_occs new_facts name_params' [] prev_state.io_rule
-			       )
-					  ) t occs facts name_params prev_state.io_rule)
+	      auto_cleanup (fun () ->
+		let (t', name_params') = term_evaluation_name_params (OEvent(occ)) t name_params in
+		let new_occs = BeginFact :: (BeginEvent (occ)) :: occs in
+		let new_facts = (Out(t', [])) :: facts in
+		find_io_rule (fun _ ->
+		  do_red_nointeract f { prev_state with
+	                                subprocess = replace_at n (p, name_params', new_occs, new_facts, Nothing) prev_state.subprocess;
+                                        comment = RBegin1(n, t);
+			                previous_state = Some prev_state } n
+		    ) new_occs new_facts name_params' [] prev_state.io_rule
+		  )
             with Unify ->
 	      f false { prev_state with 
 	                subprocess = remove_at n prev_state.subprocess;
@@ -787,41 +736,44 @@ let rec do_red_nointeract f prev_state n =
 	  let new_occs = (LetFilterTag occ) :: occs in
 	  let vars_bl = List.map (fun b -> Var b) bl in
 	  auto_cleanup (fun () ->
-	    term_evaluation_letfilter (fun l' name_params' ->
-	      let fact' = Pred(pr,l') in
-	      try
- 	        find_io_rule (fun terms_bl ->
-		    let new_facts' = (TermsEq.copy_remove_syntactic_fact fact') :: facts in
-		    List.iter2 (fun b term_b ->
-		      Terms.link b (TLink term_b)) bl terms_bl;
-	            let name_params'' = List.map 
-			(function Always(s,t) -> Always(s,copy_closed_remove_syntactic t)
-			  | IfQueryNeedsIt(s,t) -> IfQueryNeedsIt(s,copy_closed_remove_syntactic t)) name_params' in
-                    let p' = auto_cleanup (fun () -> copy_process p) in
-	            letfilter_succeeds := true;
-	            (* Allow choosing a different result for letfilter when search fails *)
-                    try 
-                    do_red_nointeract f { prev_state with
-	                                  subprocess = replace_at n (p', name_params'', LetFilterFact :: new_occs, new_facts', Nothing) prev_state.subprocess;
-                                          comment = RLetFilter1(n, bl, Pred(pr,l));
-				          previous_state = Some prev_state } n
-                    with No_result -> raise Unify     
-                              ) new_occs (fact' :: facts) name_params' vars_bl prev_state.io_rule
-              with Unify ->
-	        if !letfilter_succeeds then raise No_result else
-		(* it should be ok to query the fact with names instead of patterns? *)
-	        let letfilterclauses = auto_cleanup (fun () -> Rules.query_goal_std fact') in
-                if letfilterclauses != [] (* fact' may be derivable from the clauses => 
+	    let (l', name_params') = term_evaluation_letfilter (OLetFilter(occ)) l
+		((List.map2 (fun v v' -> Always(v.sname, v')) bl vars_bl) @ name_params)
+	    in
+	    let fact' = Pred(pr,l') in
+	    try
+ 	      find_io_rule (fun terms_bl ->
+		let new_facts' = (TermsEq.copy_remove_syntactic_fact fact') :: facts in
+		List.iter2 (fun b term_b ->
+		  Terms.link b (TLink term_b)) bl terms_bl;
+	        let name_params'' = List.map 
+		    (function 
+			Always(s,t) -> Always(s,copy_closed_remove_syntactic t)
+		      | IfQueryNeedsIt(s,t) -> IfQueryNeedsIt(s,copy_closed_remove_syntactic t)) name_params' 
+		in
+                let p' = auto_cleanup (fun () -> copy_process p) in
+	        letfilter_succeeds := true;
+	        (* Allow choosing a different result for letfilter when search fails *)
+                try 
+                  do_red_nointeract f { prev_state with
+	                                subprocess = replace_at n (p', name_params'', LetFilterFact :: new_occs, new_facts', Nothing) prev_state.subprocess;
+                                        comment = RLetFilter1(n, bl, Pred(pr,l));
+		                        previous_state = Some prev_state } n
+                with No_result -> raise Unify     
+                    ) new_occs (fact' :: facts) name_params' vars_bl prev_state.io_rule
+            with Unify ->
+	      if !letfilter_succeeds then raise No_result else
+	      (* it should be ok to query the fact with names instead of patterns? *)
+	      let letfilterclauses = auto_cleanup (fun () -> Rules.query_goal_std fact') in
+              if letfilterclauses != [] (* fact' may be derivable from the clauses => 
                      LetFilter may succeed but not allowed by the derivation tree =>
                      consider that LetFilter blocks *) then
-                  raise Unify
-	        else
-	          do_red_nointeract f { prev_state with 
+                raise Unify
+	      else
+	        do_red_nointeract f { prev_state with 
 	                    subprocess = replace_at n (q, name_params, new_occs, facts, Nothing) prev_state.subprocess;
 		            comment = RLetFilter3(n, bl, Pred(pr,l));
 		            previous_state = Some prev_state } n
-	                                     ) l ((List.map2 (fun v v' -> Always(v.sname, v')) bl vars_bl) @ name_params)
-	               )
+	            )
 	with Unify ->
 	  f false { prev_state with 
 	            subprocess = remove_at n prev_state.subprocess;
@@ -911,25 +863,33 @@ let rec do_red_nointeract f prev_state n =
   | Insert(t,p,occ) ->
       debug_print "Doing Insert";
       let new_occs = (InsertTag occ) :: occs in
+      let new_element_inserted = ref false in
       begin
 	try
 	  auto_cleanup (fun () ->
-	    term_evaluation (fun t' ->
-	      made_forward_step := true;
-	      do_red_nointeract f
-		{ prev_state with
-                  subprocess = replace_at n (p, name_params, new_occs, facts, Nothing) prev_state.subprocess;
-	          tables = if List.exists (equal_terms_modulo t') prev_state.tables then 
-				    prev_state.tables else t' :: prev_state.tables;
-		  comment = RInsert1(n, t);
-		  previous_state = Some prev_state } n
-		) t
+	    let t' = term_evaluation_fail t in
+	    let already_in = List.exists (equal_terms_modulo t') prev_state.tables in
+	    new_element_inserted := not already_in;
+	    made_forward_step := true;
+	    do_red_nointeract f
+	      { prev_state with
+                subprocess = replace_at n (p, name_params, new_occs, facts, Nothing) prev_state.subprocess;
+	        tables = if already_in then prev_state.tables else t' :: prev_state.tables;
+		comment = RInsert1(n, t);
+		previous_state = Some prev_state } n
 	      )
         with Unify ->
 	  f false { prev_state with
                     subprocess = remove_at n prev_state.subprocess;
                     comment = RInsert2(n, t);
                     previous_state = Some prev_state } 
+	| No_result ->
+	    (* The attack reconstruction failed after doing the insert.
+	       Try not doing it, in case that allows executing the else branch of a Get. *)
+	    if (!has_backtrack_get) && (!new_element_inserted) then
+	      f false prev_state
+	    else
+	      raise No_result
       end
   | _ -> f false prev_state
 
@@ -1134,10 +1094,10 @@ let rec init_rule state tree =
 		  else
 		    state1
 		    *)
-	      |	Apply (Func(f), {p_info = [AttackerGuess(_)]}) ->
+	      |	Apply (f, {p_info = [AttackerGuess(_)]}) ->
 		  (* Clauses attacker_guess_pred will be handled when looking for the goal *)
 		  state1
-	      | Apply (Func(f),_) when f.f_cat != Tuple -> 
+	      | Apply (f,_) when f.f_cat != Tuple -> 
 		  begin
 		    let (p,c) = 
 		      match tree.thefact with
@@ -1171,6 +1131,31 @@ let rec init_rule state tree =
 
 (* Perform an input on a public channel (Res In) *)
 
+let success_input cur_state n new_occs name_params' mess_term = 
+  match cur_state.goal with
+    NonInterfGoal(InputProcessTest((TestUnifTag occ_goal)::occs_goal, name_params_goal, mess_term_goal, loc)) ->
+	(* Note: when a clause concludes bad_pred and is a ProcessRule, then its first tag
+           is TestUnifTag *)
+      begin
+	match new_occs with
+	  InputTag occ :: _ -> 
+	    let l = List.length name_params' in
+	    let lg = List.length name_params_goal in
+	    if (occ == occ_goal) && 
+	      (new_occs = occs_goal) &&
+	      (l <= lg) &&
+	      (equal_terms_modulo mess_term mess_term_goal) && 
+	      (List.for_all2 equal_terms_modulo (extract_name_params_noneed name_params') (skip (lg-l) name_params_goal)) then
+	      begin
+		loc := Some (n, List.nth cur_state.subprocess n);
+		true
+	      end
+	    else false
+	| _ -> false
+      end
+  | _ -> false
+
+
 let do_res_in cur_state seen_list rest_subprocess n current_cache_list name_params' new_occs facts tc pat p tc' mess_term public_status next_f =
   (* The real list of processes is (List.rev_append seen_list (InputProcess :: rest_subprocess)) *)
   let (mess_list, oldpub) = 
@@ -1188,17 +1173,18 @@ let do_res_in cur_state seen_list rest_subprocess n current_cache_list name_para
   debug_print "Ok, the message is public";
   try
     made_forward_step := true;
+    let success = success_input cur_state n new_occs name_params' mess_term in
+    if success then cur_state else
     auto_cleanup (fun () ->
-      match_pattern (fun () -> 
-	let name_params'' = update_name_params PutAlways name_params' pat in
-	let p' = auto_cleanup (fun () -> copy_process p) in
-	let fact' = Pred(Param.get_pred(Mess(cur_state.current_phase, Terms.get_term_type mess_term)), [tc'; mess_term]) in
-	normal_state next_f false 
-	  { cur_state with
+      match_pattern pat mess_term;
+      let name_params'' = update_name_params PutAlways name_params' pat in
+      let p' = auto_cleanup (fun () -> copy_process p) in
+      let fact' = Pred(Param.get_pred(Mess(cur_state.current_phase, Terms.get_term_type mess_term)), [tc'; mess_term]) in
+      normal_state next_f false 
+	{ cur_state with
             subprocess = List.rev_append seen_list ((p', name_params'', new_occs, fact' :: facts, Nothing) :: rest_subprocess);
             comment = RInput(n, tc, pat, mess_term);
             previous_state = Some cur_state } n
-	  ) pat mess_term
 	)
   with No_result ->
     (* Inputting the message mess_term on this input will always fail,
@@ -1225,13 +1211,15 @@ let do_async_res_io cur_state seen_list rest_subprocess n current_cache_list nam
   begin
     try
       made_forward_step := true;
+      let success = success_input cur_state n new_occs name_params' mess_term in
+      if success then cur_state else
       try
 	auto_cleanup (fun () ->
-	  match_pattern (fun () -> 
-	    let name_params'' = update_name_params PutAlways name_params' pat in
-	    let p' = auto_cleanup (fun () -> copy_process p) in
-	    let fact' = Pred(Param.get_pred(Mess(cur_state.current_phase, Terms.get_term_type mess_term)), [tc'; mess_term]) in
-	    let cur_state' = 
+	  match_pattern pat mess_term;
+	  let name_params'' = update_name_params PutAlways name_params' pat in
+	  let p' = auto_cleanup (fun () -> copy_process p) in
+	  let fact' = Pred(Param.get_pred(Mess(cur_state.current_phase, Terms.get_term_type mess_term)), [tc'; mess_term]) in
+	  let cur_state' = 
 	      { (if public_channel then
 		add_public cur_state mess_term else cur_state)
                 with
@@ -1239,15 +1227,14 @@ let do_async_res_io cur_state seen_list rest_subprocess n current_cache_list nam
 	          (List.rev_append seen_list ((p', name_params'', new_occs, fact' :: facts, Nothing) :: rest_subprocess));
 	        comment = RIO(n, tc, pat, noutput, tc, mess_term);
 	        previous_state = Some cur_state }
-	    in
-	    let ninput = if n > noutput then n-1 else n in
-	    match cur_state.goal with
-	      Fact(Pred({p_info = [Mess(n,_)]},[tcg;tg])) when (n == cur_state.current_phase) &&
-	      (equal_terms_modulo tg mess_term) && (equal_terms_modulo tcg tc') ->
-		(* SUCCESS! *)
-		cur_state'
-	    | _ -> normal_state next_f (cur_state'.public != cur_state.public) cur_state' ninput
-                  ) pat mess_term
+	  in
+	  let ninput = if n > noutput then n-1 else n in
+	  match cur_state.goal with
+	    Fact(Pred({p_info = [Mess(n,_)]},[tcg;tg])) when (n == cur_state.current_phase) &&
+	    (equal_terms_modulo tg mess_term) && (equal_terms_modulo tcg tc') ->
+	      (* SUCCESS! *)
+	      cur_state'
+	  | _ -> normal_state next_f (cur_state'.public != cur_state.public) cur_state' ninput
 	    )
       with Unify ->
 	(* The pattern does not match *)
@@ -1286,14 +1273,16 @@ let do_sync_res_io cur_state seen_list rest_subprocess n name_params' new_occs f
 	    if equal_terms_modulo tc2 tc' then
 	      begin
 		made_forward_step := true;
+		let success = success_input cur_state n new_occs name_params' t2 in
+		if success then cur_state else
 		(* The i/o reduction is possible, compute the reduced state *)
 		let fact = Pred(Param.get_pred(Mess(cur_state.current_phase, Terms.get_term_type t2)), [tc'; t2]) in
 		try
 		  auto_cleanup (fun () ->
-		    match_pattern (fun () -> 
-		      let name_params'' = update_name_params PutAlways name_params' pat in
-		      let p' = auto_cleanup (fun () -> copy_process p) in
-		      let cur_state' = 
+		    match_pattern pat t2;
+		    let name_params'' = update_name_params PutAlways name_params' pat in
+		    let p' = auto_cleanup (fun () -> copy_process p) in
+		    let cur_state' = 
 			{ (if public_channel then
 			  add_public cur_state t2 else cur_state)
 		          with
@@ -1301,14 +1290,13 @@ let do_sync_res_io cur_state seen_list rest_subprocess n name_params' new_occs f
 			    (List.rev_append seen_list ((p', name_params'', new_occs, fact :: facts, Nothing) :: rest_subprocess));
 			  comment = RIO(n, tc', pat, noutput, tc2, t2);
 			  previous_state = Some cur_state }
-		      in
-		      match cur_state.goal with
-			Fact(Pred({p_info = [Mess(n,_)]},[tcg;tg])) when (n == cur_state.current_phase) &&
-			(equal_terms_modulo tg t2) && (equal_terms_modulo tcg tc') ->
-			  (* SUCCESS! *)
-			  cur_state'
-		      | _ -> normal_state2 next_f (cur_state'.public != cur_state.public) cur_state' noutput n
-			    ) pat t2
+		    in
+		    match cur_state.goal with
+		      Fact(Pred({p_info = [Mess(n,_)]},[tcg;tg])) when (n == cur_state.current_phase) &&
+		      (equal_terms_modulo tg t2) && (equal_terms_modulo tcg tc') ->
+			(* SUCCESS! *)
+			cur_state'
+		    | _ -> normal_state2 next_f (cur_state'.public != cur_state.public) cur_state' noutput n
 		      )
 	        with Unify -> (* The pattern does not match *)
 		  let noutput' = if n > noutput then noutput else noutput-1 in
@@ -1354,22 +1342,20 @@ let do_res_get cur_state seen_list rest_subprocess n current_cache_list name_par
   try
     made_forward_step := true;
     auto_cleanup (fun () ->
-      match_pattern (fun () -> 
-	let name_params'' = update_name_params PutAlways name_params' pat in
-	term_evaluation_name_params (fun t' name_params''' ->
-	  match t' with 
-	    FunApp(f,[]) when f == Terms.true_cst ->
-	      (* we check that t evaluates to true *)
-	      let p' = auto_cleanup (fun () -> copy_process p) in
-	      let fact' = Pred(Param.get_pred(Table(cur_state.current_phase)), [mess_term]) in
-	      normal_state next_f false 
+      match_pattern pat mess_term;
+      let name_params'' = update_name_params PutAlways name_params' pat in
+      let t' = term_evaluation_fail t in
+      if equal_terms_modulo t' Terms.true_term then 
+	  (* we check that t evaluates to true *)
+	  let p' = auto_cleanup (fun () -> copy_process p) in
+	  let fact' = Pred(Param.get_pred(Table(cur_state.current_phase)), [mess_term]) in
+	  normal_state next_f false 
 		{ cur_state with
-                  subprocess = List.rev_append seen_list ((p', name_params''', new_occs, fact' :: facts, Nothing) :: rest_subprocess);
+                  subprocess = List.rev_append seen_list ((p', name_params'', new_occs, fact' :: facts, Nothing) :: rest_subprocess);
                   comment = RGet(n, pat, t, mess_term);
                   previous_state = Some cur_state } n
-	  | _ -> raise Unify
-		) t new_occs facts name_params'' cur_state.io_rule
-	  ) pat mess_term
+      else
+	raise Unify
 	)
   with No_result ->
     (* Using the entry mess_term on this input will always fail,
@@ -1377,7 +1363,14 @@ let do_res_get cur_state seen_list rest_subprocess n current_cache_list name_par
     current_cache_list := List.tl (!current_cache_list);
     raise Unify
    
-(* Dispatch between (Res In), asynchronous (Res I/O), and synchronous (Res I/O), and (Res Get) *)
+(* Dispatch between (Res In), asynchronous (Res I/O), and synchronous (Res I/O), and (Res Get)
+   May also execute (Insert) in case an insert has been delayed because it prevented executing the
+   else branch of Get. *)
+
+exception Backtrack_get 
+(* This exception is used only when I should take the 
+   else of Get and I cannot because an element that
+   makes Get succeed already occurs. *)
 
 let rec find_in_out next_f cur_state n seen_list = function
     [] -> raise No_result
@@ -1435,54 +1428,54 @@ let rec find_in_out next_f cur_state n seen_list = function
 	    let seen_list' = ref ((proc, name_params, occs, facts, cache_info) :: seen_list) in
 	    try
               auto_cleanup (fun () ->
-		term_evaluation_name_params (fun tc' name_params' ->
-		  let m = Reduction_helper.new_var_pat1 pat in
-		  let new_occs = (InputTag occ) :: occs in
-		  let fact = Pred(Param.get_pred(Mess(cur_state.current_phase, m.btype)), [tc'; Var m]) in
-		  let tc_list = decompose_term tc' in
-		  let tc_list' = remove_first_in_public cur_state.public tc_list in
-		  if (!Param.active_attacker) && (tc_list' = []) then
-		    begin
+		let (tc', name_params') = term_evaluation_name_params (OInChannel(occ)) tc name_params in
+		let m = Reduction_helper.new_var_pat1 pat in
+		let new_occs = (InputTag occ) :: occs in
+		let fact = Pred(Param.get_pred(Mess(cur_state.current_phase, m.btype)), [tc'; Var m]) in
+		let tc_list = decompose_term tc' in
+		let tc_list' = remove_first_in_public cur_state.public tc_list in
+		if (!Param.active_attacker) && (tc_list' = []) then
+		  begin
 		      (* Input on a public channel, and the attacker is active: apply (Res In)  *)
-		      debug_print "Input on public channel";
-		      let current_cache_list = ref [] in
-		      try
-			find_io_rule (function
-			    [mess_term] ->
-			      do_res_in cur_state seen_list rest_subprocess n current_cache_list name_params' new_occs facts tc pat p tc' mess_term None next_f
-			  | _ -> Parsing_helper.internal_error "input case; reduction.ml"
-				) new_occs (fact :: facts) name_params' [Var m] cur_state.io_rule
-		      with Unify ->
-			seen_list' := (proc, name_params, occs, facts, 
-				       InputInfo([], [], tc', name_params', new_occs, !current_cache_list)) :: seen_list;
-			raise Unify
-		    end
-		  else
-		    begin
+		    debug_print "Input on public channel";
+		    let current_cache_list = ref [] in
+		    try
+		      find_io_rule (function
+			  [mess_term] ->
+			    do_res_in cur_state seen_list rest_subprocess n current_cache_list name_params' new_occs facts tc pat p tc' mess_term None next_f
+			| _ -> Parsing_helper.internal_error "input case; reduction.ml"
+			      ) new_occs (fact :: facts) name_params' [Var m] cur_state.io_rule
+		    with Unify ->
+		      seen_list' := (proc, name_params, occs, facts, 
+				     InputInfo([], [], tc', name_params', new_occs, !current_cache_list)) :: seen_list;
+		      raise Unify
+		  end
+		else
+		  begin
 		      (* Input on a private channel or the attacker is passive: apply (Res I/O)
 			 First try an asynchronous output, with a corresponding clause in the tree *)
-		      debug_print "Input on private channel; trying asynchronous output";
-		      let current_cache_list = ref [] in
-		      let public_channel = (not (!Param.active_attacker)) && (tc_list' = []) in
-		      try
-			find_io_rule (function
-			    [mess_term] ->
-			      do_async_res_io cur_state seen_list rest_subprocess n current_cache_list name_params' new_occs facts tc pat p tc' mess_term public_channel next_f
-			  | _ -> Parsing_helper.internal_error "input case; reduction.ml"
-				) new_occs (fact :: facts) name_params' [Var m] cur_state.io_rule
-                      with Unify ->
-			seen_list' := (proc, name_params,occs, facts, 
-				       InputInfo(tc_list', cur_state.public, tc', name_params', new_occs, !current_cache_list)) :: seen_list;
+		    debug_print "Input on private channel; trying asynchronous output";
+		    let current_cache_list = ref [] in
+		    let public_channel = (not (!Param.active_attacker)) && (tc_list' = []) in
+		    try
+		      find_io_rule (function
+			  [mess_term] ->
+			    do_async_res_io cur_state seen_list rest_subprocess n current_cache_list name_params' new_occs facts tc pat p tc' mess_term public_channel next_f
+			| _ -> Parsing_helper.internal_error "input case; reduction.ml"
+			      ) new_occs (fact :: facts) name_params' [Var m] cur_state.io_rule
+                    with Unify ->
+		      seen_list' := (proc, name_params,occs, facts, 
+				     InputInfo(tc_list', cur_state.public, tc', name_params', new_occs, !current_cache_list)) :: seen_list;
 		        (* Try a synchronous output *)
-			debug_print "Input on private channel; trying synchronous output";
-			do_sync_res_io cur_state seen_list rest_subprocess n name_params' new_occs facts tc pat p tc' public_channel next_f
-		    end
-                      ) tc occs facts name_params cur_state.io_rule
-		  )
+		      debug_print "Input on private channel; trying synchronous output";
+		      do_sync_res_io cur_state seen_list rest_subprocess n name_params' new_occs facts tc pat p tc' public_channel next_f
+		  end
+		    )
 	    with Unify | No_result ->
 	      find_in_out next_f cur_state (n+1) (!seen_list') rest_subprocess
       end
-  | ((Get(pat,t,p,occ) as proc ,name_params,occs, facts, cache_info)::rest_subprocess) ->
+  | ((Get(pat,t,p,p_else, occ) as proc ,name_params,occs, facts, cache_info)::rest_subprocess) ->
+      (* TO DO optimize the case with else branch *)
       debug_print ("Trying Get on process " ^ (string_of_int n));
       begin
 	match cache_info with 
@@ -1517,12 +1510,86 @@ let rec find_in_out next_f cur_state n seen_list = function
 		    | _ -> Parsing_helper.internal_error "get case; reduction.ml"
 			) new_occs (fact :: facts) name_params [Var m] cur_state.io_rule
 		with Unify ->
-		  seen_list' := (proc, name_params, occs, facts, 
-				 GetInfo(cur_state.tables, !current_cache_list)) :: seen_list;
-		  raise Unify
+		  if p_else != Nil then
+		    (* See if we should take the else branch if present *)
+		    begin
+		      try
+			let new_occs = (GetTagElse occ) :: occs in
+			find_io_rule (function
+			    [] ->
+			      (* We should take the else branch, since a clause uses that branch *)
+			      debug_print "Get: else branch should be taken";
+			      if List.exists (fun mess_term ->
+				try
+				  auto_cleanup (fun () ->
+                                    (* we check that the pattern pat matches and t evaluates to true *)	    
+				    match_pattern pat mess_term;
+				    let t' = term_evaluation_fail t in
+				    equal_terms_modulo t' Terms.true_term)
+				with Unify -> false) cur_state.tables 
+			      then
+				begin
+				  debug_print "Get: an element of the table matches, cannot take the else branch, backtracking";
+				  (* The Get process is blocked forever: the else branch should be taken,
+				     but the table contains an element that prevents it. Since elements
+				     are only added to tables, this situation will not change. 
+				     So I backtrack. *)
+				  has_backtrack_get := true;
+				  raise Backtrack_get
+				end
+			      else
+				begin
+				  debug_print "Get: taking the else branch";
+				  normal_state next_f false 
+				    { cur_state with
+			              subprocess = List.rev_append seen_list ((p_else, name_params, new_occs, facts, Nothing) :: rest_subprocess);
+                                      comment = RGet2(n);
+                                      previous_state = Some cur_state } n				    
+				  end
+			  | _ -> Parsing_helper.internal_error "get else case; reduction_bipro.ml"
+				) new_occs facts name_params [] cur_state.io_rule
+	              with Unify ->
+		        seen_list' := (proc, name_params, occs, facts, 
+				       GetInfo(cur_state.tables, !current_cache_list)) :: seen_list;
+			raise Unify
+		    end
+		  else
+		    begin
+		      seen_list' := (proc, name_params, occs, facts, 
+				     GetInfo(cur_state.tables, !current_cache_list)) :: seen_list;
+		      raise Unify
+		    end
 		    )
 	    with Unify | No_result ->
 	      find_in_out next_f cur_state (n+1) (!seen_list') rest_subprocess
+	  | Backtrack_get -> raise No_result
+      end
+  | ((Insert(t,p,occ), name_params, occs, facts, cache_info) as sub_proc)::rest_subprocess ->
+      debug_print "Doing Insert";
+      begin
+	let new_occs = (InsertTag occ) :: occs in
+	let new_element_inserted = ref false in
+	try
+	  auto_cleanup (fun () ->
+	    let t' = term_evaluation_fail t in
+	    let already_in = List.exists (equal_terms_modulo t') cur_state.tables in
+	    new_element_inserted := not already_in;
+	    normal_state next_f false 
+	      { cur_state with
+	        subprocess = List.rev_append seen_list ((p, name_params, new_occs, facts, Nothing) :: rest_subprocess);
+	        tables = if already_in then cur_state.tables else t'::cur_state.tables;
+                comment = RInsert1(n, t);
+                previous_state = Some cur_state } n				    
+	      )
+        with Unify ->
+	  Parsing_helper.internal_error "Insert: Unify/FailOneSideOnly should have been detected on the first try of that insert"
+	| No_result ->
+	    (* The attack reconstruction failed after doing the insert.
+	       Try not doing it, in case that allows executing the else branch of a Get. *)
+	    if (!has_backtrack_get) && (!new_element_inserted) then
+	      find_in_out next_f cur_state (n+1) (sub_proc :: seen_list) rest_subprocess
+	    else
+	      raise No_result
       end
   | sub_proc::rest_subprocess -> 
       find_in_out next_f cur_state (n+1) (sub_proc :: seen_list) rest_subprocess
@@ -1613,7 +1680,7 @@ let rec analyze_weak_secr_tree_rec accu weaksecrets tree =
       begin
 	match lbl with
 	  Apply(f,{ p_info = [AttackerGuess _]}) ->
-	    FunApp(funsymb_from_funspec f, 
+	    FunApp(f, 
 		   List.map (analyze_weak_secr_tree_rec accu weaksecrets) hyp)
 	| WeakSecr ->
 	    begin
@@ -1646,8 +1713,8 @@ let analyze_weak_secret_tree accu weaksecrets tree =
       begin
 	let l = List.map (analyze_weak_secr_tree_rec accu weaksecrets) hyp in
 	match lbl, l with
-	  TestApply(f, { p_info = [AttackerGuess _] }), _ ->
-	    DestrTest(FunApp(funsymb_from_funspec f, l))
+	  Rfail({ p_info = [AttackerGuess _] }), [t] ->
+	    FailTest(t)
 	| TestEq({ p_info = [AttackerGuess _] } ), [t1;t2] -> 
 	    EqTest(t1,t2)
 	| _ -> Parsing_helper.internal_error "Unexpected clause concluding the derivation for weaksecret"
@@ -1663,9 +1730,22 @@ let analyze_non_interf_tree tree =
       begin
 	match lbl, hyp with
 	  ProcessRule(hyp_tags, name_params), hyp ->
-	    ProcessTest(hyp_tags, rev_name_subst_list name_params, ref None)
+	    begin
+	      match hyp_tags with
+		TestUnifTag occ :: InputTag occ' :: _ when occ == occ' ->
+		  (* Pattern-matching test in an input *)
+		  let mess_term = 
+		    match hyp with
+		      _ (* testunif fact *) :: { thefact = Pred(_, [t]) } (* att fact *) :: _ -> rev_name_subst t
+		    | _ (* testunif fact *) :: { thefact = Pred(_, [_;t]) } (* mess fact *) :: _ -> rev_name_subst t
+		    | _ -> Parsing_helper.internal_error "Unexpected derivation for noninterf: input with fact other than att/mess"
+		  in
+		  InputProcessTest(hyp_tags, rev_name_subst_list name_params, mess_term, ref None)
+	      |	_ ->
+		  ProcessTest(hyp_tags, rev_name_subst_list name_params, ref None)
+	    end
 	| TestApply(f, p), _(*testunif fact*)::hyp ->
-	    ApplyTest(funsymb_from_funspec f, List.map (function 
+	    ApplyTest(f, List.map (function 
 		{ thefact = Pred(_, [t]) } -> rev_name_subst t
 	      |	_ -> Parsing_helper.internal_error "Unexpected derivation for noninterf") hyp)
 	| TestComm(pi,po), [{thefact = Pred(_,[tin])}; {thefact = Pred(_,[tout])}; _(* testunif fact *)] ->
@@ -1698,8 +1778,6 @@ and copy_tree_desc = function
 and copy_descr = function
     ProcessRule(hypspec,name_params) -> 
       ProcessRule(hypspec, List.map copy_term2 name_params)
-  | ProcessRule2(hypspec,name_params1,name_params2) ->
-      ProcessRule2(hypspec, List.map copy_term2 name_params1, List.map copy_term2 name_params2)
   | x -> x
 *)
 
@@ -1767,7 +1845,6 @@ let rec find_sid_tree end_sid all_sids no_dup_begin_sids t =
 	  List.iter (function
 	      ReplTag(_,count_params) -> add_sid (get_sid (List.nth nlrev count_params)) all_sids
 	    | _ -> ()) hsl
-      |	ProcessRule2 _ -> Parsing_helper.internal_error "ProcessRule2 should not occur with injective queries"
       |	_ -> ()
 	
 
@@ -1867,9 +1944,9 @@ let build_trace state =
   let final_state = normal_state reduction true state 0 in
   display_trace final_state; 
   if !Param.html_output then
-    Display.Html.display_goal (fun x -> x) Display.Html.display_term2 noninterftest_to_string final_state.goal final_state.hyp_not_matched
+    Display.Html.display_goal Display.Html.display_term2 noninterftest_to_string final_state.goal final_state.hyp_not_matched
   else
-    Display.Text.display_goal (fun x -> x) Display.Text.display_term2 noninterftest_to_string final_state.goal final_state.hyp_not_matched;
+    Display.Text.display_goal Display.Text.display_term2 noninterftest_to_string final_state.goal final_state.hyp_not_matched;
   (final_state, final_state.hyp_not_matched = [])
 
 
@@ -2053,8 +2130,8 @@ let get_clause_from_derivation tree =
   let constra'' = 
     try 
       Terms.auto_cleanup(fun () ->
-	 Rules.simplify_constra_list (concl'::hyp') constra')
-    with Rules.FalseConstraint ->
+	 TermsEq.simplify_constra_list (concl'::hyp') constra')
+    with TermsEq.FalseConstraint ->
       Parsing_helper.internal_error "False constraints should have been excluded by revise_tree"
   in
   let hist = Rule(-1, LblNone, hyp', concl', constra'') in
@@ -2109,13 +2186,13 @@ let revise_tree recheck tree =
 		    let constra' = Terms.auto_cleanup (fun () ->
 		      List.map Terms.copy_constra2 constra) in
 		    Terms.auto_cleanup(fun () ->
-		      ignore (Rules.simplify_constra_list [] constra'))
-		  with Rules.FalseConstraint ->
+		      ignore (TermsEq.simplify_constra_list [] constra'))
+		  with TermsEq.FalseConstraint ->
 		    Display.Def.print_line "Unification made an inequality become false.";
 		    Display.Def.print_line "Trying with the initial derivation tree instead.";
 		    if !Param.html_output then
 		      Display.LangHtml.close();
-		    raise Rules.FalseConstraint
+		    raise TermsEq.FalseConstraint
 		end;
 	      FRule(n, tags, constra, List.map (revise_tree_rec no_loop) sons)
 	  | FRemovedWithProof t ->  FRemovedWithProof t
@@ -2144,7 +2221,7 @@ let revise_tree recheck tree =
           Display.Def.print_line "This clause does not correspond to an attack against the query; using the derivation before unifyDerivation.";
 	  if !Param.html_output then
 	    Display.LangHtml.close();
-	  raise Rules.FalseConstraint
+	  raise TermsEq.FalseConstraint
         end
       else
         begin
@@ -2342,7 +2419,7 @@ let rec simplify_tree first recheck next_f tree =
 		FactHashtbl.add fact_hashtbl fact_id concl
 	    else
 	      check_coherent factId' (concl, l1, name_params, sons)
-	| LetTag occ | TestTag occ | LetFilterTag occ | TestUnifTag2 occ ->
+	| LetTag occ | TestTag occ | LetFilterTag occ | TestUnifTag2 occ | GetTagElse occ ->
 	    check_coherent factId' (concl, l1, name_params, sons)
 	| InputTag _ | GetTag _ | BeginFact | LetFilterFact -> 
 	    let f = (List.hd sons).thefact in
@@ -2470,7 +2547,7 @@ let do_reduction recheck inj_mode tree =
 	  end;
 	try
 	  auto_cleanup (fun () -> simplify_tree true recheck (do_reduction inj_mode) tree)
-	with Rules.FalseConstraint ->
+	with TermsEq.FalseConstraint ->
 	  do_reduction inj_mode tree
       end
     else

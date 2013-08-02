@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -26,6 +26,7 @@
 
 *)
 open Types
+open Parsing_helper
 
 type out_pos =
     Spass
@@ -62,6 +63,7 @@ let up_in = function
   | "pitype" -> PiType
   | _ -> Parsing_helper.user_error "-in should be followed by horn, horntype, spass, pi, or pitype\n"
 
+exception Is_equivalent
 
 let interference_analysis rulelist queries =
   if (TermsEq.hasEquations()) && (not (!Param.weaksecret_mode)) then
@@ -77,7 +79,9 @@ let interference_analysis rulelist queries =
 	  Display.Html.print_string "<span class=\"result\">RESULT ";
 	  Display.Html.display_eq_query queries;
 	  Display.Html.print_line " is <span class=\"trueresult\">true (bad not derivable)</span>.</span>"
-	end
+	end;
+      raise Is_equivalent
+	
     end
   else
     begin
@@ -159,8 +163,173 @@ let ends_with s sub =
   let l_sub = String.length sub in
   (l_s >= l_sub) && (String.sub s (l_s - l_sub) l_sub = sub)
   
+(*********************************************
+                 Interface
+**********************************************) 
+
+let display_process p biproc =
+  incr Param.process_number;
+  let text_bi,text_bi_maj = 
+    if biproc
+    then "bi","Bip"
+    else "","P" in
+    
+  if (!Param.html_output) then
+    begin
+      Display.LangHtml.openfile ((!Param.html_dir) ^ "/process_"^(string_of_int !Param.process_number)^".html") ("ProVerif: "^text_bi^"process "^(string_of_int !Param.process_number));
+      Display.Html.print_string ("<H1>"^text_bi_maj^"rocess "^(string_of_int !Param.process_number)^"</H1>\n");
+      Display.Html.display_process_occ "" p;
+      Display.Html.newline();
+      Display.LangHtml.close();
+      Display.Html.print_string ("<A HREF=\"process_"^(string_of_int !Param.process_number)^".html\" TARGET=\"process\">"^text_bi_maj^"rocess "^(string_of_int !Param.process_number)^"</A><br>\n");
+      end
+  else if (!Param.verbose_explain_clauses = Param.ExplainedClauses) || (!Param.explain_derivation) then
+    begin
+      Display.Text.print_string (text_bi_maj^"rocess "^(string_of_int !Param.process_number)^":\n");
+      Display.Text.display_process_occ "" p;
+      Display.Text.newline()
+    end
+  
+let solve_simplified_processes list_p = 
+  List.iter (fun proc ->
+    let proc = Simplify.prepare_process proc in
+    Pitsyntax.set_need_vars_in_names();
+
+    if !Param.html_output then
+      Display.Html.print_string "<span class=\"query\">Observational equivalence</span><br>\n";
+      
+    Display.Text.print_string "Observational equivalence";
+    Display.Text.newline();
+	          
+    display_process proc true;
+    
+    Param.weaksecret_mode := true;
+    Selfun.inst_constraints := true;
+    
+    let rules = Pitranslweak.transl proc in
+    
+    Printf.printf "Solving the clauses...\n";
+    solve_only interference_analysis (fun q -> q) rules Pitypes.ChoiceQuery;
+    
+    Param.weaksecret_mode := false;
+    Selfun.inst_constraints := false;
+    incr Param.current_query_number
+  ) list_p
+  
+let simplify_and_solve_process p = 
+  Printf.printf "Looking for simplified processes ...\n";
+  let simpl_process_list = Simplify.simplify_processes p in
+  
+  if simpl_process_list <> []
+  then 
+    begin
+      let nb_biprocess = List.length simpl_process_list in
+      let conjug = 
+	if nb_biprocess = 1
+	then ""
+	else "es" 
+      in
+      Printf.printf "Found %d simplified process%s\n" nb_biprocess conjug;
+      solve_simplified_processes simpl_process_list
+    end
+  else
+    Printf.printf "No simplified process found\n"
+  
+let rec interface_general_merg list_simpl_p =
+  let nb_biprocess = List.length list_simpl_p in
+  let conjug = 
+    if nb_biprocess = 1
+    then ""
+    else "es" 
+  in
+  Printf.printf "\n----------------------------\n";
+  Printf.printf "ProVerif has found %d simplified process%s equivalent to the initial process.\n" nb_biprocess conjug;
+  Printf.printf "Possible actions:\n";
+  Printf.printf "1- View them all\n";
+  Printf.printf "2- Try solving equivalence for all of them\n";
+  Printf.printf "   Note that this option stops when ProVerif finds an observationally equivalent biprocess\n";
+  Printf.printf "3- Try solving equivalence for one specific process (enter 3-x wih x the number of the process)\n";
+  Printf.printf "4- Exit ProVerif\n";
+      
+  let result = read_line () in
+  match result with
+    | "1" -> 
+      let acc = ref 1 in
+      List.iter (fun p ->
+        Printf.printf "\n---------------------------\n";
+        Printf.printf "-- Simplified process %d --\n" !acc;
+        Printf.printf "---------------------------\n";
+        
+	Display.Text.display_process_occ "" p;
+	Display.Text.newline();
+	acc := !acc + 1
+      ) list_simpl_p;
+      interface_general_merg list_simpl_p
+    (*| r when (String.length result > 2) && (String.sub r 0 2 = "2-") -> 
+      let size = List.length list_simpl_p in
+      let n = 
+        try
+          int_of_string (String.sub r 2 ((String.length r) - 2))
+        with _ -> 0 in
+      
+      if n > 0 && n <= size
+      then 
+        begin
+	  Printf.printf "\n---------------------------\n";
+	  Printf.printf "-- Simplified process %d --\n" n;
+	  Printf.printf "---------------------------\n";
+	  
+	  Display.Text.display_process_occ "" (List.nth list_simpl_p (n-1));
+	  Display.Text.newline();
+	  
+          interface_general_merg list_simpl_p
+        end
+      else interface_general_merg list_simpl_p*)
+    |"2" -> 
+       begin try
+         solve_simplified_processes list_simpl_p;
+       with Is_equivalent -> ()
+       end
+    | r when (String.length result > 2) && (String.sub r 0 2 = "3-") -> 
+       let size = List.length list_simpl_p in
+       let n = 
+         try
+           int_of_string (String.sub r 2 ((String.length r) - 2))
+         with _ -> 0 in
+      
+       if n > 0 && n <= size
+       then
+         begin 
+           try
+             solve_simplified_processes [List.nth list_simpl_p (n-1)]
+           with Is_equivalent -> ()
+         end;
+         
+       interface_general_merg list_simpl_p  
+       
+    |"4" -> exit 0
+    |_ -> interface_general_merg list_simpl_p
+
+let interface_for_merging_process p = 
+  Printf.printf "Check the process...\n";
+  Simplify.verify_process [] p;
+  Printf.printf "Calculate the simplified processes...\n";
+  let simpl_process_list = Simplify.simplify_processes p in
+  
+  if simpl_process_list <> []
+  then interface_general_merg simpl_process_list
+  else Printf.printf "No simplified process found\n"  
+
+(*********************************************
+               Analyser
+**********************************************)     
+    
+let first_file = ref true
 
 let anal_file s =
+  if not (!first_file) then
+    Parsing_helper.user_error "Error: You can analyze a single ProVerif file for each run of ProVerif.\nPlease rerun ProVerif with your second file.\n";
+  first_file := false;
   try
     let in_front_end =
       match !in_kind with
@@ -172,6 +341,7 @@ let anal_file s =
           Horn (* Horn is the default when no extension is recognized for compatibility reasons *)
       |	x -> x
     in
+
     if (!Param.html_output) then
       begin
 	Display.LangHtml.openfile ((!Param.html_dir) ^ "/index.html") "ProVerif: main result page";
@@ -184,6 +354,7 @@ let anal_file s =
 	(* If the input consists of Horn clauses, no explanation can be given *)
 	Param.verbose_explain_clauses := Param.Clauses;
 	Param.explain_derivation := false;
+	Param.abbreviate_clauses := false;
 	let p = Syntax.parse_file s in
 	out (fun p q -> Rules.main_analysis p q)
 	    (fun q -> q) p (!Syntax.query_facts);
@@ -193,6 +364,7 @@ let anal_file s =
 	(* If the input consists of Horn clauses, no explanation can be given *)
 	Param.verbose_explain_clauses := Param.Clauses;
 	Param.explain_derivation := false;
+	Param.abbreviate_clauses := false;
 	Param.typed_frontend := true;
 	(* Param.ignore_types := false; *)
 	let p = Tsyntax.parse_file s in
@@ -206,150 +378,275 @@ let anal_file s =
 	Param.typed_frontend := true;
 	(* Param.ignore_types := false; *)
 
-	let p = Pitsyntax.parse_file s in
-	let p = 
+	let p0, second_p0 = Pitsyntax.parse_file s in
+	
+	let p0 =
 	  if !Param.move_new then
-	    Pitransl.move_new p
-	  else
-	    p
-	in
-	Pitransl.record_eqs();
-
-	if (!Param.html_output) then
-	  begin
-	    Display.LangHtml.openfile ((!Param.html_dir) ^ "/process.html") "ProVerif: process";
-	    Display.Html.print_string "<H1>Process</H1>\n";
-	    Display.Html.display_process_occ "" p;
-	    Display.Html.newline();
-	    Display.LangHtml.close();
-	    Display.Html.print_string "<A HREF=\"process.html\" TARGET=\"process\">Process</A><br>\n"
-	  end 
-	else if (!Param.verbose_explain_clauses = Param.ExplainedClauses) || (!Param.explain_derivation) then
-	  begin
-	    print_string "Process:\n";
-	    Display.Text.display_process_occ "" p;
-	    Display.Text.newline()
-	  end;
-
-	if !Param.has_choice then
-	  begin
-	    if (!Pitsyntax.query_list != [])
+	    Pitransl.move_new p0
+	  else p0 in
+	  
+	TermsEq.record_eqs_with_destr();
+	
+	(* Check if destructors are deterministic *)
+	
+	Destructor.check_deterministic !Pitsyntax.destructors_check_deterministic;
+	
+	(* Display the original processes *)
+	
+	if !Param.equivalence
+	then 
+	begin
+	  if !Param.has_choice
+	  then Parsing_helper.user_error "When showing equivalence of two processes, the processes cannot contain choice\n";
+	  
+	  if (!Pitsyntax.query_list != [])
 	    || (Pitsyntax.get_noninterf_queries() != [])
 	    || (Pitsyntax.get_weaksecret_queries() != [])
-	    then Parsing_helper.user_error "Queries are incompatible with choice\n";
+	  then Parsing_helper.user_error "Queries are incompatible with equivalence\n";
+	    
+	  if (!Param.key_compromise != 0) then
+	    Parsing_helper.user_error "Key compromise is incompatible with equivalence\n";
+	
+	  let second_p0 = match second_p0 with
+	    | None -> internal_error "[main.ml] Second process should exist"
+	    | Some p2 -> 
+	        if !Param.move_new then
+	          Pitransl.move_new p2
+	        else p2 in 
+	
+	  if (!Param.html_output) then
+	    Display.Html.print_string "<span class=\"query\">Observational equivalence between two processes</span><br>\n"
+	  else if (!Param.verbose_explain_clauses = Param.ExplainedClauses) || (!Param.explain_derivation) then
+	    Display.Text.print_string "Observational equivalence between two processes\n";
+	   
+	  display_process (Simplify.prepare_process p0) false;
+	  display_process (Simplify.prepare_process second_p0) false;
+
+	  try
+	    let list_biprocesses = Simplify.obtain_biprocess_from_processes p0 second_p0 in
+	    
+	    let nb_biprocess = List.length list_biprocesses in
+	    
+	    let conjug = 
+	      if nb_biprocess = 1
+	      then ""
+	      else "es" in
+	     
+	    Display.Text.print_string ("Found "^ (string_of_int nb_biprocess) ^" biprocess"^conjug);
+	    Display.Text.newline();
+	    
+	    if !Param.html_output
+	    then Display.Html.print_string ("<span class=\"result\">Found "^ (string_of_int nb_biprocess) ^" biprocess"^conjug^"</span><br>");
+	    
+	    begin try
+	      List.iter (fun bi_proc ->
+		let bi_proc = Simplify.prepare_process bi_proc in
+		Pitsyntax.set_need_vars_in_names();
+	        if !Param.html_output then
+	          Display.Html.print_string "<span class=\"query\">Observational equivalence</span><br>\n";
+	        
+	        display_process bi_proc true;
+	      
+	        Param.weaksecret_mode := true;
+	        Selfun.inst_constraints := true;
+	   
+	        let rules = Pitranslweak.transl bi_proc in
+	    
+	        solve_only interference_analysis (fun q -> q) rules Pitypes.ChoiceQuery;
+	        Param.weaksecret_mode := false;
+	        Selfun.inst_constraints := false;
+	        incr Param.current_query_number
+	      ) list_biprocesses
+	    with Is_equivalent -> ()
+	    end;
+	    
+	  with Simplify.No_biprocess_possible ->
+	    begin
+	      Display.Text.print_string "RESULT no biprocess can be computed\n";
+	      if !Param.html_output
+	      then Display.Html.print_string "<span class=\"result\">RESULT no biprocess can be computed</span><br>"
+	    end  
+	end    
+	else 
+	begin
+	  let p = Simplify.prepare_process p0 in
+	  Pitsyntax.set_need_vars_in_names();
+
+	  incr Param.process_number;
+	  
+	  if (!Param.html_output) then
+	    begin
+	      Display.LangHtml.openfile ((!Param.html_dir) ^ "/process_1.html") "ProVerif: process";
+	      Display.Html.print_string "<H1>Process</H1>\n";
+	      Display.Html.display_process_occ "" p;
+	      Display.Html.newline();
+	      Display.LangHtml.close();
+	      Display.Html.print_string "<A HREF=\"process_1.html\" TARGET=\"process\">Process</A><br>\n"
+	    end 
+	  else if (!Param.verbose_explain_clauses = Param.ExplainedClauses) || (!Param.explain_derivation) then
+	    begin
+	      print_string "Process:\n";
+	      Display.Text.display_process_occ "" p;
+	      Display.Text.newline()
+	    end;
+	  
+	  if !Param.has_choice 
+	  then 
+	  begin
+	    if (!Pitsyntax.query_list != [])
+	      || (Pitsyntax.get_noninterf_queries() != [])
+	      || (Pitsyntax.get_weaksecret_queries() != [])
+	      then Parsing_helper.user_error "Queries are incompatible with choice\n";
+	    
 	    if (!Param.key_compromise != 0) then
 	      Parsing_helper.user_error "Key compromise is incompatible with choice\n";
 
-	    print_string "-- Observational equivalence\n";
+	    Display.Text.print_string "-- Observational equivalence";
+	    Display.Text.newline();
+	    
 	    if !Param.html_output then
 	      Display.Html.print_string "<span class=\"query\">Observational equivalence</span><br>\n";
+	      
 	    Param.weaksecret_mode := true;
 	    Selfun.inst_constraints := true;
+	   
 	    let rules = Pitranslweak.transl p in
-	    solve_only interference_analysis (fun q -> q) rules Pitypes.ChoiceQuery;
-	    Param.weaksecret_mode := false;
-	    Selfun.inst_constraints := false
+	    
+	    begin try
+	      solve_only interference_analysis (fun q -> q) rules Pitypes.ChoiceQuery;
+	      Param.weaksecret_mode := false;
+	      Selfun.inst_constraints := false;
+	      incr Param.current_query_number;
+	      
+	      if !Param.simplify_process = 2
+	      then interface_for_merging_process p0
+	      else if !Param.simplify_process = 1
+	      then simplify_and_solve_process p0
+	      
+	    with Is_equivalent -> ()
+	    end
 	  end
-	else
+	  else 
 	  begin
 	    if !Param.html_output then
 	      Display.Html.print_string "<UL>\n";
+	
+            (* Secrecy and authenticity *)
 
-        (* Secrecy and authenticity *)
-
-	List.iter (fun q ->
-	  begin
-	    let queries = Pitsyntax.transl_query q in
-	    let rules = Pitransl.transl p in
-	    let queries = List.map Pitsyntax.update_type_names queries in
+	    List.iter (fun q ->
+	      begin
+	        let queries = Pitsyntax.transl_query q in
+	        let rules = Pitransl.transl p in
+	        let queries = List.map Pitsyntax.update_type_names queries in
                 (* Note: pisyntax translates bindings let x = ... into PutBegin(false,[])
 		   since these bindings are useless once they have been interpreted 
 		   Such dummy PutBegin(false,[]) should not be displayed. *)
-	    let queries' = List.filter (function Pitypes.PutBegin(_,[]) -> false | _ -> true) queries in
-	    print_string ("-- Query ");
-	    Display.Text.display_list Display.Text.display_corresp_putbegin_query "; " queries';
-	    print_newline();
-	    if !Param.html_output then
+	        let queries' = List.filter (function Pitypes.PutBegin(_,[]) -> false | _ -> true) queries in
+	        print_string ("-- Query ");
+	        Display.Text.display_list Display.Text.display_corresp_putbegin_query "; " queries';
+	        print_newline();
+	        if !Param.html_output then
+	          begin
+	            Display.Html.print_string "<LI><span class=\"query\">Query ";
+	            Display.Html.display_list Display.Html.display_corresp_putbegin_query "; " queries';
+	            Display.Html.print_string "</span><br>\n"
+	          end;
+	        out Piauth.solve_auth Pitsyntax.query_to_facts rules queries;
+	        incr Param.current_query_number
+	      end
+	    ) (!Pitsyntax.query_list);
+
+            (* Key compromise is now compatible with authenticity
+               or non-interference: Param.key_compromise := 0; *)
+
+            (* Non-interference *)
+
+	    List.iter (fun noninterf_queries ->
 	      begin
-		Display.Html.print_string "<LI><span class=\"query\">Query ";
-		Display.Html.display_list Display.Html.display_corresp_putbegin_query "; " queries';
-		Display.Html.print_string "</span><br>\n"
-	      end;
-	    out Piauth.solve_auth Pitsyntax.query_to_facts rules queries;
-	    incr Param.current_query_number
-	  end) (!Pitsyntax.query_list);
+	        let noninterf_queries_names = List.map fst noninterf_queries in
+	        Param.secret_vars := noninterf_queries_names;
+	        Param.secret_vars_with_sets := noninterf_queries;
+	        Param.non_interference := true;
+	        let _ = Pitsyntax.transl_query ([],[]) in (* Ignore all events *)
+	        let rules = Pitransl.transl p in
+	        print_string "-- ";
+	        Display.Text.display_eq_query (Pitypes.NonInterfQuery noninterf_queries);
+	        Display.Text.newline();
+	        if !Param.html_output then
+	          begin
+		    Display.Html.print_string "<LI><span class=\"query\">";
+		    Display.Html.display_eq_query (Pitypes.NonInterfQuery noninterf_queries);
+		    Display.Html.print_string "</span><br>\n"
+	          end;
+	        
+	        begin try
+	          solve_only interference_analysis (fun q -> q) rules (Pitypes.NonInterfQuery noninterf_queries);
+	        with Is_equivalent -> ()
+	        end;
+	    
+	        Param.non_interference := false;
+	        incr Param.current_query_number
+	      end
+	    ) (Pitsyntax.get_noninterf_queries());
 
-        (* Key compromise is now compatible with authenticity
-           or non-interference: Param.key_compromise := 0; *)
+	    (* Weak secrets *)
 
-        (* Non-interference *)
-
-	List.iter (fun noninterf_queries ->
-	  begin
-	    let noninterf_queries_names = List.map fst noninterf_queries in
-	    Param.secret_vars := noninterf_queries_names;
-	    Param.secret_vars_with_sets := noninterf_queries;
-	    Param.non_interference := true;
-	    let _ = Pitsyntax.transl_query ([],[]) in (* Ignore all events *)
-	    let rules = Pitransl.transl p in
-	    print_string "-- ";
-	    Display.Text.display_eq_query (Pitypes.NonInterfQuery noninterf_queries);
-	    Display.Text.newline();
-	    if !Param.html_output then
+	    List.iter (fun weaksecret ->
 	      begin
-		Display.Html.print_string "<LI><span class=\"query\">";
-		Display.Html.display_eq_query (Pitypes.NonInterfQuery noninterf_queries);
-		Display.Html.print_string "</span><br>\n"
-	      end;
-	    solve_only interference_analysis (fun q -> q) rules (Pitypes.NonInterfQuery noninterf_queries);
-	    Param.non_interference := false;
-	    incr Param.current_query_number
-	  end) (Pitsyntax.get_noninterf_queries());
-
-	(* Weak secrets *)
-
-	List.iter (fun weaksecret ->
-	  begin
-	    Param.weaksecret := Some weaksecret;
-	    Param.weaksecret_mode := true;
-	    Selfun.inst_constraints := true;
-	    print_string ("-- Weak secret " ^ weaksecret.f_name ^ "\n");
-	    if !Param.html_output then
-	      Display.Html.print_string ("<LI><span class=\"query\">Weak secret " ^ weaksecret.f_name ^ "</span><br>\n");
-	    let _ = Pitsyntax.transl_query ([],[]) in (* Ignore all events *)
-	    let rules = Pitransl.transl p in
-	    solve_only interference_analysis (fun q -> q) rules (Pitypes.WeakSecret weaksecret);
-	    Param.weaksecret := None;
-	    Param.weaksecret_mode := false;
-	    Selfun.inst_constraints := false;
-	    incr Param.current_query_number
-	  end) (Pitsyntax.get_weaksecret_queries());
+	        Param.weaksecret := Some weaksecret;
+	        Param.weaksecret_mode := true;
+	        Selfun.inst_constraints := true;
+	        print_string ("-- Weak secret " ^ weaksecret.f_name ^ "\n");
+	        if !Param.html_output then
+	          Display.Html.print_string ("<LI><span class=\"query\">Weak secret " ^ weaksecret.f_name ^ "</span><br>\n");
+	        let _ = Pitsyntax.transl_query ([],[]) in (* Ignore all events *)
+	        let rules = Pitransl.transl p in
+	        begin try
+	          solve_only interference_analysis (fun q -> q) rules (Pitypes.WeakSecret weaksecret);
+	        with Is_equivalent -> ()
+	        end;
+	        Param.weaksecret := None;
+	        Param.weaksecret_mode := false;
+	        Selfun.inst_constraints := false;
+	        incr Param.current_query_number
+	      end
+	    ) (Pitsyntax.get_weaksecret_queries());
 
 	    if (!Param.html_output) then
 	      Display.Html.print_string "</UL>\n"
 	  end;
-
+	end;
+	
 	if (!Param.html_output) then
 	  Display.LangHtml.close()
 
     | Pi ->
-	let p = Pisyntax.parse_file s in
+	let p0 = Pisyntax.parse_file s in
+	
 	let p = 
 	  if !Param.move_new then
-	    Pitransl.move_new p
+	    Pitransl.move_new p0
 	  else
-	    p
+	    p0
 	in
-	Pitransl.record_eqs();
-
+	TermsEq.record_eqs_with_destr();
+	
+	(* Check if destructors are deterministic *)
+	
+	Destructor.check_deterministic !Pisyntax.destructors_check_deterministic;
+	
+	(* Display the original processes *)
+	
+	incr Param.process_number;
+	  
 	if (!Param.html_output) then
 	  begin
-	    Display.LangHtml.openfile ((!Param.html_dir) ^ "/process.html") "ProVerif: process";
+	    Display.LangHtml.openfile ((!Param.html_dir) ^ "/process_1.html") "ProVerif: process";
 	    Display.Html.print_string "<H1>Process</H1>\n";
 	    Display.Html.display_process_occ "" p;
 	    Display.Html.newline();
 	    Display.LangHtml.close();
-	    Display.Html.print_string "<A HREF=\"process.html\" TARGET=\"process\">Process</A><br>\n"
+	    Display.Html.print_string "<A HREF=\"process_1.html\" TARGET=\"process\">Process</A><br>\n"
 	  end 
 	else if (!Param.verbose_explain_clauses = Param.ExplainedClauses) || (!Param.explain_derivation) then
 	  begin
@@ -373,7 +670,10 @@ let anal_file s =
 	    Param.weaksecret_mode := true;
 	    Selfun.inst_constraints := true;
 	    let rules = Pitranslweak.transl p in
-	    solve_only interference_analysis (fun q -> q) rules Pitypes.ChoiceQuery;
+	    begin try
+	      solve_only interference_analysis (fun q -> q) rules Pitypes.ChoiceQuery;
+	    with Is_equivalent -> ()
+	    end;
 	    Param.weaksecret_mode := false;
 	    Selfun.inst_constraints := false
 	  end
@@ -433,7 +733,10 @@ let anal_file s =
 		Display.Html.display_eq_query (Pitypes.NonInterfQuery noninterf_queries);
 		Display.Html.print_string "</span><br>\n"
 	      end;
-	    solve_only interference_analysis (fun q -> q) rules (Pitypes.NonInterfQuery noninterf_queries);
+	    begin try
+	      solve_only interference_analysis (fun q -> q) rules (Pitypes.NonInterfQuery noninterf_queries);
+	    with Is_equivalent -> ()
+	    end;
 	    Param.non_interference := false;
 	    incr Param.current_query_number
 	  end) (Pisyntax.get_noninterf_queries());
@@ -450,7 +753,11 @@ let anal_file s =
 	      Display.Html.print_string ("<LI><span class=\"query\">Weak secret " ^ weaksecret.f_name ^ "</span><br>\n");
 	    let _ = Pisyntax.transl_query [] in (* Ignore all events *)
 	    let rules = Pitransl.transl p in
-	    solve_only interference_analysis (fun q -> q) rules (Pitypes.WeakSecret weaksecret);
+	    begin try
+	      solve_only interference_analysis (fun q -> q) rules (Pitypes.WeakSecret weaksecret);
+	    with Is_equivalent -> ()
+	    end;
+	    
 	    Param.weaksecret := None;
 	    Param.weaksecret_mode := false;
 	    Selfun.inst_constraints := false;
@@ -506,5 +813,5 @@ let _ =
           Param.verbose_explain_clauses := Param.ExplainedClauses), 
         "\t\t\tHTML display"
     ]
-    anal_file "Proverif. Cryptographic protocol verifier, by Bruno Blanchet and Xavier Allamigeon";
+    anal_file "Proverif. Cryptographic protocol verifier, by Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval";
   if !gc then Gc.print_stat stdout

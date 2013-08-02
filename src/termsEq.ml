@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -42,50 +42,61 @@ let hasEquations() =
 let hasEquationsToRecord() =
   !equationsToRecord
 
+let non_syntactic f = 
+  match f.f_cat with 
+  | Syntactic f' -> f'
+  | _ -> f
+
+
+(******** Close clauses modulo the equational theory ******
+ close_rule_eq is used for clauses entered by the user in Horn-clause 
+ front-ends,
+ close_fact_eq is used for closing the goals *)
+
 let rec close_term_eq restwork = function
     Var x ->
       begin
 	match x.link with
-	  TLink t -> 
-	    (* TO DO should I always recursively close links modulo equations? *)
-	    close_term_eq restwork t
-	| NoLink -> restwork (Var x)
+          TLink t -> close_term_eq restwork t
+	(* TO DO should I always recursively close links modulo equations? *)
+        | NoLink -> restwork (Var x)
 	| _ -> internal_error "unexpected link in close_term_eq"
       end
+		
   | FunApp(f,l) ->
-      close_term_list_eq (fun l' -> 
+      close_term_list_eq (fun l' ->
 	restwork (FunApp(f,l'));
 	match f.f_cat with
-	  Eq eqlist ->
-	    List.iter (fun red ->
-	      let curr_bound_vars = !current_bound_vars in
-	      current_bound_vars := [];
-	      let (leq', req') = copy_red red in
-	      begin
+	| Eq eqlist ->
+	    List.iter (fun (lhd,rhs) ->
+	      Terms.auto_cleanup (fun () -> 
+		let (leq', req',_) = copy_red (lhd,rhs,[]) in
 		try
-		  List.iter2 unify l' leq';
-		  restwork req'
+	          List.iter2 unify l' leq';
+	  	  restwork req'
 		with Unify -> ()
-	      end;
-	      cleanup();
-	      current_bound_vars := curr_bound_vars
-		   ) eqlist
-	| _ -> ()
-			 ) l
+		    )
+	    ) eqlist
+	 | _ -> ()
+      ) l
 
 and close_term_list_eq restwork = function
-    [] -> restwork []
+  | [] -> restwork []
   | (a::l) ->
       close_term_eq (fun a' ->
 	close_term_list_eq (fun l' ->
-	  restwork (a'::l')) l) a
+	  restwork (a'::l')
+	) l
+      ) a
 
 let close_fact_eq restwork = function
     Pred(p,l) ->
       close_term_list_eq (fun l' -> restwork (Pred(p,l'))) l
   | Out(t,l) ->
-      restwork (Out(t,l))
-      (* TO DO apply equations to the "fact" part of Out facts;
+      Parsing_helper.internal_error "Out facts should not appear in TermsEq.close_fact_eq"
+      (* restwork (Out(t,l))
+	 If Out facts were present, we might need to
+	 apply equations to the "fact" part of Out facts;
 	 the environment part is left unchanged 
       close_term_eq (fun t' ->
 	  restwork (Out(t',l))) t *)
@@ -139,119 +150,116 @@ let close_rule_eq restwork t =
   if hasEquations() then close_rule_eq restwork t else restwork t
 
 
-let rec close_term_destr_eq restwork = function
+(***** Close clauses by rewrite rules of constructors and destructors. *****
+   Used for clauses that define predicates (for LetFilter). 
+
+   The variable accu_constra collects side-conditions of
+   destructors. *)
+
+let rec close_term_destr_eq accu_constra restwork = function
     Var x ->
       begin
 	match x.link with
-	  TLink t -> 
-	    (* TO DO should I always recursively close links modulo equations? *)
-	    close_term_eq restwork t
-	| NoLink -> restwork (Var x)
+          TLink t ->
+	  (* TO DO should I always recursively close links modulo equations? *)
+	    close_term_eq (fun t' -> restwork accu_constra t') t
+	| NoLink -> restwork accu_constra (Var x)
 	| _ -> internal_error "unexpected link in close_term_destr_eq"
       end
   | FunApp(f,l) ->
-      close_term_destr_list_eq (fun l' -> 
-	match f.f_cat with
-	  Eq eqlist ->
-	    restwork (FunApp(f,l'));
-	    List.iter (fun red ->
-	      let curr_bound_vars = !current_bound_vars in
-	      current_bound_vars := [];
-	      let (leq', req') = copy_red red in
-	      begin
-		try
-		  List.iter2 unify l' leq';
-		  restwork req'
-		with Unify -> ()
-	      end;
-	      cleanup();
-	      current_bound_vars := curr_bound_vars
-		   ) eqlist
-	| Red eqlist ->
-	    List.iter (fun red ->
-	      let curr_bound_vars = !current_bound_vars in
-	      current_bound_vars := [];
-	      let (leq', req') = copy_red red in
-	      begin
-		try
-		  List.iter2 unify l' leq';
-		  restwork req'
-		with Unify -> ()
-	      end;
-	      cleanup();
-	      current_bound_vars := curr_bound_vars
-		   ) eqlist
-	| _ -> 
-	    restwork (FunApp(f,l'))
-			 ) l
+      close_term_destr_list_eq accu_constra (fun accu_constra' l' -> 
+	let eqlist = Terms.red_rules_fun f in
+	List.iter (fun red ->
+	  Terms.auto_cleanup (fun () -> 
+	    let (leq', req', side_c') = copy_red red in
+	    try
+	      List.iter2 unify l' leq';
+	      restwork (side_c' @ accu_constra') req'
+	    with Unify -> ()
+		)
+	    ) eqlist
+        ) l
 
-and close_term_destr_list_eq restwork = function
-    [] -> restwork []
+and close_term_destr_list_eq accu_constra restwork = function
+    [] -> restwork accu_constra []
   | (a::l) ->
-      close_term_destr_eq (fun a' ->
-	close_term_destr_list_eq (fun l' ->
-	  restwork (a'::l')) l) a
+      close_term_destr_eq accu_constra (fun accu_constra' a' ->
+	close_term_destr_list_eq accu_constra' (fun accu_constra'' l' ->
+	  restwork accu_constra'' (a'::l')) l) a
 
-let close_fact_destr_eq restwork = function
+let close_fact_destr_eq accu_constra restwork = function
     Pred(p,l) ->
-      close_term_destr_list_eq (fun l' -> restwork (Pred(p,l'))) l
+      close_term_destr_list_eq accu_constra 
+	(fun accu_constra' l' -> 
+	  Terms.auto_cleanup (fun () ->
+	    try
+	    (* Check that the arguments of the predicate do not fail,
+	       by unifying them with a message variable (which cannot be fail) *)
+	      List.iter (fun t -> unify t (Terms.new_var_def (Terms.get_term_type t))) l';
+	      restwork accu_constra' (Pred(p,l'))
+	    with Unify -> ()
+		)
+	    ) l
   | Out(t,l) ->
-      restwork (Out(t,l))
-      (* TO DO apply equations to the "fact" part of Out facts;
-	 the environment part is left unchanged 
-      close_term_eq (fun t' ->
-	  restwork (Out(t',l))) t *)
+      Parsing_helper.internal_error "Out facts should not appear in TermsEq.close_fact_destr_eq"
 
-
-let rec close_fact_destr_list_eq restwork = function
-    [] -> restwork []
+let rec close_fact_destr_list_eq accu_constra restwork = function
+    [] -> restwork accu_constra []
   | (a::l) ->
-      close_fact_destr_eq (fun a' ->
-	close_fact_destr_list_eq (fun l' ->
-	  restwork (a'::l')) l) a
+      close_fact_destr_eq accu_constra (fun accu_constra' a' ->
+	close_fact_destr_list_eq accu_constra' (fun accu_constra'' l' ->
+	  restwork accu_constra'' (a'::l')) l) a
 
-let close_constra1_destr_eq restwork = function
+let close_constra1_destr_eq accu_constra restwork = function
     Neq(t1,t2) ->
-      close_term_destr_eq (fun t1' ->
-	close_term_destr_eq (fun t2' ->
-	  restwork (Neq(t1',t2'))
-			    ) t2) t1
+      close_term_destr_eq accu_constra (fun accu_constra' t1' ->
+	close_term_destr_eq accu_constra' (fun accu_constra'' t2' ->
+	  Terms.auto_cleanup (fun () -> 
+	    try
+	    (* Check that the arguments of Neq do not fail,
+	       by unifying them with a message variable (which cannot be fail) *)
+	      unify t1' (Terms.new_var_def (Terms.get_term_type t1'));
+	      unify t2' (Terms.new_var_def (Terms.get_term_type t2'));
+	      restwork accu_constra'' (Neq(t1',t2'))
+	    with Unify -> ()
+		)
+	    ) t2) t1
 
-let rec close_constra_destr_eq restwork = function
-    [] -> restwork []
+let rec close_constra_destr_eq accu_constra restwork = function
+    [] -> restwork accu_constra []
   | (a::l) ->
-      close_constra1_destr_eq (fun a' ->
-	close_constra_destr_eq (fun l' ->
-	  restwork (a'::l')
+      close_constra1_destr_eq accu_constra (fun accu_constra' a' ->
+	close_constra_destr_eq accu_constra' (fun accu_constra'' l' ->
+	  restwork accu_constra'' (a'::l')
 	    ) l) a
 
-let rec close_constra_destr_list_eq restwork = function
-    [] -> restwork []
+let rec close_constra_destr_list_eq accu_constra restwork = function
+    [] -> restwork accu_constra []
   | (a::l) ->
-      close_constra_destr_eq (fun a' ->
-	close_constra_destr_list_eq (fun l' ->
-	  restwork (a'::l')
+      close_constra_destr_eq accu_constra (fun accu_constra' a' ->
+	close_constra_destr_list_eq accu_constra' (fun accu_constra'' l' ->
+	  restwork accu_constra'' (a'::l')
 	    ) l) a
 
 let close_rule_destr_eq restwork (hyp,concl,constra) =
-  close_fact_destr_list_eq (fun hyp' ->
-    close_fact_destr_eq (fun concl' ->
-      close_constra_destr_list_eq (fun constra' ->
+  close_fact_destr_list_eq [] (fun accu_constra hyp' ->
+    close_fact_destr_eq accu_constra (fun accu_constra' concl' ->
+      close_constra_destr_list_eq accu_constra' (fun accu_constra'' constra' ->
 	let tmp_bound = !current_bound_vars in
 	current_bound_vars := [];
 	let r = (List.map copy_fact2 hyp', copy_fact2 concl',
-		 List.map copy_constra2 constra') in
+		 List.map copy_constra2 ((List.map (fun (t1,t2) -> [Neq(t1,t2)]) accu_constra'') @ constra')) in
 	cleanup();
 	restwork r;
 	current_bound_vars := tmp_bound
 				  ) constra) concl) hyp
 
+(********* Transform equations into rewrite rules *********)
 
 (* Copy an equation *)
 
 let copy_eq (leq, req) = 
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (eq4)";
+  assert (!current_bound_vars == []);
   let eq' = (copy_term2 leq, copy_term2 req) in
   cleanup();
   eq'
@@ -274,7 +282,7 @@ let rec normal_form = function
         [] -> t'
       | ((leq,req)::redl) ->
          try
-           Terms.match_terms2 leq t';
+           Terms.match_terms leq t';
            let r = copy_term3 req in
            Terms.cleanup();
            normal_form r
@@ -342,8 +350,7 @@ let rec build_rules_eq leq req f get_rule = function
    FunApp(f2,l) as t ->
       if f2 == f then
       begin
-	if !current_bound_vars != [] then
-	  Parsing_helper.internal_error "bound vars should be cleaned up (r2)";
+	assert (!current_bound_vars == []);
         try
           unify t leq;
           get_rule req
@@ -360,11 +367,10 @@ and build_rules_eq_list leq req f get_rule = function
       build_rules_eq_list leq req f (fun concl_list -> get_rule (a::concl_list)) l
 
 let rec implies_eq (leq1, req1) (leq2, req2) =
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (r3)";
+  assert (!current_bound_vars == []);
   try
-    match_terms2 leq1 leq2;
-    match_terms2 req1 req2;
+    Terms.match_terms leq1 leq2;
+    Terms.match_terms req1 req2;
     cleanup();
     true
   with NoMatch -> 
@@ -783,10 +789,10 @@ let record_eqs () =
 	  Terms.get_vars var_list_rhs req;
 	  if not (List.for_all (fun v -> List.exists (Terms.occurs_var v) l) (!var_list_rhs)) then
 	    begin
-	      print_string "Equation: ";
+	      print_string "Error in equation: ";
 	      Display.Text.display_eq eq;
 	      print_newline();
-	      Parsing_helper.user_error "Error: All variables of the right-hand side of an equation\nshould also occur in the left-hand side.\n"
+	      Parsing_helper.user_error "All variables of the right-hand side of an equation\nshould also occur in the left-hand side.\n"
 	    end;
 
           match f.f_cat with
@@ -840,28 +846,11 @@ let record_eqs () =
    end
   end
 
+ 
 
-(* Close destructor reductions under equations *)
 
-let close_destr_eq f l =
-  let results = ref [] in
-  List.iter (fun (leq, req) ->
-    close_term_list_eq (function
-	[] -> internal_error "should not be empty"
-      | (req'::leq') ->
-	  let curr_bound_vars = !current_bound_vars in
-	  current_bound_vars := [];
-	  let (leq1,req1) = (List.map copy_term2 leq', copy_term2 req') in
-	  cleanup();
-	  if (List.exists (fun (leq2,req2) -> 
-	    implies_eq (FunApp(f, leq2), req2) (FunApp(f, leq1), req1)) (!results)) then () else
-	  results := (leq1,req1) :: List.filter (fun (leq2,req2) -> 
-	    not(implies_eq (FunApp(f, leq1), req1) (FunApp(f, leq2), req2))) (!results);
-	  current_bound_vars := curr_bound_vars) (req::leq)
-  ) l;
-  !results
 
-(* Closure of terms modulo the equational theory.
+(****** Closure of terms modulo the equational theory. *******
    First calls restwork with one possible equal term.
    When restwork raises Unify, calls it again with another possible
    equal term, and so on. *)
@@ -874,6 +863,7 @@ let rec close_term_eq_exc restwork = function
         | NoLink -> restwork (Var x)
         | _ -> internal_error "unexpected link in close_term_eq_exc"
       end
+  | FunApp(f,l) when (non_syntactic f).f_cat = Failure -> restwork (FunApp(f,l))
   | FunApp(f,l) ->
       close_term_list_eq_exc (fun l' -> 
 	let curr_bound_vars = !current_bound_vars in
@@ -941,7 +931,7 @@ let remove_syntactic_constra c = c
 
 *)
 
-(* Unification modulo the equational theory *)
+(****** Unification modulo the equational theory ******)
 
 (* Equivalent of copy_term, but replaces function symbols with
    syntactic ones *)
@@ -952,47 +942,46 @@ let get_syntactic f =
   try
     Hashtbl.find syntactic_table f
   with Not_found ->
-    let f' = { f_name = f.f_name;
+    let f' = { f_name = (* "sy_" ^ *) f.f_name;
                f_type = f.f_type;
                f_cat = Syntactic f;
                f_initial_cat = Syntactic f;
                f_private = f.f_private;
-	       f_options = f.f_options } in
+               f_options = f.f_options } in
     Hashtbl.add syntactic_table f f';
     f'
 
 let rec put_syntactic = function
- | FunApp(f,l) -> FunApp(get_syntactic f, List.map put_syntactic l)
- | Var v -> match v.link with
-      NoLink -> 
-        let r = { vname = v.vname;
-		  sname = v.sname;
-		  btype = v.btype;
-                  link = NoLink } in
-        link v (VLink r);
-        Var r
-   | VLink l -> Var l
-   | _ -> internal_error "Unexpected link in put_syntactic"
-
+  | FunApp(f,l) -> FunApp(get_syntactic f, List.map put_syntactic l)
+  | Var v -> 
+      match v.link with
+      |	NoLink -> 
+          let r = 
+            { vname = v.vname;
+              sname = v.sname;
+              unfailing = v.unfailing;
+              btype = v.btype;
+              link = NoLink }
+	  in
+          link v (VLink r);
+          Var r
+      | VLink l -> Var l
+      | _ -> internal_error "Unexpected link in put_syntactic"
 
 (* Equivalent of copy_term2, but replaces syntactic function symbols
    with their non-syntactic equivalents *)
 
-let non_syntactic f = 
-  match f.f_cat  with 
-    Syntactic f' -> f'
-  | _ -> f
-
 let rec copy_remove_syntactic = function
- | FunApp(f,l) -> FunApp(non_syntactic f, List.map copy_remove_syntactic l)
- | Var v -> match v.link with
-      NoLink -> 
-        let r = copy_var v in
-        link v (VLink r);
-        Var r
-   | TLink l -> copy_remove_syntactic l
-   | VLink r -> Var r
-   | _ -> internal_error "unexpected link in copy_remove_syntactic"
+  | FunApp(f,l) -> FunApp(non_syntactic f, List.map copy_remove_syntactic l)
+  | Var v -> 
+      match v.link with
+	NoLink -> 
+	  let r = copy_var v in
+	  link v (VLink r);
+          Var r
+      | TLink l -> copy_remove_syntactic l
+      | VLink r -> Var r
+      | _ -> internal_error "unexpected link in copy_remove_syntactic"
 
 let copy_remove_syntactic_pair = fun (v,t) -> (v, copy_remove_syntactic t)
 
@@ -1019,67 +1008,69 @@ let remove_syntactic_fact = function
   | Out(t,l) -> Out(remove_syntactic_term t, List.map remove_syntactic_pair l)
 
 let rec remove_syntactic_constra c = List.map (function
-    Neq(t1,t2) -> Neq(remove_syntactic_term t1, remove_syntactic_term t2)) c
-
+    Neq(t1,t2) -> Neq(remove_syntactic_term t1, remove_syntactic_term t2)
+	) c
 
 (* Unification modulo itself *)
 
 let rec close_term_eq_synt restwork = function
-    Var x ->
-      begin
-        match x.link with
-          TLink t -> close_term_eq_synt restwork t
-        | NoLink -> restwork (Var x)
-        | _ -> internal_error "unexpected link in close_term_eq_synt"
-      end
+  | Var x ->
+    begin
+      match x.link with
+	| TLink t -> close_term_eq_synt restwork t
+	| NoLink -> restwork (Var x)
+	| _ -> internal_error "unexpected link in close_term_eq_synt"
+    end
   | FunApp(f,l) ->
       let curr_bound_vars = !current_bound_vars in
       current_bound_vars := [];
+
       try
-        let res = restwork (FunApp(f,l)) in
-        cleanup();
-        current_bound_vars := curr_bound_vars;
+      	let res = restwork (FunApp(f,l)) in
+	cleanup();
+	current_bound_vars := curr_bound_vars;
 	res
       with 
-	Unify ->
-          cleanup();
-          current_bound_vars := curr_bound_vars;
-          close_term_list_eq_synt (fun l' -> 
-          match f.f_cat with
-            Eq eqlist ->
-	      let rec reweqlist = function
-		  (leq, req) :: lrew ->
-		    let curr_bound_vars = !current_bound_vars in
-		    current_bound_vars := [];
-		    let leq' = List.map put_syntactic leq in
-		    let req' = put_syntactic req in
-		    cleanup();
-		    begin
-                      try
-			let res = unify_modulo_list (fun () -> restwork req')  l' leq' in
+        Unify ->
+	  cleanup();
+	  current_bound_vars := curr_bound_vars;
+	  close_term_list_eq_synt (fun l' -> 
+	    match f.f_cat with
+	      | Eq eqlist ->
+		    	
+		  let rec reweqlist = function
+		    | (leq, req) :: lrew ->
+		        let curr_bound_vars = !current_bound_vars in
+			current_bound_vars := [];
+			let leq' = List.map put_syntactic leq in
+			let req' = put_syntactic req in
 			cleanup();
-			current_bound_vars := curr_bound_vars;
-			res
-                      with 
-			Unify -> 
-			  (* Try another rewriting when Unify is raised *)
-			  cleanup();
-			  current_bound_vars := curr_bound_vars;
-			  reweqlist lrew
-		      | x ->
-			  cleanup();
-			  current_bound_vars := curr_bound_vars;
-			  raise x
-		    end
-		| [] -> raise Unify
-	      in
-              reweqlist eqlist
-          | _ -> raise Unify
-                ) l
+			begin
+			  try
+			    let res = unify_modulo_list (fun () -> restwork req')  l' leq' in
+			    cleanup();
+			    current_bound_vars := curr_bound_vars;
+			    res
+			  with 
+			    Unify -> 
+			      (* Try another rewriting when Unify is raised *)
+			      cleanup();
+			      current_bound_vars := curr_bound_vars;
+			      reweqlist lrew
+			   | x ->
+			      cleanup();
+			      current_bound_vars := curr_bound_vars;
+			      raise x
+			end
+		    | [] -> raise Unify in
+
+		  reweqlist eqlist
+	      | _ -> raise Unify
+	  ) l
       | x ->
-          cleanup();
-          current_bound_vars := curr_bound_vars;
-	  raise x
+	 cleanup();
+	 current_bound_vars := curr_bound_vars;
+	 raise x
 
 and close_term_list_eq_synt restwork = function
     [] -> restwork []
@@ -1091,69 +1082,568 @@ and close_term_list_eq_synt restwork = function
 and unify_modulo restwork t1 t2 =
   close_term_eq_synt (fun t1 ->
     close_term_eq_synt (fun t2 ->
-     match (t1,t2) with
-       (Var v, Var v') when v == v' -> restwork ()
-     | (Var v, _) -> 
-       begin
-          match v.link with
-             NoLink ->
-	       begin
-		 match t2 with
-		   Var {link = TLink t2'} -> unify_modulo restwork t1 t2'
-		 | _ ->
-		     occur_check v t2;
-		     link v (TLink t2);
-                     restwork ()
-	       end
-           | TLink t1' -> unify_modulo restwork t1' t2
-           | _ -> internal_error "Unexpected link in unify 1"
-       end
-     | (_, Var v) ->
-       begin
-          match v.link with
-             NoLink -> 
-	       occur_check v t1;
-	       link v (TLink t1);
-               restwork ()
-           | TLink t2' -> unify_modulo restwork t1 t2'
-           | _ -> internal_error "Unexpected link in unify 2"
-       end
-     | (FunApp(f1, l1), FunApp(f2,l2)) ->
-        if (non_syntactic f1) != (non_syntactic f2) then raise Unify;
-        unify_modulo_list restwork l1 l2) t2) t1
+      match (t1,t2) with
+      | (Var v, Var v') when v == v' -> restwork ()
+      | (Var v, _) -> 
+	  begin
+	    match v.link with
+	    | NoLink ->
+		begin
+		  match t2 with
+		  | Var {link = TLink t2'} -> unify_modulo restwork t1 t2'
+		  | Var v' when v.unfailing ->
+		      link v (TLink t2);
+		      restwork ()
+		  | Var v' when v'.unfailing -> 
+		      link v' (TLink t1);
+		      restwork ()
+		  | FunApp (f_symb,_) when (non_syntactic f_symb).f_cat = Failure && v.unfailing = false -> raise Unify
+		  | _ -> 
+		      occur_check v t2;
+             	      link v (TLink t2);
+             	      restwork ()
+		end
+	    | TLink t1' -> unify_modulo restwork t1' t2
+	    | _ -> internal_error "Unexpected link in unify 1"
+	  end
+      | (FunApp(f,_), Var v) ->
+	  begin
+	    match v.link with
+	    | NoLink -> 
+		if v.unfailing = false && (non_syntactic f).f_cat = Failure 
+		then raise Unify
+		else
+		  begin
+		    occur_check v t1;
+		    link v (TLink t1);
+		    restwork ()
+		  end
+	    | TLink t2' -> unify_modulo restwork t1 t2'
+	    | _ -> internal_error "Unexpected link in unify 2"
+	  end
+      | (FunApp(f1, l1), FunApp(f2,l2)) ->
+  	  if (non_syntactic f1) != (non_syntactic f2) then raise Unify;
+  	  unify_modulo_list restwork l1 l2
+    ) t2
+  ) t1
 
 and unify_modulo_list restwork l1 l2 = 
   match (l1, l2) with
-    [], [] -> restwork ()
+  | [], [] -> restwork ()
   | (a1::l1'), (a2::l2') ->
       unify_modulo (fun () -> unify_modulo_list restwork l1' l2') a1 a2
   | _ -> internal_error "Lists should have same length in unify_modulo_list"
 
-let rec get_list l1 l2 = match (l1,l2) with
-  [],[] -> []
-| ((v1,t1)::l1'),((v2,t2)::l2') ->
-    let l' = get_list l1' l2' in
-    (* Unification of environments ignores variables that do not match.
-       When needed, the result of the unification should be an
-       environment that contains only the common variables *)
-    if v1 == v2 then t1 :: l' else l'
-| _ -> internal_error "Lists should have same length in get_list"
+let rec get_list l1 l2 = 
+  match (l1,l2) with
+  | [],[] -> []
+  | ((v1,t1)::l1'),((v2,t2)::l2') ->
+      let l' = get_list l1' l2' in
+      (* Unification of environments ignores variables that do not match.
+	 When needed, the result of the unification should be an
+	 environment that contains only the common variables *)
+      if v1 == v2 then t1 :: l' else l'
+  | _ -> internal_error "Lists should have same length in get_list"
 
 let unify_modulo_env restwork l1 l2 =
-    let len1 = List.length l1 in
-    let len2 = List.length l2 in
-    if len2 < len1 then 
-      begin
-	let l1 = Terms.skip (len1-len2) l1 in
-        unify_modulo_list restwork (get_list l1 l2) (get_list l2 l1) 
-      end
+  let len1 = List.length l1 in
+  let len2 = List.length l2 in
+  if len2 < len1 then 
+    begin
+      let l1 = Terms.skip (len1-len2) l1 in
+      unify_modulo_list restwork (get_list l1 l2) (get_list l2 l1) 
+    end
+  else
+    begin
+      let l2 = Terms.skip (len2-len1) l2 in
+      unify_modulo_list restwork (get_list l1 l2) (get_list l2 l1) 
+    end
+
+(************** Treatment of inequality constraints ************)
+      
+(* Implication between constraints. Use this after simplification
+   to get the best possible precision. *)
+
+let assoc_gen_with_term = ref []
+
+let rec implies_list_terms nextf l_t1 l_t2 = match (l_t1,l_t2) with
+  | [], [] -> nextf ()
+  | ((FunApp(f1,[]))::l1, t2::l2) when f1.f_cat = General_var -> 
+    begin
+      try 
+	let t = List.assq f1 (!assoc_gen_with_term) in
+	if not (equal_terms t t2) then raise NoMatch;
+
+	implies_list_terms nextf l1 l2
+					
+      with Not_found ->
+	assoc_gen_with_term := (f1, t2) :: (!assoc_gen_with_term);
+	try
+	  let r = implies_list_terms nextf l1 l2 in
+	  assoc_gen_with_term := List.tl (!assoc_gen_with_term);
+	  r
+	with NoMatch ->
+	  assoc_gen_with_term := List.tl (!assoc_gen_with_term);
+	  raise NoMatch
+    end
+			
+  | ((Var v1)::l1), ((Var v2)::l2) when v1 == v2 ->
+      implies_list_terms nextf l1 l2
+  | ((FunApp (f1,l1'))::l1, (FunApp (f2,l2'))::l2) ->
+      if f1 != f2 then raise NoMatch;
+      implies_list_terms nextf (l1' @ l1) (l2' @ l2)
+  | _,_ -> raise NoMatch
+	
+let implies_simple_constraint nextf (Neq(t1,t1')) (Neq(t2, t2')) = 
+  implies_list_terms nextf [t1;t1'] [t2;t2']
+
+let rec search_for_implied_constraint_in nextf sc1 = function
+    [] -> raise NoMatch
+  | (sc2::sc_l2) -> 
+        try
+          implies_simple_constraint nextf sc1 sc2
+        with NoMatch ->
+          search_for_implied_constraint_in nextf sc1 sc_l2 
+
+let implies_constraint sc_list1 sc_list2 = 
+  let rec sub_implies_constraint sc_list1 sc_list2 () = 
+    match sc_list1 with
+    | [] -> ()
+    | sc1::sc_l1 -> search_for_implied_constraint_in (sub_implies_constraint sc_l1 sc_list2) sc1 sc_list2 
+  in
+  try
+    sub_implies_constraint sc_list1 sc_list2 ();
+    true
+  with NoMatch -> 
+    false      
+
+(* Simplification of constraints *)
+
+(* Remark: for the way the subsumption test is implemented,
+   it is important that all variables that occur in constraints
+   also occur in the rest of the rule.
+   Indeed, only the variables that occur in the rest of the rule
+   are bound during the subsumption test. Other variables
+   are always considered to be different, yielding the non-detection
+   of subsumption 
+
+   When there is no universally quantified variable and no equational
+   theory, we can simply remove all inequalities that contain variables
+   not in the rest of the rule.
+   However, "for all x, x <> y" is wrong even when y does not 
+   occur elsewhere. Similarly, "x <> decrypt(encrypt(x,y),y)" is wrong
+   with the equation "decrypt(encrypt(x,y),y) = x".
+   In this case, we can replace these variables with _new_
+   constants.
+   In the long run, the best solution might be to consider
+   inequalities as an ordinary blocking predicate (and to remove
+   constraints completely).
+ *)
+
+exception TrueConstraint
+exception FalseConstraint
+
+let any_val_counter = ref 0
+
+(** [elim_var_if_possible has_gen_var keep_vars v] checks if [v] occurs 
+    in the list of variables [keep_vars]. If not then it adds a [Tlink] 
+    into [v] with an "any_val" symbol, so that [v] will be replaced
+    with "any_val". *)
+let elim_var_if_possible has_gen_var keep_vars v =
+  if not (List.memq v keep_vars) then
+  begin
+    if (not has_gen_var) && (not (hasEquations())) 
+    then raise TrueConstraint
     else
       begin
-	let l2 = Terms.skip (len2-len1) l2 in
-        unify_modulo_list restwork (get_list l1 l2) (get_list l2 l1) 
+        match v.link with
+	| NoLink ->
+	    incr any_val_counter;
+	    Terms.link v (TLink (FunApp(
+	      { f_name = "any_val" ^ (string_of_int (!any_val_counter)); 
+	        f_type = [], v.btype; 
+		f_cat = Eq []; (* Should not be a name to avoid bad interaction with any_name_fsymb *)
+		f_initial_cat = Eq []; (* Should not be a name to avoid bad interaction with any_name_fsymb *)
+		f_private = true;
+		f_options = 0 }, [])))
+	| TLink _ -> ()
+	| _ -> Parsing_helper.internal_error "unexpected link in elim_var_if_possible"
+      end
+  end
+
+let rec check_vars_occurs has_gen_var keep_vars = function
+  | FunApp(_,l) -> List.iter (check_vars_occurs has_gen_var keep_vars) l
+  | Var v -> elim_var_if_possible has_gen_var keep_vars v
+
+let rec has_gen_var = function
+    Var v -> false
+  | FunApp(f,[]) when f.f_cat = General_var -> true
+  | FunApp(_,l) -> List.exists has_gen_var l
+
+(** [elim_var_notelsewhere] expect contraints with variable on the left part 
+    of the disequation *)
+let elim_var_notelsewhere has_gen_var keep_vars = function
+  | (Neq(Var v1, Var v2)) ->
+      assert(v1 != v2);
+      elim_var_if_possible has_gen_var keep_vars v1;
+      elim_var_if_possible has_gen_var keep_vars v2
+      (* constraints Neq(x,t), where x does not appear in the keep_vars and t is not a variable, are true
+         Note that, if t was a universally quantified variable, it would have been removed by swap.
+      *)
+  | (Neq(Var v, t)) -> 
+      elim_var_if_possible false keep_vars v;
+      check_vars_occurs has_gen_var keep_vars t
+  | c ->
+      Display.Text.display_constra [c];
+      Parsing_helper.internal_error "unexpected constraint in simplify_simple_constraint: t <> t', t not variable"
+     
+(*********************************************************
+	functions for formula simplification. This section 
+	include the functions :
+		- unify_disequation
+		- elim_universal_variable
+**********************************************************)
+
+(** Unify_disequations *)
+
+let rev_assoc2 keep_vars assoc_gen_var v =
+  match rev_assoc v (!assoc_gen_var) with
+    Var _ ->
+      if List.mem v keep_vars then
+	Var v
+      else
+	let v' = new_gen_var v.btype false in
+	assoc_gen_var := (v', v) :: (!assoc_gen_var);
+	FunApp(v', [])
+  | x -> x
+
+
+(** [make_disequation_from_unify] create the list of simple constraint 
+	corresponding to $\bigvee_j x_j \neq \sigma_k x_j$*)
+let rec make_disequation_from_unify keep_vars assoc_gen_with_var = function
+  | [] -> []
+  | (var::l) ->
+      let l' = make_disequation_from_unify keep_vars assoc_gen_with_var l in
+      	match var.link with
+	  | NoLink -> l'
+	  | TLink _ -> 
+	      (Neq(rev_assoc2 keep_vars assoc_gen_with_var var, follow_link (rev_assoc2 keep_vars assoc_gen_with_var) (Var var))) :: l'
+	  | _ -> internal_error "unexpected link in make_disequation_from_unify"	
+					
+let rec close_disequation_eq restwork = function
+  | [] -> restwork ()
+  | Neq(t1,t2)::l ->
+      begin 
+	try
+	  unify_modulo (fun () ->
+	    close_disequation_eq restwork l;
+	    raise Unify) t1 t2
+	    (* In fact, always terminates by raising Unify; never returns; cleanup() *)
+	with 
+	  Unify -> cleanup ()
       end
 
-(* Simplifies a term using the equations *)
+let unify_disequation nextf accu constra = 
+  let assoc_gen_with_var = ref [] in (* Association list general var * var *)
+  
+  assert (!Terms.current_bound_vars == []);
+      
+  (* Get all classic variables *)
+  
+  let keep_vars = ref [] in
+  List.iter (get_vars_constra keep_vars) constra;
+  
+  (* all general variable in [constra] are replaced by classic variables *)	
+  let constra' = List.map (function 
+    | Neq(t1,t2) -> Neq(replace_f_var assoc_gen_with_var t1, replace_f_var assoc_gen_with_var t2)
+	  ) constra 
+  in	
+  let var_list = ref [] in
+  List.iter (get_vars_constra var_list) constra';
+   
+  close_disequation_eq (fun () ->
+    try
+      let new_disequation = make_disequation_from_unify !keep_vars assoc_gen_with_var !var_list in
+      cleanup ();
+      accu := (nextf new_disequation) :: (!accu)
+    with
+    	TrueConstraint -> cleanup ()
+  ) constra';
+
+  assert (!Terms.current_bound_vars == [])
+
+(** Elim_universal_variables *)
+
+(** This function must be applied after [unify_disequation]. Indeed we assume that for
+	any v \neq t in [constra], v only occur once in [constra].*)
+let elim_universal_variable constra = 
+
+  let rec look_for_general_var constra_done = function
+    | [] -> List.rev constra_done
+    | Neq(FunApp(f,[]),_)::q when f.f_cat = General_mayfail_var ->
+	look_for_general_var constra_done q
+    | Neq(v1, FunApp(f,[]))::q when f.f_cat = General_mayfail_var ->
+        let rep = function 
+	  | Neq(x, t) -> Neq(x, replace_name f v1 t) 
+	in
+				
+	let constra_done' = List.map rep constra_done
+	and q' = List.map rep q in
+		
+	look_for_general_var constra_done' q'
+    | Neq(Var v,_)::q when v.unfailing ->
+	Parsing_helper.internal_error "May-fail variables forbidden in inequalities (1)"
+    | Neq(_, Var v)::q when v.unfailing ->
+	Parsing_helper.internal_error "May-fail variables forbidden in inequalities (2)"
+    (* Given the previous cases, at this point, in Neq(t,t'), t and t' cannot
+       fail: they cannot be General_mayfail_vars nor may-fail variables,
+       and they cannot be the constant fail, because the unification of
+       fail with the cases that remain (General_var, variable) fails. *)
+    | Neq(FunApp(f,[]),_)::q when f.f_cat = General_var -> 
+	look_for_general_var constra_done q
+    | Neq(Var(v) as v1,FunApp(f,[]))::q when f.f_cat = General_var -> 
+        let rep = function 
+	  | Neq(x, t) -> Neq(x, replace_name f v1 t) 
+	in
+				
+	let constra_done' = List.map rep constra_done
+	and q' = List.map rep q in
+		
+	look_for_general_var constra_done' q'
+    | t::q -> look_for_general_var (t::constra_done) q 
+  in
+  look_for_general_var [] constra
+ 
+(*** Combining the simplification ***)
+
+let feed_new_constra keep_vars accu constra = 
+(* TO DO do not keep "syntactic" terms after unification modulo?  
+   let constra = remove_syntactic_constra constra in *)
+  try
+    let constra_has_gen_var = List.exists (function 
+    	| Neq(x,t) -> has_gen_var t) constra in
+    List.iter (elim_var_notelsewhere constra_has_gen_var keep_vars) constra;
+    let constrasimp = copy_constra3 constra in
+    Terms.cleanup();
+    if constrasimp = [] then
+      raise FalseConstraint
+    else if List.exists (fun a'' -> implies_constraint a'' constrasimp) (!accu) then 
+      ()
+    else
+      accu := constrasimp :: (List.filter (fun a'' -> not (implies_constraint constrasimp a'')) (!accu))
+  with TrueConstraint ->
+    Terms.cleanup()		
+
+		
+(* Check that the current constraints are still satisfiable.
+   Raise Unify when they are not. Returns the simplified constraints
+   when they are.
+
+   In the next function, Terms.auto_cleanup is useful because
+   links may be stored in Terms.current_bound_vars when the function is called;
+   these links must remain. *)
+
+let check_constraint_list constra_list = 
+  Terms.auto_cleanup (fun _ -> 
+    let constra_list_1 = List.map Terms.copy_constra2 constra_list in
+    Terms.cleanup();
+    let accu = ref [] in
+    List.iter (unify_disequation elim_universal_variable accu) constra_list_1;
+    List.iter (function [] -> raise Terms.Unify |_ -> ()) !accu;
+    !accu
+  )
+
+(* [simplify_constra_list_keepvars keep_vars constralist]
+   simplifies the constraints [constralist] knowing that 
+   variables in [keep_vars] occur elsewhere, so they should be preserved.
+   Raises FalseConstraint when the constraints are not satisfiable.
+
+   In the next function, Terms.auto_cleanup is useful for two reasons:
+   - links may be stored in Terms.current_bound_vars when the function is called;
+   these links must remain.
+   - during the function, exception FalseConstraint may be raised, with some
+   links created during the function remaining; these links must be deleted
+   before the function returns. *)
+
+let simplify_constra_list_keepvars keep_vars constralist =
+  Terms.auto_cleanup (fun () -> 
+    let accu = ref [] in
+    List.iter (unify_disequation elim_universal_variable accu) constralist;
+    let accu' = ref [] in
+    List.iter (feed_new_constra keep_vars accu') (!accu);
+    !accu'
+  )
+
+(* [simplify_constra_list rule constralist] 
+   simplifies the constraints [constralist] knowing that 
+   they occur in a clause containing the facts in the list [rule].
+   Raises FalseConstraint when the constraints are not satisfiable. *)
+
+let get_vars_facts l = 
+  let vars = ref [] in
+  List.iter (Terms.get_vars_fact vars) l;
+  !vars
+
+let simplify_constra_list rule constralist =
+  simplify_constra_list_keepvars (get_vars_facts rule) constralist
+
+(* Implication between constraints 
+
+1/ copy the constraints to instantiate variables according to
+   the substitution computed by matching conclusion and hypotheses.
+   This uses copy_constra3
+
+2/ simplify the obtained constraint, by simplify_constra_list
+
+3/ test the implication, by implies_constra
+   raise NoMatch if it fails 
+
+Notice that variables may not be cleaned up when this function is called.
+*)
+
+let implies_constra_list_keepvars keep_vars formula1 formula2 () =
+  (* Apply the previous calculated substitution on [formula2] *)
+  let formula2' = List.map copy_constra3 formula2 in
+  (* We are assuming in this function that formula1 is already simplified
+     so only formula2' need to be simplified *)
+  try 
+    let formula2'' = simplify_constra_list_keepvars keep_vars formula2' in
+    if not 
+	(List.for_all (fun c2elem -> 
+	  List.exists (fun c1elem -> implies_constraint c1elem c2elem) formula1
+	    ) formula2'') then raise NoMatch
+  with FalseConstraint ->
+    raise NoMatch
+
+let implies_constra_list rule formula1 formula2 () =
+  implies_constra_list_keepvars (get_vars_facts rule) formula1 formula2 ()
+
+
+(***** Close destructor rewrite rules under equations ******)
+
+
+(* Subsumption between rewrite rules with side conditions *)
+
+let implies_rew (leq1, req1, side_c1) (leq2, req2, side_c2) =
+  assert (!current_bound_vars == []);
+  try
+    List.iter2 Terms.match_terms leq1 leq2;
+    Terms.match_terms req1 req2;
+    (* test side_c2 => \sigma side_c1
+       where \sigma is obtained by the above matching.*)
+    let vars = ref [] in
+    List.iter (Terms.get_vars vars) leq2;
+    Terms.get_vars vars req2;
+    implies_constra_list_keepvars (!vars) side_c2 side_c1 ();
+    Terms.cleanup();
+    true
+  with NoMatch -> 
+    Terms.cleanup();
+    false
+
+(* Convert from Neq form to pair form *)
+
+let neq_to_pair = function
+    [Neq(t1,t2)] -> (t1,t2)
+  | l ->
+      let l1 = List.map (fun (Neq(t,_)) -> t) l in
+      let l2 = List.map (fun (Neq(_,t)) -> t) l in
+      let tuple_fun = Terms.get_tuple_fun (List.map Terms.get_term_type l1) in
+      (FunApp(tuple_fun, l1), FunApp(tuple_fun, l2))
+
+(* Closure of destructors itself *)
+
+let close_destr_eq f l =
+  let results = ref [] in
+  
+  List.iter (fun (leq, req,side_c) ->
+    close_term_list_eq (function
+      | [] -> internal_error "should not be empty"
+      |	(req'::leq') ->
+	  let curr_bound_vars = !current_bound_vars in
+	  current_bound_vars := [];
+
+	  let (leq1,req1, side_c1) = 
+	    (List.map copy_term2 leq', copy_term2 req', 
+	     List.map (fun (t1,t2) -> [Neq(copy_term2 t1, copy_term2 t2)]) side_c) 
+	  in
+	  cleanup();
+
+	  (* Simplify the obtained constraints *)
+	  begin
+	    try 
+	      let vars = ref [] in
+	      List.iter (Terms.get_vars vars) leq1;
+	      Terms.get_vars vars req1;
+	      let side_c1' = simplify_constra_list_keepvars (!vars) side_c1 in
+	      let rew1 = (leq1, req1, side_c1') in
+	    
+	      (* Eliminate redundant rewrite rules *)
+	      if List.exists (fun rew2 -> 
+		implies_rew rew2 rew1) (!results) then ()
+	      else
+		results := rew1 :: (List.filter (fun rew2 -> 
+		  not(implies_rew rew1 rew2)) (!results));
+	    with FalseConstraint -> ()
+	  end;
+	  current_bound_vars := curr_bound_vars
+    ) (req::leq)
+  ) l;
+
+  (* Convert back from the Neq form to the pair form *)
+  List.map (fun (leq, req, side_c) -> 
+    let var_list_rhs = ref [] in
+    Terms.get_vars var_list_rhs req;
+    List.iter (List.iter (Terms.get_vars_constra var_list_rhs)) side_c;
+    if not (List.for_all (fun v -> List.exists (Terms.occurs_var v) leq) (!var_list_rhs)) then
+      begin
+	print_string ("Error in the definition of destructor " ^ f.f_name ^ " after taking into account equations:\nIncorrect rewrite rule: ");
+	Display.Text.display_red f [leq, req, List.map neq_to_pair side_c];
+	Parsing_helper.user_error "All variables of the right-hand side of a rewrite rule\nshould also occur in the left-hand side.\n"
+      end;
+    
+    (leq, req, List.map neq_to_pair side_c)
+      ) !results
+
+(* Record equations, also updating rewrite rules of destructors *)
+
+let record_eqs_with_destr () =
+  if !Param.html_output then 
+    Display.LangHtml.openfile ((!Param.html_dir) ^ "/eq.html") "ProVerif: equations and destructors";
+  
+  if hasEquationsToRecord() then
+    begin
+      if !Param.html_output then
+	begin
+	  Display.Html.print_string "<H1>Equations</H1>\n"
+	end;
+      record_eqs()
+    end;
+    
+  if !Param.html_output then
+    Display.Html.print_string "<H1>Completed destructors</H2>\n"
+  else if !Param.verbose_destr then 
+    Display.Text.print_line "Completed destructors:";
+      
+  Hashtbl.iter (fun _ f ->
+    match f.f_cat with
+    | Red red_rules -> 
+	let red_rules' = close_destr_eq f red_rules in
+	if !Param.html_output then
+	  (Display.Html.display_red f red_rules';Display.Html.print_string "<br>")
+	else if !Param.verbose_destr then
+	  (Display.Text.display_red f red_rules';Display.Text.print_string "\n");
+	f.f_cat <- Red red_rules'
+    | _ -> ()
+	  ) Param.fun_decls;
+
+  if !Param.html_output then
+    begin
+      Display.LangHtml.close();
+      Display.Html.print_string "<A HREF=\"eq.html\">Equations & Destructors</A><br>\n"
+    end
+
+(********* Simplifies a term using the equations ********)
 
 exception Reduces
 
@@ -1169,7 +1659,7 @@ let simp_eq t =
               [] -> ()
 	    | ((leq,req)::redl) ->
 		try
-		  Terms.match_terms2 leq t;
+		  Terms.match_terms leq t;
 		  (*let r = copy_term3 req in*)
 		  Terms.cleanup();
 		  raise Reduces

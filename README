@@ -1,5 +1,5 @@
-Protocol verifier, copyright INRIA-LIENS-MPII, by Bruno Blanchet
-and Xavier Allamigeon, 2000-2012.
+Protocol verifier, copyright INRIA-LIENS-MPII, by Bruno Blanchet,
+Xavier Allamigeon, and Vincent Cheval, 2000-2013.
 INRIA: 	Institut National de Recherche en Informatique et Automatique,
 	Domaine de Voluceau, Rocquencourt, 78153 Le Chesnay Cedex, France
 LIENS: 	Laboratoire d'Informatique de l'Ecole Normale Supérieure, 
@@ -15,33 +15,36 @@ INSTALL
 To run this software, you need Objective Caml version 3.00 or
 higher. Objective Caml can be downloaded from
 	http://caml.inria.fr
+Furthermore, on Mac OS X, you need to install XCode if you do not
+already have it. It can be downloaded from
+	https://developer.apple.com/xcode/
 
 * under Unix
 
 Uncompress the source and documentation archives using tar:
 
-	gunzip proverif1.86pl4.tar.gz
-	tar -xf proverif1.86pl4.tar
-	gunzip proverifdoc1.86pl4.tar.gz
-	tar -xf proverifdoc1.86pl4.tar
+	gunzip proverif1.87beta6.tar.gz
+	tar -xf proverif1.87beta6.tar
+	gunzip proverifdoc1.87beta6.tar.gz
+	tar -xf proverifdoc1.87beta6.tar
 
 or if you have GNU tar:
 
-	tar -xzf proverif1.86pl4.tar.gz
-	tar -xzf proverifdoc1.86pl4.tar.gz
+	tar -xzf proverif1.87beta6.tar.gz
+	tar -xzf proverifdoc1.87beta6.tar.gz
 
-This will create a directory named proverif1.86pl4 in the current directory.
+This will create a directory named proverif1.87beta6 in the current directory.
 Go into this directory, and build the programs:
 
-	cd proverif1.86pl4
+	cd proverif1.87beta6
 	./build
 
 * under Windows NT, 2000, or XP
 
-Uncompress the archives proverif1.86pl4.tar.gz and proverifdoc1.86pl4.tar.gz
+Uncompress the archives proverif1.87beta6.tar.gz and proverifdoc1.87beta6.tar.gz
 using Winzip, in the directory of your choice. This will create a
-subdirectory named proverif1.86pl4. Open a DOS window, cd into the
-proverif1.86pl4 directory and run the build .BAT file:
+subdirectory named proverif1.87beta6. Open a DOS window, cd into the
+proverif1.87beta6 directory and run the build .BAT file:
 
 	build
 

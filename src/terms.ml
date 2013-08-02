@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -33,7 +33,7 @@ let tuple_table = Hashtbl.create 1
 let get_tuple_fun tl =
   let tl = 
     if !Param.ignore_types then
-      List.map (fun _ -> Param.any_type) tl
+      List.map (fun t -> Param.any_type) tl
     else
       tl
   in 
@@ -53,11 +53,22 @@ let get_tuple_fun tl =
 let get_term_type = function
     Var b -> b.btype
   | FunApp(f,_) -> snd f.f_type
+  
+(* Get the type of a pattern *)
+
+let get_pat_type = function
+    PatVar b -> b.btype
+  | PatTuple (f,l) -> snd f.f_type
+  | PatEqual t -> get_term_type t
 
 let get_format_type = function
     FVar b -> b.btype
   | FAny b -> b.btype
   | FFunApp(f,_) -> snd f.f_type
+
+let term_of_pattern_variable = function
+  | PatVar(v) -> Var(v)
+  | _ -> internal_error "[term_of_pattern_variable] The pattern must be a variable"
 
 let rec copy_n n v =
   if n <= 0 then [] else v :: (copy_n (n-1) v)
@@ -67,8 +78,11 @@ let rec tl_to_string sep = function
   | [a] -> a.tname
   | (a::l) -> a.tname ^ sep ^ (tl_to_string sep l)
 
-let eq_lists l1 l2 =
-  (List.length l1 == List.length l2) && (List.for_all2 (==) l1 l2)
+let rec eq_lists l1 l2 = 
+  match l1,l2 with
+    [],[] -> true
+  | a1::q1,a2::q2 -> (a1 == a2) && (eq_lists q1 q2)
+  | _,_ -> false
 
 (* These functions are used to guarantee the freshness of new identifiers 
    Each identifier is represented by a pair (s,n):
@@ -88,11 +102,11 @@ let get_id_n s =
   if '0' <= s.[l-1] && s.[l-1] <= '9' then
     let rec underscore_number n = 
       if (n > 0) && (l-n<=10) then
-        if s.[n] = '_' then n else
-	if '0' <= s.[n] && s.[n] <= '9' then underscore_number (n-1) else
-	raise Not_found
-      else
-	raise Not_found
+        if s.[n] = '_' then n 
+        else if '0' <= s.[n] && s.[n] <= '9' then underscore_number (n-1) else
+				raise Not_found
+						else
+				raise Not_found
     in
     try 
       let pos_underscore = underscore_number (l-2) in
@@ -132,6 +146,13 @@ let record_id s ext =
     input_error ("identifier " ^ s ^ " already defined (as a free name, a function, a predicate, a type, an event, or a table)") ext
   else
     Hashtbl.add used_ids s_n ()
+    
+    
+
+	
+(***************************************************
+		           Function for Var
+****************************************************)	
 
 (* [new_var_name s] creates a fresh pair [(s,n)] using [!var_idx]. *) 
 
@@ -143,11 +164,37 @@ let rec new_var_name s =
   else
     (s,n)
        
-(* [fresh_id_n s] creates a fresh pair [(s',n)] corresponding to identifier [s], 
-   preferably the pair [(s',n)] that displays exactly as [s]. If this pair
-   is already used, create a fresh one using [new_var_name] *) 
+(* [fresh_id s] creates a fresh identifier [s'] corresponding to
+   identifier [s], preferably [s] itself. If [s] is already used,
+   create a fresh identifier by changing the number suffix of [s], or
+   adding a number suffix to [s] if there is none, using [new_var_name] *)
 
-let fresh_id_n s =
+let fresh_id s =
+  if not (!Param.typed_frontend) then
+    (* When the front-end is not typed, we do not try to reuse exactly [s];
+       free names may be discovered after some bound names in the untyped 
+       front-end, so we do not know when we could use a bound name without
+       renaming. *)
+    let (s',n') = new_var_name s in
+    s' ^ "_" ^ (string_of_int n')
+  else
+  let ((s',n) as s_n) = get_id_n s in
+  if ((n != 0) && (n <= !var_idx)) || (Hashtbl.mem used_ids s_n) then
+    let (s',n') = new_var_name s' in
+    s' ^ "_" ^ (string_of_int n')
+  else
+    begin
+      if n > !max_source_idx then max_source_idx := n;
+      Hashtbl.add used_ids s_n ();
+      s
+    end
+
+(* [fresh_id_keep_s s] creates a fresh pair [(s,n)] corresponding to 
+   identifier [s], preferably the pair [(s,0)], which displays exactly as [s],
+   if possible, that is, if [s] does not end with _number and this pair is
+   not already used. Otherwise, create a fresh pair using [new_var_name] *) 
+
+let fresh_id_keep_s s =
   if not (!Param.typed_frontend) then
     (* When the front-end is not typed, we do not try to reuse exactly [s];
        free names may be discovered after some bound names in the untyped 
@@ -156,32 +203,31 @@ let fresh_id_n s =
     new_var_name s 
   else
   let ((s',n) as s_n) = get_id_n s in
-  if n > !max_source_idx then max_source_idx := n;
-  if ((n != 0) && (n <= !var_idx)) || (Hashtbl.mem used_ids s_n) then
-    new_var_name s'
+  if n != 0 then 
+    new_var_name s
+  else
+  if Hashtbl.mem used_ids s_n then
+    new_var_name s
   else
     begin
+      (* n = 0, so no need to increase max_source_idx, it is already >= n *)
       Hashtbl.add used_ids s_n ();
       s_n
     end
-
-(* [fresh_id s] creates a fresh identifier by changing the number of [s].
-   It is like [fresh_id_n s] except that it rebuilds the identifier
-   from the pair [(s',n)]. *)
-
-let fresh_id s = 
-  let (s',n) = fresh_id_n s in
-  if n != 0 then
-    s' ^ "_" ^ (string_of_int n)
-  else
-    s'
 
 
 (* [new_var s t] creates a fresh variable with name [s] and type [t] *)
 
 let new_var s t =
-  let (s',n) = fresh_id_n s in 
-  { sname = s'; vname = n; btype = t; link = NoLink }
+  let (s',n) = fresh_id_keep_s s in 
+  { sname = s'; vname = n; unfailing = false; btype = t; link = NoLink }
+  
+(* [new_var s t] creates a fresh variable with name [s] and type [t] *)
+
+let new_unfailing_var s t =
+  let s_mfail = if s = "" then "@mayfail" else "@mayfail_" ^ s in
+  let (s',n) = fresh_id_keep_s s_mfail in 
+  { sname = s'; vname = n; unfailing = true; btype = t; link = NoLink }
 
 (* [new_var_noren s t] creates a fresh variable with name [s] and type [t] 
    The name of this variable is exactly [s], without renaming it to
@@ -189,7 +235,7 @@ let new_var s t =
    be displayed. *)
 
 let new_var_noren s t =
-  { sname = s; vname = -1; btype = t; link = NoLink }
+  { sname = s; vname = -1; unfailing = false; btype = t;  link = NoLink }
 
 (* [copy_var v] creates a fresh variable with the same sname and type as [v] 
    Invariant: if vname = 0, then sname never contains N_xxx where xxx is a non-zero 
@@ -198,18 +244,21 @@ let new_var_noren s t =
 
 let copy_var v =
   let (s',n) = new_var_name v.sname in
-  { sname = s'; vname = n; btype = v.btype; link = NoLink }
+  { sname = s'; vname = n; unfailing = v.unfailing; btype = v.btype; link = NoLink }
 
 (* [copy_var_noren v] creates a fresh variable with the same name and type 
    as [v]. The name is exactly the same as [v], without renaming to a fresh
    name. *)
 
 let copy_var_noren v =
-  { sname = v.sname; vname = v.vname; btype = v.btype; link = NoLink }
+  { sname = v.sname; vname = v.vname; unfailing = v.unfailing;  btype = v.btype; link = NoLink }
 
 (* [new_var_def t] creates a fresh variable with a default name and type [t] *) 
 let new_var_def t =
   Var (new_var Param.def_var_name t)
+  
+let new_unfailing_var_def t = 
+  Var (new_unfailing_var "" t)
 
 (* [val_gen tl] creates new variables of types [tl] and returns them in a 
    list *)
@@ -231,11 +280,26 @@ let rec occurs_f f = function
     Var _ -> false
   | FunApp(f',l) ->
       (f == f') || (List.exists (occurs_f f) l)
+      
+let rec occurs_f_pat f = function
+    PatVar v -> false
+  | PatTuple (_,l) -> List.exists (occurs_f_pat f) l
+  | PatEqual t -> occurs_f f t
+
+let occurs_f_fact f = function
+    Pred(_,l) -> List.exists (occurs_f f) l
+  | Out(t, l) -> 
+      (occurs_f f t) || 
+      (List.exists(fun (_,t) -> occurs_f f t) l)
+
+let is_may_fail_term = function 
+  | FunApp(f,[]) when f.f_cat = Failure -> true
+  | Var(v) when v.unfailing -> true
+  | _ -> false
 
 (* Equality tests *)
 
-let rec equal_terms t1 t2 =
-   match (t1,t2) with
+let rec equal_terms t1 t2 = match (t1,t2) with
    | (FunApp(f1,l1), FunApp(f2,l2)) ->
         (f1 == f2) && (List.for_all2 equal_terms l1 l2)
    | (Var v1, Var v2) -> v1 == v2
@@ -252,19 +316,43 @@ let equal_facts f1 f2 =
 	&& (List.for_all2 equals_term_pair l1 l2)
   | _ -> false
 
-let equals_simple_constraint c1 c2 = 
+let equals_simple_constraint c1 c2 =
   match (c1,c2) with
-    (Neq(t1, t2), Neq(t1', t2')) ->
-      (equal_terms t1 t1') && (equal_terms t2 t2') 
+    (Neq(t1, t2), Neq(t1', t2')) -> (equal_terms t1 t1') && (equal_terms t2 t2')
 
 (* Copy and cleanup *)
 
 let current_bound_vars = ref []
 
 let link v l =
+  (* Check that message variables are linked only to messages,
+     not to fail or to may-fail variables *)
+  if not v.unfailing then
+    begin
+      match l with
+	VLink v' -> assert (not v'.unfailing)
+      |	TLink t ->
+	  begin
+	    match t with
+	      Var v' -> assert (not v'.unfailing)
+	    | FunApp(f, _) -> assert (f.f_cat != Failure)
+	  end
+      |	TLink2 _ -> 
+	  (* TLink2 is not used with function link *)
+	  assert false
+      |	NoLink ->
+	  (* NoLink should not be used with function link,
+	     it is set by cleanup *)
+	  assert false
+      |	FLink _ | PGLink _ | PGTLink _ -> ()
+    end;
   current_bound_vars := v :: (!current_bound_vars);
   v.link <- l
-
+  
+let link_var t l = match t with
+  |Var(v) -> link v l
+  |_ -> internal_error "[link_var] The term must be a variable"
+  
 let cleanup () = 
   List.iter (fun v -> v.link <- NoLink) (!current_bound_vars);
   current_bound_vars := []
@@ -328,14 +416,67 @@ and would probably also slow down a bit the system.
 
 *)
 
+(***************************************************
+   Functions for General Variables
+****************************************************)
+
+let gen_var_counter = ref 0
+
+let new_gen_var t may_fail =
+  incr gen_var_counter;
+  let f_cat = if may_fail then General_mayfail_var else General_var in
+  { f_name = (if !Param.tulafale != 1 then "@gen" else "gen") ^ 
+             (if may_fail then "mf" else "") ^ 
+             (string_of_int (!gen_var_counter));
+    f_type = [], t;
+    f_cat = f_cat;
+    f_initial_cat = f_cat;
+    f_private = true;
+    f_options = 0 }
+
+let rec generalize_vars_not_in vlist = function
+    Var v -> 
+      begin
+	if List.memq v vlist then Var v else
+	match v.link with
+	| NoLink -> 
+	    let v' = FunApp(new_gen_var v.btype v.unfailing, []) in
+	    link v (TLink v');
+	    v'
+	| TLink l -> l
+	| _ -> internal_error "Unexpected link in generalize_vars"
+      end
+  | FunApp(f, l) ->
+      FunApp(f, List.map (generalize_vars_not_in vlist) l)  
+      
+let rec generalize_vars_in vlist = function
+    Var v -> 
+      begin
+	if not (List.memq v vlist) then Var v else
+	match v.link with
+	  NoLink -> 
+	    let v' = FunApp(new_gen_var v.btype v.unfailing, []) in
+	    link v (TLink v');
+	    v'
+	| TLink l -> l
+	| _ -> internal_error "Unexpected link in generalize_vars"
+      end
+  | FunApp(f, l) ->
+      FunApp(f, List.map (generalize_vars_in vlist) l)
+      
+      
+(***************************************************
+	      Copy term functions
+****************************************************)
+
 let rec copy_term = function
-    FunApp(f,l) -> FunApp(f, List.map copy_term l)
+  | FunApp(f,l) -> FunApp(f, List.map copy_term l)
   | Var v -> 
       match v.link with
 	NoLink -> 
-          let r = copy_var v in
+	  let r = copy_var v in
 	  link v (VLink r);
-          Var r
+	  Var r
       | VLink l -> Var l
       | _ -> internal_error "Unexpected link in copy_term"
 
@@ -346,7 +487,7 @@ let copy_fact = function
   | Out(t, l) -> Out(copy_term t, List.map copy_term_pair l)
 
 let copy_constra c = List.map (function
-    Neq(t1,t2) -> Neq(copy_term t1, copy_term t2)) c
+      Neq(t1,t2) -> Neq(copy_term t1, copy_term t2)) c
 
 let rec copy_rule (hyp,concl,hist,constra) =
   let tmp_bound = !current_bound_vars in
@@ -356,60 +497,74 @@ let rec copy_rule (hyp,concl,hist,constra) =
   current_bound_vars := tmp_bound;
   r
 
-let copy_red (left_list, right) =
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (terms1)";
+let copy_red (left_list, right, side_c) =
+  assert (!current_bound_vars == []);
   let left_list' = List.map copy_term left_list in
   let right' = copy_term right in
+  let side_c' = List.map (function (t1,t2) -> 
+  	copy_term t1, copy_term t2) side_c in
   cleanup();
-  (left_list', right')
-
-
+  (left_list', right', side_c')
+  		  
 (* Unification *)
 
 exception Unify
 
 let rec occur_check v t =
-   match t with
-     Var v' -> 
-           begin
-               if v == v' then raise Unify;
-               match v'.link with
-                 NoLink -> ()
-               | TLink t' -> occur_check v t'
-               | _ -> internal_error "unexpected link in occur_check"
-           end
-   | (FunApp(_,l)) -> List.iter (occur_check v) l
+  match t with
+    Var v' -> 
+      begin
+        if v == v' then raise Unify;
+        match v'.link with
+          NoLink -> ()
+        | TLink t' -> occur_check v t'
+        | _ -> internal_error "unexpected link in occur_check"
+      end
+  | (FunApp(_,l)) -> List.iter (occur_check v) l
 
+   
+   
 let rec unify t1 t2 =
-   match (t1,t2) with
-     (Var v, Var v') when v == v' -> ()
-   | (Var v, _) -> 
-       begin
-          match v.link with
-             NoLink ->
-	       begin
-		 match t2 with
-		   Var {link = TLink t2'} -> unify t1 t2'
-		 | _ ->
-		     occur_check v t2;
-		     link v (TLink t2)
-	       end
-           | TLink t1' -> unify t1' t2
-           | _ -> internal_error "Unexpected link in unify 1"
-       end
-   | (_, Var v) ->
-       begin
-          match v.link with
-             NoLink -> 
-	       occur_check v t1;
-	       link v (TLink t1)
-           | TLink t2' -> unify t1 t2'
-           | _ -> internal_error "Unexpected link in unify 2"
-       end
-   | (FunApp(f1, l1), FunApp(f2,l2)) ->
-        if f1 != f2 then raise Unify;
-        List.iter2 unify l1 l2
+  match (t1,t2) with
+    (Var v, Var v') when v == v' -> ()
+  | (Var v, _) -> 
+      begin
+        match v.link with
+        | NoLink ->
+            begin
+              match t2 with
+              | Var {link = TLink t2'} -> unify t1 t2'
+              | Var v' when v.unfailing ->
+             	  link v (TLink t2)
+              | Var v' when v'.unfailing -> 
+             	  link v' (TLink t1)
+              | FunApp (f_symb,_) when f_symb.f_cat = Failure && v.unfailing = false -> raise Unify
+              | Var v' when String.sub v'.sname 0 1 = Param.def_var_name ->
+                  link v' (TLink t1)
+              | _ ->
+                  occur_check v t2;
+             	  link v (TLink t2)
+            end
+        | TLink t1' -> unify t1' t2
+        | _ -> internal_error "Unexpected link in unify 1"
+      end
+  | (FunApp(f_symb,_), Var v) ->
+      begin
+        match v.link with
+          NoLink -> 
+            if v.unfailing = false && f_symb.f_cat = Failure 
+            then raise Unify
+            else
+              begin
+             	occur_check v t1;
+	        link v (TLink t1)
+	      end
+        | TLink t2' -> unify t1 t2'
+        | _ -> internal_error "Unexpected link in unify 2"
+      end
+  | (FunApp(f1, l1), FunApp(f2,l2)) ->
+      if f1 != f2 then raise Unify;
+      List.iter2 unify l1 l2
 
 let rec skip n l =
   if n = 0 then l else
@@ -446,16 +601,16 @@ let unify_facts f1 f2 =
     
 
 let rec copy_term2 = function
-    FunApp(f,l) -> FunApp(f, List.map copy_term2 l)
+  | FunApp(f,l) -> FunApp(f, List.map copy_term2 l)
   | Var v -> 
       match v.link with
-	NoLink -> 
-          let r = copy_var v in
-	  link v (VLink r);
-          Var r
-      | TLink l -> copy_term2 l
-      | VLink r -> Var r
-      | _ -> internal_error "unexpected link in copy_term2"
+	| NoLink -> 
+	    let r = copy_var v in
+	    link v (VLink r);
+	    Var r
+	| TLink l -> copy_term2 l
+	| VLink r -> Var r
+	| _ -> internal_error "unexpected link in copy_term2"
 
 let copy_term2_pair = fun (v,t) -> (v, copy_term2 t)
 
@@ -464,61 +619,103 @@ let copy_fact2 = function
   | Out(t,l) -> Out(copy_term2 t, List.map copy_term2_pair l)
 
 let rec copy_constra2 c = List.map (function
-    Neq(t1,t2) -> Neq(copy_term2 t1, copy_term2 t2)) c
+      Neq(t1,t2) -> Neq(copy_term2 t1, copy_term2 t2)) c
+   
+let copy_rule2 (hyp, concl, hist, constra) = 
+	let tmp_bound = !current_bound_vars in
+  current_bound_vars := [];
+  let r = (List.map copy_fact2 hyp, copy_fact2 concl, hist, List.map copy_constra2 constra) in
+  cleanup();
+  current_bound_vars := tmp_bound;
+  r
 
 (* Matching *)
 
 exception NoMatch
 
-let rec match_terms2 t1 t2 =
+let rec match_terms t1 t2 =
    match (t1,t2) with
      (Var v), t -> 
        begin
 	 match v.link with
            NoLink -> 
-	     link v (TLink t)
+             if v.unfailing
+             then link v (TLink t)
+             else
+	       begin
+	       	 match t with 
+	           | Var v' when v'.unfailing -> raise NoMatch
+	           | FunApp(f_symb,_) when f_symb.f_cat = Failure -> raise NoMatch
+	           | _ -> link v (TLink t)
+	       end
          | TLink t' -> if not (equal_terms t t') then raise NoMatch
-	 | _ -> internal_error "Bad link in match_terms2"
+	 | _ -> internal_error "Bad link in match_terms"
        end
    | (FunApp (f1,l1')), (FunApp (f2,l2')) ->
        if f1 != f2 then raise NoMatch;
-       List.iter2 match_terms2 l1' l2'
+       List.iter2 match_terms l1' l2'
    | _,_ -> raise NoMatch
 
-let match_facts2 f1 f2 = 
+let match_facts f1 f2 = 
   match (f1,f2) with
     Pred(chann1, t1),Pred(chann2, t2) ->
       if chann1 != chann2 then raise NoMatch;
-      List.iter2 match_terms2 t1 t2
+      List.iter2 match_terms t1 t2
   | Out(t1,l1),Out(t2,l2) ->
-      match_terms2 t1 t2;
+      match_terms t1 t2;
       let len1 = List.length l1 in
       let len2 = List.length l2 in
-      if len1 != len2 then raise NoMatch;
+      if len2 < len1 then raise NoMatch;
+      let l2 = skip (len2-len1) l2 in
       List.iter2 (fun (v1,t1) (v2,t2) ->
 	if v1 != v2 then raise NoMatch;
-	match_terms2 t1 t2) l1 l2
+	match_terms t1 t2) l1 l2
   | _ -> raise NoMatch
 
 let matchafact finst fgen =
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (terms)";
+  assert (!current_bound_vars == []);
   try
-    match_facts2 fgen finst;
+    match_facts fgen finst;
     cleanup();
     true
   with NoMatch ->
     cleanup();
     false
 
+(* [occurs_test_loop seen_vars v t] returns true when 
+   variable [v] occurs in term [t], following links 
+   inside terms. It uses the list [seen_vars] to avoid
+   loops. [seen_vars] should be initialized to [ref []]. *)
+
+let rec occurs_test_loop seen_vars v t =
+   match t with
+     Var v' -> 
+       begin
+	 if List.memq v' (!seen_vars) then false else
+	 begin
+	   seen_vars := v' :: (!seen_vars);
+           if v == v' then true else
+           match v'.link with
+             NoLink -> false
+           | TLink t' -> occurs_test_loop seen_vars v t'
+           | _ -> internal_error "unexpected link in occur_check"
+         end
+       end
+   | FunApp(_,l) -> List.exists (occurs_test_loop seen_vars v) l
+
 let matchafactstrict finst fgen =
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (terms2)";
+  assert (!current_bound_vars == []);
   try
-    match_facts2 fgen finst;
+    match_facts fgen finst;
+    (* If a variable v is instantiated in the match into
+       a term that is not a variable and that contains v, then
+       by repeated resolution, the term will be instantiated into
+       an infinite number of different terms obtained by 
+       iterating the substitution. We should adjust the selection
+       function to avoid this non-termination. *)
     if List.exists (fun v -> match v.link with
-      TLink (Var _) -> false
-    | TLink t -> true
+    | TLink (Var _) -> false
+    | TLink t -> occurs_test_loop (ref []) v t
     | _ -> false) (!current_bound_vars) then
       begin
 	cleanup();
@@ -552,33 +749,7 @@ let fact_size = function
     Pred(_, tl) -> 1 + term_list_size tl
   | Out(t,l) -> term_size t + term_pair_list_size l
 
-(* For Neq and testunif *)
 
-let gen_var_counter = ref 0
-
-let new_gen_var t =
-  incr gen_var_counter;
-  { f_name = (if !Param.tulafale != 1 then "@gen" else "gen") ^ (string_of_int (!gen_var_counter));
-    f_type = [], t;
-    f_cat = General_var;
-    f_initial_cat = General_var;
-    f_private = true;
-    f_options = 0 }
-
-let rec generalize_vars_not_in vlist = function
-    Var v -> 
-      begin
-	if List.memq v vlist then Var v else
-	match v.link with
-	  NoLink -> 
-	    let v' = FunApp(new_gen_var v.btype, []) in
-	    link v (TLink v');
-	    v'
-	| TLink l -> l
-	| _ -> internal_error "Unexpected link in generalize_vars"
-      end
-  | FunApp(f, l) ->
-      FunApp(f, List.map (generalize_vars_not_in vlist) l)
 
 (* [replace_f_var vl t] replaces names in t according to
    the association list vl. That is, vl is a reference to a list of pairs
@@ -588,23 +759,29 @@ let rec generalize_vars_not_in vlist = function
    to the association list vl, and f_i is replaced accordingly. *)
 
 let rec replace_f_var vl = function
-    Var v2 -> Var v2
+  | Var v2 -> Var v2
   | FunApp(f2,[]) -> 
       begin
 	try
 	  Var (List.assq f2 (!vl))
 	with Not_found ->
-	  if f2.f_cat = General_var then
+	  if f2.f_cat = General_var then 
 	    begin
 	      let v = new_var f2.f_name (snd f2.f_type) in
 	      vl := (f2, v) :: (!vl);
 	      Var v
 	    end
-	  else
+	  else if f2.f_cat = General_mayfail_var then
+	    begin
+	      let v = new_unfailing_var f2.f_name (snd f2.f_type) in
+	      vl := (f2, v) :: (!vl);
+	      Var v
+	    end
+	  else	    
 	    FunApp(f2,[])
       end
   | FunApp(f2,l) -> FunApp(f2, List.map (replace_f_var vl) l)
-
+  
 (* [rev_assoc v2 vl] looks for v2 in the association list vl.
    That is, vl is a list of pairs (f_i, v_i) where f_i is a 
    (nullary) function symbol and v_i is a variable.
@@ -644,9 +821,9 @@ let rec get_vars vlist = function
   | FunApp(_,l) -> 
       List.iter (get_vars vlist) l
 
-let get_vars_constra vlist (Neq(t1,t2)) =
-  get_vars vlist t1;
-  get_vars vlist t2
+let get_vars_constra vlist = function
+    Neq(t1,t2) -> get_vars vlist t1;
+      get_vars vlist t2
 
 let get_vars_fact vlist = function
     Pred(_,l) -> List.iter (get_vars vlist) l
@@ -668,7 +845,8 @@ let copy_fact3 = function
   | Out(t,l) -> Out(copy_term3 t, List.map (fun (x,t') -> (x, copy_term3 t')) l)
 
 let rec copy_constra3 c = List.map (function
-    Neq(t1,t2) -> Neq(copy_term3 t1, copy_term3 t2))c
+  | Neq(t1,t2) -> Neq(copy_term3 t1, copy_term3 t2)
+	)c
 
 (* Do not select Out facts, blocking facts, or pred_TUPLE(vars) *)
 
@@ -719,7 +897,30 @@ let fun_app f = function
 let reorganize_fun_app f l0 =
   reorganize_list (List.map (fun_app f) l0)
 
-(* Constants *)
+(*********************************************
+      Definition of several functions
+**********************************************)  
+    
+(* Failure Constants *)
+
+let get_fail_symb_memo = Param.memo (fun ty -> 
+  {
+    f_name = "fail-"^ty.tname;
+    f_type = [], ty;
+    f_cat = Failure;
+    f_initial_cat = Failure;
+    f_private = false;
+    f_options = 0
+  })
+  
+let get_fail_symb ty = 
+  get_fail_symb_memo (if !Param.ignore_types then Param.any_type else ty)
+  
+let get_fail_term ty = FunApp(get_fail_symb ty, [])  
+  
+let fail_bool = get_fail_term Param.bool_type
+
+(* Boolean Constants *)
 
 let true_cst =
   { f_name = "true";
@@ -736,49 +937,377 @@ let false_cst =
     f_initial_cat = Tuple;
     f_private = false;
     f_options = 0 }
-
-(* Functions *)
-
+    
 let true_term = FunApp(true_cst, [])
 let false_term = FunApp(false_cst, [])
 
-let equal_memo = Param.memo (fun t -> 
-  let v = new_var_def t in
-  let equal_cat = Red [[v;v], true_term] in
+(* is_true destructor: returns true when its argument is true,
+   fails otherwise *)
+
+let is_true_fun = 
+  let x = new_var_def Param.bool_type in
+  
+  let semantics = Red
+    [
+      [true_term], true_term, [];
+      [x], fail_bool, [(x,true_term)];
+      [fail_bool], fail_bool, []
+    ] in
+  
+  {
+    f_name = "is-true";
+    f_type = [Param.bool_type], Param.bool_type;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = false;
+    f_options = 0
+  }
+  
+(* Boolean Functions *)
+
+let equal_memo = Param.memo (fun ty -> 
+  let x = new_var_def ty
+  and y = new_var_def ty
+  and u = new_unfailing_var_def ty
+  and fail = get_fail_term ty in
+  
+  let semantics = Red
+    [
+      [x;x], true_term, [];
+      [x;y], false_term, [(x,y)];
+      [fail;u], fail_bool, [];
+      [x;fail], fail_bool, []
+    ] in
+  
   { f_name = "=";
-    f_type = [t;t], Param.bool_type;
-    f_cat = equal_cat;
-    f_initial_cat = equal_cat;
+    f_type = [ty;ty], Param.bool_type;
+    f_cat = semantics;
+    f_initial_cat = semantics;
     f_private = false;
     f_options = 0 })
-
+    
 let equal_fun t =
   equal_memo (if !Param.ignore_types then Param.any_type else t)
+    
+let diff_memo = Param.memo (fun ty -> 
+  let x = new_var_def ty
+  and y = new_var_def ty
+  and u = new_unfailing_var_def ty
+  and fail = get_fail_term ty in
+  
+  let semantics = Red
+    [
+      [x;x], false_term, [];
+      [x;y], true_term, [(x,y)];
+      [fail;u], fail_bool, [];
+      [x;fail], fail_bool, []
+    ] in
+  
+  { f_name = "<>";
+    f_type = [ty;ty], Param.bool_type;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = false;
+    f_options = 0 })  
+    
+
+let diff_fun t =
+  diff_memo (if !Param.ignore_types then Param.any_type else t)
 
 let and_fun =
-  let and_cat = Red [[true_term; true_term], true_term] in
+  let u = new_unfailing_var_def Param.bool_type
+  and x = new_var_def Param.bool_type
+  and y = new_var_def Param.bool_type in
+
+  let semantics = Red 
+    [
+      [true_term; y], y, [];
+      [x;y], false_term, [(x,true_term)];
+      [fail_bool; u], fail_bool, [];
+      [x; fail_bool], fail_bool, []
+    ] in
+    
   { f_name = "&&";
     f_type = [Param.bool_type; Param.bool_type], Param.bool_type;
-    f_cat = and_cat;
-    f_initial_cat = and_cat;
+    f_cat = semantics;
+    f_initial_cat = semantics;
     f_private = false;
     f_options = 0 }
+    
+let or_fun =
+  let u = new_unfailing_var_def Param.bool_type
+  and x = new_var_def Param.bool_type
+  and y = new_var_def Param.bool_type in
 
-let not_cat = 
-  Red [[true_term], false_term; (* not(true) = false *)
-       [false_term], true_term] (* not(false) = true *)
+  let semantics = Red 
+    [
+      [true_term; x], true_term, [];
+      [x;y], y, [(x,true_term)]; 
+      [fail_bool; u], fail_bool, [];
+      [x; fail_bool], fail_bool, []
+    ] in
+    
+  { f_name = "||";
+    f_type = [Param.bool_type; Param.bool_type], Param.bool_type;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = false;
+    f_options = 0 }
 
 let not_fun =
+  let x = new_var_def Param.bool_type in
+  
+  let semantics = Red 
+    [
+      [true_term], false_term, [];
+      [x], true_term, [(x,true_term)];
+      [fail_bool], fail_bool, []
+    ] in
+  
   { f_name = "not";
     f_type = [Param.bool_type], Param.bool_type;
-    f_cat = not_cat;
-    f_initial_cat = not_cat;
+    f_cat = semantics;
+    f_initial_cat = semantics;
     f_private = false;
     f_options = 0 }
+         
+(* The Let in else operators *)
 
+let glet_constant_memo = Param.memo (fun ty ->
+  { f_name = "caught-fail";
+    f_type = [],ty;
+    f_cat = Tuple;
+    f_initial_cat = Tuple;
+    f_private = true;
+    f_options = 0
+  })
+  
+  
+let glet_constant_fun t =
+  glet_constant_memo (if !Param.ignore_types then Param.any_type else t)
+
+let glet_constant_never_fail_memo = Param.memo (fun ty ->
+  { f_name = "never-fail";
+    f_type = [],ty;
+    f_cat = Tuple;
+    f_initial_cat = Tuple;
+    f_private = true;
+    f_options = 0
+  }) 
+  
+let glet_constant_never_fail_fun t =
+  glet_constant_never_fail_memo (if !Param.ignore_types then Param.any_type else t)
+
+  
+let glet_memo = Param.memo (fun ty -> 
+  let x = new_var_def ty
+  and fail = get_fail_term ty
+  and c_o = glet_constant_fun ty in
+  
+  let semantics = Red
+    [
+      [x], x, [];
+      [fail], FunApp(c_o,[]), []
+    ] in
+  
+  { f_name = "catch-fail";
+    f_type = [ty], ty;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = true;
+    f_options = 0 })  
+    
+
+let glet_fun t =
+  glet_memo (if !Param.ignore_types then Param.any_type else t)
+
+
+(* The success operators *)
+
+let success_memo = Param.memo (fun ty -> 
+  let x = new_var_def ty
+  and fail = get_fail_term ty in
+  
+  let semantics = Red
+    [
+      [x], true_term, [];
+      [fail], false_term, []
+    ] in
+    
+  { f_name = "success?";
+    f_type = [ty], Param.bool_type;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = false;
+    f_options = 0 }
+  )
+   
+let success_fun t =
+  success_memo (if !Param.ignore_types then Param.any_type else t)
+  
+let not_caught_fail_memo = Param.memo (fun ty -> 
+  let x = new_var_def ty
+  and c_o = glet_constant_fun ty
+  and fail = get_fail_term ty in
+  
+  let semantics = Red
+    [
+      [x], true_term, [(x,FunApp(c_o,[]))];
+      [FunApp(c_o,[])], false_term, [];
+      [fail], fail_bool, []
+    ] in
+    
+  { f_name = "not-caught-fail";
+    f_type = [ty], Param.bool_type;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = true;
+    f_options = 0 }
+  )
+   
+let not_caught_fail_fun t =
+  not_caught_fail_memo (if !Param.ignore_types then Param.any_type else t)
+  
+  
+let gtest_memo = Param.memo (fun ty -> 
+  let u = new_unfailing_var_def ty
+  and v = new_unfailing_var_def ty
+  and x = new_var_def Param.bool_type
+  and fail = get_fail_term ty in
+  
+  let semantics = Red
+    [
+      [true_term;u;v], u, [];
+      [x;u;v], v, [(x, true_term)];
+      [fail_bool;u;v], fail, []
+    ] 
+  in
+  { f_name = "if-then-else";
+    f_type = [Param.bool_type;ty;ty], ty;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = true;
+    f_options = 0 })  
+    
+
+let gtest_fun t =
+  gtest_memo (if !Param.ignore_types then Param.any_type else t)
+
+(* The projection operator *)
+
+let complete_semantics_constructors type_arg type_result = 
+  let var_fail_list = List.map new_unfailing_var_def type_arg
+  and var_list = List.map new_var_def type_arg
+  and fail_list = List.map get_fail_term type_arg
+  and fail_result = get_fail_term type_result in
+  
+  let rec sub_complete var_list var_fail_list fail_list = 
+    match var_list, var_fail_list, fail_list with
+    | [], [], [] -> []
+    | x::var_l, _::var_fl, fail::fail_l ->
+	let prev_list = sub_complete var_l var_fl fail_l in
+	(fail::var_fl)::(List.map (fun l -> x::l) prev_list)
+    | _,_,_ -> internal_error "The three lists should have the same size" 
+  in
+  List.map (fun l -> l, fail_result,[]) (sub_complete var_list var_fail_list fail_list)
+
+let red_rules_constructor f =
+  let vars1 = var_gen (fst f.f_type) in
+  (vars1, FunApp(f, vars1),[]) ::
+    (complete_semantics_constructors (fst f.f_type) (snd f.f_type)) 
+
+let red_rules_fun f =
+  match f.f_cat with 
+    Eq red_rules -> (red_rules_constructor f) @ (List.map (fun (lhs,rhs) -> (lhs, rhs, [])) red_rules) 
+  | Red red_rules -> red_rules
+  | _ -> red_rules_constructor f
+
+let get_function_name f =
+  match f.f_cat with
+    Tuple when f.f_name = "" -> 
+      let arity = List.length (fst f.f_type) in
+      if (arity = 0) || (!Param.ignore_types) then
+	(string_of_int arity) ^ "-tuple"
+      else
+	(tl_to_string "-" (fst f.f_type)) ^ "-tuple"
+  | _ -> f.f_name
+  
+let projection_fun = Param.memo (fun (f_symb,i) ->
+  if f_symb.f_cat <> Tuple
+  then internal_error "[Terms.projection_fun] This should be a tuple";
+  
+  let type_list = fst f_symb.f_type in
+  let type_result = snd f_symb.f_type in
+  let var_list = var_gen type_list
+  and gen_var_list = List.map (fun ty -> FunApp(new_gen_var ty false,[])) type_list
+  and x = new_var_def type_result
+  
+  and ieme_type = List.nth type_list (i-1) in
+  
+  let fail = get_fail_term type_result
+  and fail' = get_fail_term ieme_type in
+  
+  let semantics = Red
+    [
+      [FunApp(f_symb,var_list)], List.nth var_list (i-1), [];
+      [x], fail', [x,FunApp(f_symb,gen_var_list)];
+      [fail], fail', []
+    ] 
+  in
+  
+  { f_name = Printf.sprintf "%d-proj-%s" i (get_function_name f_symb);
+    f_type = [type_result], ieme_type;
+    f_cat = semantics;
+    f_initial_cat = semantics;
+    f_private = f_symb.f_private;
+    f_options = 0 })
+  
+let get_all_projection_fun tuple_symb = 
+  let rec sub_get_proj n l = 
+    match l with
+    | [] -> []
+    | _::q -> (projection_fun (tuple_symb,n))::(sub_get_proj (n+1) q) 
+  in
+  sub_get_proj 1 (fst tuple_symb.f_type)  
+
+(* [clauses_for_function clauses_for_red_rules s f] generates clauses
+   for a function [f], given a function [clauses_for_red_rules] such
+   that [clauses_for_red_rules f red_rules] generates clauses for
+   function that has rewrite rules [red_rules].
+   (For constructors, the rewrite rules f(...fail...) -> fail are
+   omitted from [red_rules]. The function [clauses_for_red_rules] must
+   take this point into account. In practice, this is easy because the
+   clauses that come from f(...fail...) -> fail are useless.  This
+   however needs to be justified in each case.)
+   [s] is unused. It helps for calling [clauses_for_function]
+   as argument of [Hashtbl.iter]. *)
+
+let rec clauses_for_function clauses_for_red_rules s f =
+  if (not f.f_private) &&
+    (* Don't generate clauses for type converter functions when we ignore types
+       (These functions disappear.) *)
+    (not ((f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types))) 
+  then
+    match f.f_cat with 
+      Eq red_rules -> 
+	let vars1 = var_gen (fst f.f_type) in
+	let red_rules = (vars1, FunApp(f, vars1),[]) :: (List.map (fun (lhs,rhs) -> (lhs, rhs, [])) red_rules) in
+	clauses_for_red_rules f red_rules
+    | Red red_rules -> 
+	clauses_for_red_rules f red_rules
+    | Tuple -> 
+	(* For tuple constructor *)
+	let vars1 = var_gen (fst f.f_type) in
+	clauses_for_red_rules f [(vars1, FunApp(f, vars1),[])];
+	(* For corresponding projections *)
+      	List.iter (clauses_for_function clauses_for_red_rules s) (get_all_projection_fun f)
+    | _ -> ()
+
+(* Names *)  
+  
 let new_name_memo = Param.memo (fun t ->
   let cat = Name { prev_inputs = None; prev_inputs_meaning = ["!att"] } in
-  { f_name = "new_name" ^ (Param.get_type_suffix t);
+  { f_name = "new-name" ^ (Param.get_type_suffix t);
     f_type = [Param.sid_type], t;
     f_cat = cat;
     f_initial_cat = cat;
@@ -787,3 +1316,214 @@ let new_name_memo = Param.memo (fun t ->
 
 let new_name_fun t =
   new_name_memo (if !Param.ignore_types then Param.any_type else t)
+  
+
+(*********************************************
+               Occurrences
+**********************************************)
+
+let occ_count = ref 0
+
+let reset_occurrence () =
+  occ_count := 0
+
+let new_occurrence () =
+  incr occ_count;
+  !occ_count
+
+(*********************************************
+                       New names
+**********************************************)
+
+let create_name s ty is_private =
+  let cat = Name { prev_inputs = None; prev_inputs_meaning = [] } in
+   { f_name = s; 
+     f_type = ty;
+     f_cat = cat;
+     f_initial_cat = cat;
+     f_private = is_private;
+     f_options = 0 }
+
+(**********************************************
+  Rewrite rules for destructors with otherwise
+***********************************************)
+
+exception True_inequality  
+exception False_inequality
+
+
+let generate_destructor_with_side_cond prev_args lht_list rht ext = 
+
+  (* Given an inequality [for all (may-fail variabless in uni_term_list), term_list <> uni_term_list],
+     [remove_uni_fail_var] returns [(l1,l2)] representing an inequality [l1 <> l2] equivalent
+     to the initial inequality, by removing the may-fail variables. *)
+
+  let rec remove_uni_fail_var term_list uni_term_list = match term_list, uni_term_list with
+    | [],[] -> [],[]
+    | [],_ | _,[] -> internal_error "The two lists should have the same length"
+    | t::q, Var(v)::uq when v.unfailing ->
+        begin match v.link with
+          | NoLink -> 
+              link v (TLink t);
+              remove_uni_fail_var q uq
+          | TLink t' -> 
+              let (list_left,list_right) = remove_uni_fail_var q uq in
+              (t::list_left,t'::list_right)
+          | _ -> internal_error "Unexpected link"
+        end
+    | t::q,ut::uq -> let (list_left,list_right) = remove_uni_fail_var q uq in
+        (t::list_left,ut::list_right)
+  in
+  
+  (* When [prev_args = (a1,...,an)] is the list of arguments of the previous
+     rewrite rules, [generalize_prev_args] builds returns a list of pairs
+     [(li,li')] representing the inequality [\wedge_i li <> li']
+     equivalent to the inequality 
+     [\wedge_i forall (variables in ai), lht_list <> ai].
+     The returned inequalities do not contain general may-fail variables
+     (thanks to remove_uni_fail_var), but may contain may-fail variables.
+     These variables will be removed in the next steps by case distinctions. *)
+
+  let rec generalize_prev_args prev_args = match prev_args with
+    | [] -> []
+    | term_list::q -> 
+        (* Get the variables *)
+        let vars = ref [] in
+        List.iter (get_vars vars) term_list;
+        
+        (* Remove the may-fail variables *)
+        let message_var_list = List.filter (fun v -> not (v.unfailing)) !vars in
+        
+        (* Generalize the variables *)
+        let term_list' = 
+          auto_cleanup (fun () ->
+            List.map (generalize_vars_in message_var_list) term_list 
+          )
+        in
+        
+        (* Remove the universal may-fail variables *)
+        let (lterms_left,lterms_right) = auto_cleanup (fun () ->
+          remove_uni_fail_var lht_list term_list'
+          )
+        in
+        
+        (lterms_left,lterms_right)::(generalize_prev_args q)
+  in
+  
+  let rec get_may_fail_vars varsl term = match term with
+    | Var(v) ->
+        begin match v.link with
+          | NoLink -> if v.unfailing && not (List.memq v (!varsl)) then varsl := v :: (!varsl)
+          | TLink(t) -> get_may_fail_vars varsl t
+          | _ -> internal_error "Unexpected link"
+        end
+    | FunApp(_,l) -> List.iter (get_may_fail_vars varsl) l
+  in
+  
+  let rec simplify_one_neq term_left term_right = match term_left,term_right with
+    | Var(vl),Var(vr) when vl==vr -> raise False_inequality
+    | FunApp(f,_), FunApp(f',_) when f.f_cat = Failure && f'.f_cat = Failure -> raise False_inequality
+    | Var({link = TLink tl}),tr ->  simplify_one_neq tl tr
+    | tl, Var({link = TLink tr}) -> simplify_one_neq tl tr
+    | Var(v),FunApp(f,_) when v.unfailing = false && f.f_cat = Failure -> raise True_inequality
+    | FunApp(f,_), Var(v) when v.unfailing = false && f.f_cat = Failure -> raise True_inequality
+    | FunApp(f,_),FunApp(f',_) when f'.f_cat = Failure -> raise True_inequality
+    | FunApp(f,_),FunApp(f',_) when f.f_cat = Failure -> raise True_inequality
+    | _,_ -> term_left,term_right
+  in
+  
+  let simplify_neq lterm_left lterm_right = 
+    List.fold_left2 (fun (neql,neqr) term_left term_right ->
+      try
+        let term_left',term_right' = simplify_one_neq term_left term_right in
+        (term_left'::neql),(term_right'::neqr)
+      with
+        | False_inequality -> (neql,neqr)
+    ) ([],[]) lterm_left lterm_right
+  in
+  
+  let destructors = ref [] in
+  
+  let rec remove_may_fail_term_neq list_neq =
+    (* Simplify Neq *)
+    
+    let list_neq' = List.fold_left (fun lneq (lterm_left,lterm_right) ->
+      try
+        let (lterm_left', lterm_right') = simplify_neq lterm_left lterm_right in
+        
+        if lterm_left' = []
+        then raise False_inequality;
+        
+        (lterm_left', lterm_right')::lneq
+      with
+        True_inequality -> lneq
+      ) [] list_neq
+    in
+    
+    (* Get the may_fail_variables *)
+    
+    let vars = ref [] in
+    List.iter (fun (lleft,lright) -> 
+      List.iter (get_may_fail_vars vars) lleft;
+      List.iter (get_may_fail_vars vars) lright
+    ) list_neq';
+    
+    let may_fail_var_list = !vars in
+    
+    if may_fail_var_list = []
+    then
+      (* If no more may-fail variables in inequalities then return the destructor *)
+      auto_cleanup (fun () ->
+        let rht' = copy_term2 rht
+        and lht' = List.map copy_term2 lht_list
+        and side_c = List.map (fun (left_l, right_l) ->
+          let left_l' = List.map copy_term2 left_l
+          and right_l' = List.map copy_term2 right_l in
+        
+          let type_list = List.map get_term_type left_l' in
+          let tuple_symb = get_tuple_fun type_list in
+        
+          FunApp(tuple_symb,left_l'),FunApp(tuple_symb,right_l')
+        ) list_neq' in
+        
+        (* Check the variables of the right hand terms *)
+         
+        let var_list_rht = ref [] in
+        get_vars var_list_rht rht';
+         
+        if not (List.for_all (fun v -> List.exists (occurs_var v) lht') (!var_list_rht)) then
+          Parsing_helper.input_error "All variables of the right-hand side of a \"reduc\" definition\nshould also occur in the left-hand side." ext;
+        
+        destructors := (lht',rht',side_c)::!destructors
+      )
+    else
+      begin
+        let mf_var = List.hd may_fail_var_list in
+      
+        (* Replace the may-fail variable by Fail *)
+        auto_cleanup (fun () ->
+          let fail = get_fail_term mf_var.btype in
+          link mf_var (TLink fail);
+          try
+            remove_may_fail_term_neq list_neq'
+          with 
+            | False_inequality -> ()
+        );
+      
+        (* Replace the may-fail variable by a message variable *)
+        auto_cleanup (fun () ->
+          let x = new_var_def mf_var.btype in
+          link mf_var (TLink x);
+          try
+	    remove_may_fail_term_neq list_neq'
+	  with
+	    | False_inequality -> ()
+        )
+      end
+  in
+    
+  let list_side_c = generalize_prev_args prev_args in
+  remove_may_fail_term_neq list_side_c;
+  
+  !destructors
+  

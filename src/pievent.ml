@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -41,7 +41,7 @@ let get_event_status f =
   try 
     Hashtbl.find event_status_table f
   with Not_found ->
-    Parsing_helper.internal_error "event not found"
+    Parsing_helper.internal_error ("event not found " ^ f.f_name)
 
 let set_event_status_e set_end set_begin = function
     QSEvent(b, FunApp(f,_)) ->

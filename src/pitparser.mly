@@ -1,11 +1,11 @@
 %{
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -86,6 +86,8 @@ exception Syntax
 %token AMONG
 %token WEAKSECRET
 %token PARAM
+%token ORTEXT
+%token FAIL
 
 /* Typed front-end only */
 %token TYPE
@@ -104,6 +106,9 @@ exception Syntax
 %token LBRACE
 %token RBRACE
 %token PROOF
+%token EQUIVALENCE
+%token OTHERWISE
+
 /* Tables of keys */
 %token TABLE
 %token INSERT
@@ -118,7 +123,7 @@ exception Syntax
 %nonassoc DIFF
 
 %start all
-%type <Pitptree.tdecl list * Pitptree.tprocess> all
+%type <Pitptree.tdecl list * Pitptree.tprocess * Pitptree.tprocess option> all
 
 %start lib
 %type <Pitptree.tdecl list> lib
@@ -134,12 +139,17 @@ lib:
           TTypeDecl($2) :: $5 }
 | 	FUN IDENT LPAREN typeidseq RPAREN COLON typeid options DOT lib
 	{ (TFunDecl($2, $4, $7, $8)) :: $10 }
+	
+|	FUN IDENT LPAREN typeidseq RPAREN COLON typeid REDUCTION treducmayfail options DOT lib
+	{ (TReducFail($2,$4,$7,$9, $10)) :: $12 } 
+	
+|	REDUCTION treduc options DOT lib
+	{ (TReduc($2,$3)) :: $5 }
+	
 |       CONST neidentseq COLON typeid options DOT lib
         { (List.map (fun x -> TConstDecl(x, $4, $5)) $2) @ $7 }
 |	EQUATION forallvartype term EQUAL term DOT lib
 	{ (TEquation($2, $3, $5)) :: $7 }
-|	REDUCTION treduc options DOT lib
-	{ (TReduc($2,$3)) :: $5 }
 |       EVENT IDENT DOT lib
         { (TEventDecl($2, [])) :: $4 }
 |       EVENT IDENT LPAREN typeidseq RPAREN DOT lib
@@ -189,7 +199,7 @@ lib:
 |       PROOF LBRACE proof RBRACE lib
         { (* Supported for compatility with CryptoVerif only *)
           $5 }
-|       ELIMTRUE nevartype SEMI term DOT lib
+|       ELIMTRUE mayfailvartypeseq SEMI term DOT lib
         { (TElimtrue ($2,$4)) :: $6 } 
 |       ELIMTRUE term DOT lib
         { (TElimtrue ([],$2)) :: $4 } 
@@ -211,8 +221,12 @@ lib:
         { [] }
 
 all: 
-        lib PROCESS tprocess EOF
-	{ $1, $3 }
+|       lib PROCESS tprocess EOF
+	{ $1, $3, None }
+|	lib EQUIVALENCE tprocess tprocess EOF
+	{ 
+	  Param.equivalence := true;
+	  $1, $3, Some $4 }
 
 /* Proofs (for CryptoVerif compatibility only) */
 
@@ -278,7 +292,7 @@ forallvartype:
         { $2 }
 | 
         { [] }
-
+                
 typeid:
         IDENT
         { $1 }
@@ -301,7 +315,9 @@ netypeidseq:
 /* Terms */
 
 term:
-	IDENT LPAREN termseq RPAREN
+|	FAIL
+	{ PFail, parse_extent () }
+|	IDENT LPAREN termseq RPAREN
 	{ PFunApp ($1, $3), parse_extent() }
 |       CHOICE LBRACKET term COMMA term RBRACKET
         { Param.has_choice := true; 
@@ -323,7 +339,7 @@ term:
 	  [t] -> t   (* Allow parentheses for priorities of infix operators;
 			Tuples cannot have one element. *)
 	| l -> PTuple (l), parse_extent() }
-
+	
 netermseq:
 	term COMMA netermseq
 	{ $1 :: $3 }
@@ -383,6 +399,8 @@ gterm:
         { PGFunApp(("||", parse_extent()), [$1; $3]), parse_extent() }
 |       gterm WEDGE gterm
         { PGFunApp(("&&", parse_extent()), [$1; $3]), parse_extent() }
+|       CHOICE LBRACKET gterm COMMA gterm RBRACKET
+        { PGFunApp(("choice", parse_extent()), [$3; $5]), parse_extent() }
 |       EVENT LPAREN gtermseq RPAREN
         { PGFunApp(("event",parse_extent()), $3), parse_extent() }
 |       INJEVENT LPAREN gtermseq RPAREN
@@ -455,8 +473,8 @@ optint:
 gformat:
 	IDENT LPAREN gformatseq RPAREN
 	{ PFGFunApp ($1, $3), parse_extent() }
-|       NOT LPAREN gformat RPAREN
-        { PFGFunApp(("not", parse_extent()), [$3]), parse_extent() }
+|       CHOICE LBRACKET gformat COMMA gformat RBRACKET
+	{ PFGFunApp (("choice", parse_extent()), [$3; $5]), parse_extent() }
 |	IDENT
 	{ PFGIdent ($1), parse_extent() }
 |	LPAREN gformatseq RPAREN
@@ -505,12 +523,45 @@ fbindingseq:
 
 /* Rewrite rules */
 
+mayfailvartype:
+	IDENT COLON typeid
+	{ ($1,$3, false) }
+|
+	IDENT COLON typeid ORTEXT FAIL
+	{ ($1,$3, true) }
+	
+mayfailvartypeseq:
+	mayfailvartype COMMA mayfailvartypeseq
+	{ $1::$3 }
+|
+	mayfailvartype
+	{ [$1] }
+	
+forallmayfailvartype:
+	FORALL mayfailvartypeseq SEMI
+	{ $2 }
+|
+	{ [] }
+
+
+treducotherwise:
+	OTHERWISE forallmayfailvartype term EQUAL term treducotherwise
+	{ ($2,$3,$5) :: $6 }
+|	OTHERWISE forallmayfailvartype term EQUAL term
+	{ [$2,$3,$5] }
+	
+treducmayfail:
+	forallmayfailvartype term EQUAL term treducotherwise
+	{ ($1,$2,$4) :: $5 }
+|	forallmayfailvartype term EQUAL term
+	{ [$1,$2,$4] }
+
 treduc:
 	forallvartype term EQUAL term SEMI treduc
 	{ ($1,$2,$4) :: $6 }
-|	forallvartype term EQUAL term 
-	{ [$1,$2,$4] }
-
+|	forallvartype term EQUAL term
+	{ [$1,$2,$4] }	
+	
 /* Clauses */
 
 tclause: 
@@ -524,9 +575,9 @@ tclause:
         { PEquiv($1,$3,false) }
 
 tclauses:
-	forallvartype tclause SEMI tclauses
+	forallmayfailvartype tclause SEMI tclauses
 	{ ($1,$2) :: $4 }
-|	forallvartype tclause DOT
+|	forallmayfailvartype tclause DOT
 	{ [$1,$2] }
 
 /* Process */
@@ -552,34 +603,28 @@ tprocess:
           PNil }
 | 	NEW IDENT COLON typeid opttprocess
 	{ PRestr($2, $4, $5) }
-|	IF pterm THEN tprocess ELSE tprocess
-	{ PTest($2,$4,$6) }
-|	IF pterm THEN tprocess
-	{ PTest($2,$4,PNil) }
+|	IF pterm THEN tprocess optelseprocess
+	{ PTest($2,$4,$5) }
 |	IN LPAREN pterm COMMA tpattern RPAREN opttprocess
 	{ PInput($3,$5,$7) }
 |	OUT LPAREN pterm COMMA pterm RPAREN opttprocess
 	{ POutput($3,$5,$7) }
-| 	LET tpattern EQUAL pterm IN tprocess
-	{ PLet($2,$4,$6,PNil) }
 | 	LET tpattern EQUAL pterm 
 	{ PLet($2,$4,PNil,PNil) }
-| 	LET tpattern EQUAL pterm IN tprocess ELSE tprocess
-	{ PLet($2,$4,$6,$8) }
-|       LET nevartype SUCHTHAT pterm IN tprocess 
-        { PLetFilter($2,$4,$6,PNil) }
+| 	LET tpattern EQUAL pterm IN tprocess optelseprocess
+	{ PLet($2,$4,$6,$7) }
 |       LET nevartype SUCHTHAT pterm  
         { PLetFilter($2,$4,PNil,PNil) }
-|       LET nevartype SUCHTHAT pterm IN tprocess ELSE tprocess
+|       LET nevartype SUCHTHAT pterm IN tprocess optelseprocess
         { (* Approximating the else clause with a parallel composition
 	     is not correct for trace reconstruction *)
-          PLetFilter($2,$4,$6,$8) }
+          PLetFilter($2,$4,$6,$7) }
 |       INSERT IDENT LPAREN ptermseq RPAREN opttprocess
         { PInsert($2, $4, $6) }
-|       GET IDENT LPAREN tpatternseq RPAREN optinprocess
-        { PGet($2, $4, None, $6) }
-|       GET IDENT LPAREN tpatternseq RPAREN SUCHTHAT pterm optinprocess
-        { PGet($2, $4, Some $7, $8) }
+|       GET IDENT LPAREN tpatternseq RPAREN optinprocess optelseprocess
+        { PGet($2, $4, None, $6, $7) }
+|       GET IDENT LPAREN tpatternseq RPAREN SUCHTHAT pterm optinprocess optelseprocess
+        { PGet($2, $4, Some $7, $8, $9) }
 |	tprocess BAR tprocess
 	{ PPar($1,$3) }
 |       EVENT IDENT LPAREN ptermseq RPAREN opttprocess
@@ -600,6 +645,12 @@ optinprocess:
         { $2 }
 |       
         { PNil }        
+
+optelseprocess:
+        ELSE tprocess
+        { $2 }
+| 
+        { PNil }
 
 tpattern:
   IDENT
@@ -650,14 +701,18 @@ pterm:
         { PPFunApp(("&&", parse_extent()), [$1; $3]), parse_extent() }
 | 	NEW IDENT COLON typeid SEMI pterm
 	{ PPRestr($2, $4, $6), parse_extent() }
+|	IF pterm THEN pterm
+	{ PPTest($2,$4,None), parse_extent() }
 |	IF pterm THEN pterm ELSE pterm
-	{ PPTest($2,$4,$6), parse_extent() }
+	{ PPTest($2,$4,Some $6), parse_extent() }
 | 	LET tpattern EQUAL pterm IN pterm
-	{ PPLetIn($2,$4,$6), parse_extent() }
+	{ PPLet($2,$4,$6,None), parse_extent() }
 | 	LET tpattern EQUAL pterm IN pterm ELSE pterm
-	{ PPLet($2,$4,$6,$8), parse_extent() }
+	{ PPLet($2,$4,$6,Some $8), parse_extent() }
+|       LET nevartype SUCHTHAT pterm IN pterm
+        { PPLetFilter($2,$4,$6,None), parse_extent() }
 |       LET nevartype SUCHTHAT pterm IN pterm ELSE pterm
-        { PPLetFilter($2,$4,$6,$8), parse_extent() }
+        { PPLetFilter($2,$4,$6,Some $8), parse_extent() }
 |	LPAREN ptermseq RPAREN
 	{ match $2 with
 	  [t] -> t   (* Allow parentheses for priorities of infix operators;

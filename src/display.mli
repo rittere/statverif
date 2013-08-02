@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -27,6 +27,9 @@
 *)
 open Types
 
+(* Return an abbreviated derivation and an association table where the names are abbreviated *)
+
+val abbreviate_derivation : fact_tree -> (term * term) list * fact_tree
 
 module LangHtml :
 sig
@@ -58,7 +61,7 @@ val display_rule_nonewline : reduction -> unit
 val display_rule : reduction -> unit
 val display_initial_clauses : reduction list -> unit
 val display_eq : term * term -> unit
-val display_red : funsymb -> (term list * term) list -> unit
+val display_red : funsymb -> (term list * term * (term * term) list) list -> unit
 
 val display_term2 : term -> unit
 val display_pattern : pattern -> unit
@@ -79,6 +82,7 @@ module WithLinks :
     val term_list : term list -> unit
     val fact : fact -> unit
     val constra : constraints list -> unit
+    val constra_list : constraints list list -> unit
     val concl : bool -> fact -> hypspec list -> unit
   end
 
@@ -91,9 +95,9 @@ val display_bi_term : term * term -> unit
 val display_reduc_state :
       ('a -> unit) -> bool -> 'a Pitypes.reduc_state -> int
 val display_labeled_trace :
-      ('a -> term) -> 'a Pitypes.reduc_state -> unit
+      'a Pitypes.reduc_state -> unit
 val display_goal :
-      ('a -> term) -> ('a -> unit) -> ('a Pitypes.noninterf_test -> string) -> 'a Pitypes.goal_t -> fact list -> unit
+      ('a -> unit) -> ('a Pitypes.noninterf_test -> string) -> 'a Pitypes.goal_t -> fact list -> unit
 
 end
 
@@ -120,7 +124,7 @@ val display_rule_nonewline : reduction -> unit
 val display_rule : reduction -> unit
 val display_initial_clauses : reduction list -> unit
 val display_eq : term * term -> unit
-val display_red : funsymb -> (term list * term) list -> unit
+val display_red : funsymb -> (term list * term * (term * term) list) list -> unit
 
 val display_term2 : term -> unit
 val display_pattern : pattern -> unit
@@ -141,6 +145,7 @@ module WithLinks :
     val term_list : term list -> unit
     val fact : fact -> unit
     val constra : constraints list -> unit
+    val constra_list : constraints list list -> unit
     val concl : bool -> fact -> hypspec list -> unit
   end
 
@@ -153,9 +158,9 @@ val display_bi_term : term * term -> unit
 val display_reduc_state :
       ('a -> unit) -> bool -> 'a Pitypes.reduc_state -> int
 val display_labeled_trace :
-      ('a -> term) -> 'a Pitypes.reduc_state -> unit
+      'a Pitypes.reduc_state -> unit
 val display_goal :
-      ('a -> term) -> ('a -> unit) -> ('a Pitypes.noninterf_test -> string) -> 'a Pitypes.goal_t -> fact list -> unit
+      ('a -> unit) -> ('a Pitypes.noninterf_test -> string) -> 'a Pitypes.goal_t -> fact list -> unit
 
 end
 

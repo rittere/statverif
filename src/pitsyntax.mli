@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -30,7 +30,7 @@ open Pitypes
 
 val query_list : (Pitptree.envdecl * Pitptree.tquery list) list ref
 
-val parse_file : string -> process
+val parse_file : string -> process * process option
 val display : unit -> unit
 val transl_query : Pitptree.envdecl * Pitptree.tquery list -> query list
 val query_to_facts : query list -> fact list
@@ -40,5 +40,5 @@ val get_weaksecret_queries : unit -> funsymb list
 val get_not : unit -> event list
 val get_nounif : unit -> (fact_format * int) list
 
-
-
+val destructors_check_deterministic : funsymb list ref
+val set_need_vars_in_names : unit -> unit

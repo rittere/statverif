@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -129,7 +129,18 @@ let simplify next_stage repeat_next_stage ((hyp, concl, hist, constra) as r) =
       let v2 = follow_link v2 in
       if v1 != v2 then
 	begin
-	  Terms.link v2 (TLink (Var v1));
+	  (* When v1 is a may-fail variable and
+	     v2 is a message variable, we can store v2 as
+	     a link to v1 but not the converse. 
+
+	     In case we have att(may_failv, messv), replacing
+	     mayfailv with a message variable is fine, because
+	     the case att(fail, message) already derives bad by 
+	     the initial clauses. *)
+	  if v1.unfailing && not (v2.unfailing) then
+	    Terms.link v1 (TLink (Var v2))
+	  else
+	    Terms.link v2 (TLink (Var v1));
 	  redo_all_optim := true
 	end
     in

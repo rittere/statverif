@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -65,8 +65,12 @@ let ignore_types = ref true
 let html_output = ref false
 let html_dir = ref ""
 let current_query_number = ref 1
+let current_process_number = ref 1
 let derivation_number = ref 0
 let inside_query_number = ref 0
+let process_number = ref 0
+
+let simplify_process = ref 1
 
 let verbose_rules = ref false
 type explain_clauses = NoClauses | Clauses | ExplainedClauses
@@ -74,7 +78,9 @@ let verbose_explain_clauses = ref NoClauses
 let verbose_redundant = ref false
 let verbose_completed = ref false
 let verbose_eq = ref true
+let verbose_destr = ref false
 let verbose_term = ref true
+let abbreviate_clauses = ref true
 
 let reconstruct_derivation = ref true
 let simplify_derivation = ref true
@@ -136,6 +142,7 @@ let common_parameters p ext v =
   | "verboseCompleted", _ -> boolean_param verbose_completed p ext v
   | "verboseEq", _ -> boolean_param verbose_eq p ext v
   | "verboseTerm", _ -> boolean_param verbose_term p ext v
+  | "abbreviateClauses", _ -> boolean_param abbreviate_clauses p ext v
   | "maxDepth", S ("none",_) -> max_depth := -1
   | "maxDepth", I s -> max_depth := s
   | "maxHyp", I s -> max_hyp := s
@@ -332,6 +339,7 @@ let choice_fun t =
   choice_fun_memo (if !ignore_types then any_type else t)
 
 let has_choice = ref false
+let equivalence = ref false
 
 (* Values computed from the input file *)
 

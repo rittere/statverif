@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -42,6 +42,7 @@ let init_kinds d =
   List.iter (function
       TTypeDecl(t,_) -> Hashtbl.add kinds t "\\kwt"
     | TFunDecl((f,_),_,_,_) -> Hashtbl.add kinds f "\\kwf"
+    | TReducFail((f,_),_,_,_,_) -> Hashtbl.add kinds f "\\kwf"
     | TReduc(((_,(PFunApp((f,_),_),_),_)::_),_) -> Hashtbl.add kinds f "\\kwf"
     | TPredDecl((p,_),_,_) -> Hashtbl.add kinds p "\\kwp"
     | TFree((c,_),_,_) -> Hashtbl.add kinds c "\\kwc"
@@ -152,7 +153,7 @@ let convert filename =
     user_error ("File error: " ^ s ^ "\n")
 
 let converttotex f =
-  let (d,_) = parse f in
+  let (d,_,_) = parse f in
   init_kinds d;
   convert f 
 

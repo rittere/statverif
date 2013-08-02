@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -27,17 +27,24 @@
 *)
 (* This modules contains basic functions to manipulate terms *)
 
-val tuple_table : (Types.typet list, Types.funsymb) Hashtbl.t
+open Types
+
+val tuple_table : (typet list, funsymb) Hashtbl.t
 
 (* [get_tuple_fun n] returns the function symbol corresponding
    to tuples of arity [n] *)
-val get_tuple_fun : Types.typet list -> Types.funsymb
+val get_tuple_fun : typet list -> funsymb
+val get_term_type : term -> typet
+val get_pat_type : pattern -> typet
 
-val get_term_type : Types.term -> Types.typet
-val get_format_type : Types.format -> Types.typet
+val term_of_pattern_variable : pattern -> term
+
+val get_format_type : format -> typet
 val copy_n : int -> 'a -> 'a list
-val tl_to_string : string -> Types.typet list -> string
-val eq_lists : 'a list -> 'a list -> bool
+val tl_to_string : string -> typet list -> string
+
+(* [eq_lists l1 l2] tests the physical equality between the elements of [t1] and [t2] *)
+val eq_lists : 'a list -> 'a list -> bool 
 
 (* Creates and returns a new identifier or variable *)
 
@@ -51,102 +58,112 @@ val record_id : string -> Parsing_helper.extent -> unit
 val fresh_id : string -> string
 
 (* [new_var s t] creates a fresh variable with name [s] and type [t] *)
-val new_var : string -> Types.typet -> Types.binder
+val new_var : string -> typet -> binder
+val new_unfailing_var : string -> typet -> binder
 
 (* [new_var_noren s t] creates a fresh variable with name [s] and type [t] 
    The name of this variable is exactly [s], without renaming it to
    a fresh name even if s is already used. Such variables should never
    be displayed. *)
-val new_var_noren : string -> Types.typet -> Types.binder
+val new_var_noren : string -> typet -> binder
 
 (* [copy_var v] creates a fresh variable with the same sname and type as [v]  *)
-val copy_var : Types.binder -> Types.binder
+val copy_var : binder -> binder
 
 (* [copy_var_noren v] creates a fresh variable with the same name and type 
    as [v]. The name is exactly the same as [v], without renaming to a fresh
    name. *)
-val copy_var_noren : Types.binder -> Types.binder
+val copy_var_noren : binder -> binder
 
 (* [new_var_def t] creates a fresh variable with a default name and type [t] *) 
-val new_var_def : Types.typet -> Types.term
+val new_var_def : typet -> term
+val new_unfailing_var_def : typet -> term
+
 (* [val_gen tl] creates new variables of types [tl] and returns them in a 
    list *)
-val var_gen : Types.typet list -> Types.term list
+val var_gen : typet list -> term list
 
-
+(* [is_may_fail_term t] returns true if [t] is the constant [fail] or a may-fail variable *)
+val is_may_fail_term : term -> bool
 
 (* [occurs_var v t] returns true when variable [v] occurs in [t] *)
-val occurs_var : Types.binder -> Types.term -> bool
-val occurs_var_fact : Types.binder -> Types.fact -> bool
+val occurs_var : binder -> term -> bool
+val occurs_var_fact : binder -> fact -> bool
 
 (* [occurs_f f t] returns true when function symbol [f] occurs in [t] *)
-val occurs_f : Types.funsymb -> Types.term -> bool
+val occurs_f : funsymb -> term -> bool
+val occurs_f_pat : funsymb -> pattern -> bool
+val occurs_f_fact : funsymb -> fact -> bool
 
 (* Syntactic equality *)
-val equal_terms : Types.term -> Types.term -> bool
-val equals_term_pair : 'a * Types.term -> 'a * Types.term -> bool
-val equal_facts : Types.fact -> Types.fact -> bool
-val equals_simple_constraint : Types.constraints -> Types.constraints -> bool
+val equal_terms : term -> term -> bool
+val equals_term_pair : 'a * term -> 'a * term -> bool
+val equal_facts : fact -> fact -> bool
+val equals_simple_constraint : constraints -> constraints -> bool
 
-(* Copies. Variables must be linked only to other variables, with VLink *)
-val copy_term : Types.term -> Types.term
-val copy_fact : Types.fact -> Types.fact
-val copy_constra : Types.constraints list -> Types.constraints list
-val copy_rule : Types.reduction -> Types.reduction
-val copy_red : (Types.term list * Types.term) -> (Types.term list * Types.term)
+(* General variables *)
+val new_gen_var : typet -> bool -> funsymb
+val generalize_vars_not_in : binder list -> term -> term
+val generalize_vars_in : binder list -> term -> term
+
+(* Copies. Variables must be linked only to other variables, with VLink. *)
+val copy_term : term -> term
+val copy_fact : fact -> fact
+val copy_constra : constraints list -> constraints list
+val copy_rule : reduction -> reduction
+val copy_red : rewrite_rule -> rewrite_rule
 (* To cleanup variable links after copies and other manipulations
    [current_bound_vars] is the list of variables that currently have a link.
    [cleanup()] removes all links of variables in [current_bound_vars],
-   and resets [current_bound_vars] to the empty list
+   and resets [current_bound_vars] to the empty list.
+   
+   Furthermore, [cleanup_assoc_table_gen_and_ex] cleanup the association table. 
  *)
-val current_bound_vars : Types.binder list ref
+val current_bound_vars : binder list ref
 val cleanup : unit -> unit
-val link : Types.binder -> Types.linktype -> unit
+val link : binder -> linktype -> unit
+val link_var : term -> linktype -> unit
 val auto_cleanup : (unit -> 'a) -> 'a
 
 (* Exception raised when unification fails *)
 exception Unify
-val occur_check : Types.binder -> Types.term -> unit
+val occur_check : binder -> term -> unit
 (* Unify two terms/facts by linking their variables to terms *)
-val unify : Types.term -> Types.term -> unit
-val unify_facts : Types.fact -> Types.fact -> unit
+val unify : term -> term -> unit
+val unify_facts : fact -> fact -> unit
 (* Copies. Variables can be linked to terms with TLink *)
-val copy_term2 : Types.term -> Types.term
-val copy_fact2 : Types.fact -> Types.fact
-val copy_constra2 : Types.constraints list -> Types.constraints list
+val copy_term2 : term -> term
+val copy_fact2 : fact -> fact
+val copy_constra2 : constraints list -> constraints list
+val copy_rule2 : reduction -> reduction
 
 exception NoMatch
-val match_terms2 : Types.term -> Types.term -> unit
-val match_facts2 : Types.fact -> Types.fact -> unit
-val matchafact : Types.fact -> Types.fact -> bool
-(* Same as matchafact except that it returns false when all variables
-   are mapped to variables by the matching substitution *)
-val matchafactstrict : Types.fact -> Types.fact -> bool
+val match_terms : term -> term -> unit
+val match_facts : fact -> fact -> unit
+val matchafact : fact -> fact -> bool
+(* Same as matchafact except that it returns true only when some variable
+   x is mapped to a term that is not a variable and that contains x by 
+   the matching substitution *)
+val matchafactstrict : fact -> fact -> bool
 
 (* Copy of terms and constraints after matching.
    Variables can be linked to terms with TLink, but the link
    is followed only once, not recursively *)
-val copy_term3 : Types.term -> Types.term
-val copy_fact3 : Types.fact -> Types.fact
-val copy_constra3 : Types.constraints list -> Types.constraints list
+val copy_term3 : term -> term
+val copy_fact3 : fact -> fact
+val copy_constra3 : constraints list -> constraints list
 
 (* Size of terms/facts *)
-val term_size : Types.term -> int
-val fact_size : Types.fact -> int
+val term_size : term -> int
+val fact_size : fact -> int
 
 (* [get_var vlist t] accumulate in reference list [vlist] the list of variables
    in the term [t].
    [get_vars_constra vlist c] does the same for the constraint [c], and
    [get_vars_fact vlist f] for the fact f *)
-val get_vars : Types.binder list ref -> Types.term -> unit
-val get_vars_constra : Types.binder list ref -> Types.constraints -> unit
-val get_vars_fact : Types.binder list ref -> Types.fact -> unit
-
-(* The next five functions are useful for the unification simplification
-   of inequality constraints and of testunif facts. *)
-
-val new_gen_var : Types.typet -> Types.funsymb
-val generalize_vars_not_in : Types.binder list -> Types.term -> Types.term
+val get_vars : binder list ref -> term -> unit
+val get_vars_constra : binder list ref -> constraints -> unit
+val get_vars_fact : binder list ref -> fact -> unit
 
 (* [replace_f_var vl t] replaces names in t according to
    the association list vl. That is, vl is a reference to a list of pairs
@@ -155,7 +172,7 @@ val generalize_vars_not_in : Types.binder list -> Types.term -> Types.term
    If an f_i in general_vars occurs in t, a new entry is added
    to the association list vl, and f_i is replaced accordingly. *)
 
-val replace_f_var : (Types.funsymb * Types.binder) list ref -> Types.term -> Types.term
+val replace_f_var : (funsymb * binder) list ref -> term -> term
 
 (* [rev_assoc v2 vl] looks for [v2] in the association list [vl].
    That is, [vl] is a list of pairs (f_i, v_i) where f_i is a 
@@ -163,38 +180,91 @@ val replace_f_var : (Types.funsymb * Types.binder) list ref -> Types.term -> Typ
    If [v2] is a v_i, then it returns f_i[],
    otherwise it returns [v2] unchanged. *)
 
-val rev_assoc : Types.binder -> (Types.funsymb * Types.binder) list -> Types.term
+val rev_assoc : binder -> (funsymb * binder) list -> term
 
 (* [follow_link var_case t] follows links stored in variables in [t]
    and returns the resulting term. Variables are translated
    by the function [var_case] *)
 
-val follow_link : (Types.binder -> Types.term) -> Types.term -> Types.term
+val follow_link : (binder -> term) -> term -> term
 
 (* [replace name f t t'] replaces all occurrences of the name [f] (ie f[]) with [t]
    in [t'] *)
 
-val replace_name : Types.funsymb -> Types.term -> Types.term -> Types.term
+val replace_name : funsymb -> term -> term -> term
 
 (* [skip n l] returns list [l] after removing its first [n] elements *)
 val skip : int -> 'a list -> 'a list
 
 (* Do not select Out facts, blocking facts, or pred_TUPLE(vars) *)
-val add_unsel : Types.fact -> unit
-val is_unselectable : Types.fact -> bool
+val add_unsel : fact -> unit
+val is_unselectable : fact -> bool
 
 (* helper function for decomposition of tuples *)
-val reorganize_fun_app : Types.funsymb -> Types.term list -> 
-  Types.term list list
+val reorganize_fun_app : funsymb -> term list -> 
+  term list list
+  
+(* Symbols *)
+
+val get_fail_symb : typet -> funsymb
+val get_fail_term : typet -> term
 
 (* Constants *)
 
-val true_cst : Types.funsymb
-val false_cst : Types.funsymb
+val true_cst : funsymb
+val false_cst : funsymb
+
+val true_term : term
+val false_term : term
 
 (* Functions *)
 
-val equal_fun : Types.typet -> Types.funsymb
-val and_fun : Types.funsymb
-val not_fun : Types.funsymb
-val new_name_fun : Types.typet -> Types.funsymb
+val is_true_fun : funsymb
+
+val equal_fun : typet -> funsymb
+val diff_fun : typet -> funsymb
+val or_fun : funsymb
+val and_fun : funsymb
+val not_fun : funsymb
+val new_name_fun : typet -> funsymb
+
+val glet_constant_fun : typet -> funsymb
+val glet_constant_never_fail_fun : typet -> funsymb
+
+val glet_fun : typet -> funsymb
+val gtest_fun : typet -> funsymb
+val success_fun : typet -> funsymb
+val not_caught_fail_fun : typet -> funsymb
+
+
+val complete_semantics_constructors : typet list -> typet -> rewrite_rules
+val red_rules_fun : funsymb -> rewrite_rules
+
+(* [clauses_for_function clauses_for_red_rules s f] generates clauses
+   for a function [f], given a function [clauses_for_red_rules] such
+   that [clauses_for_red_rules f red_rules] generates clauses for
+   function that has rewrite rules [red_rules].
+   (For constructors, the rewrite rules f(...fail...) -> fail are
+   omitted from [red_rules]. The function [clauses_for_red_rules] must
+   take this point into account. In practice, this is easy because the
+   clauses that come from f(...fail...) -> fail are useless.  This
+   however needs to be justified in each case.)
+   [s] is unused. It helps for calling [clauses_for_function]
+   as argument of [Hashtbl.iter]. *)
+val clauses_for_function : (funsymb -> rewrite_rules -> unit) ->
+  'a -> funsymb -> unit
+
+val get_function_name : funsymb -> string
+val projection_fun : funsymb * int -> funsymb
+val get_all_projection_fun : funsymb -> funsymb list
+
+
+val reset_occurrence : unit -> unit
+val new_occurrence : unit -> int
+
+val create_name : string -> typet list * typet -> bool -> funsymb
+
+exception False_inequality
+
+val generate_destructor_with_side_cond : term list list -> 
+  term list -> term -> Parsing_helper.extent -> rewrite_rules

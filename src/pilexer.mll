@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -67,7 +67,11 @@ let keyword_table =
   "phase", PHASE;
   "among", AMONG;
   "weaksecret", WEAKSECRET;
-  "choice", CHOICE ]
+  "choice", CHOICE;
+  "otherwise", OTHERWISE;
+  "can", CANTEXT;
+  "fail", FAIL;
+  "where", WHERE]
 
 }
 

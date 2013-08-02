@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -64,9 +64,10 @@ type predicate = { p_name: string;
 
 type binder = { sname : string;
                 vname : int;
+                unfailing : bool;
 		btype : typet;
 		mutable link : linktype }
-
+		
 (* Environment elements; environments are needed for terms in queries
    that cannot be expanded before process translation, see link PGTLink
    below *)
@@ -79,7 +80,7 @@ and envElement =
   | EEvent of funsymb
   | EType of typet
   | ETable of funsymb
-  | ELetFun of binder list * (process list -> process) * term list * typet
+  | ELetFun of (term list -> (term -> process) -> process) * (typet list) * typet
 
 (* Processes: patterns *)
 
@@ -95,16 +96,16 @@ and process =
   | Par of process * process
   | Repl of process * occurrence
   | Restr of funsymb * process * occurrence
-  | Test of term * term * process * process * occurrence
+  | Test of term * process * process * occurrence
   | Input of term * pattern * process * occurrence
   | Output of term * term * process * occurrence
   | Let of pattern * term * process * process * occurrence
   | LetFilter of binder list * fact * process * process * occurrence
   | Event of term  * process * occurrence
   | Insert of term * process * occurrence
-  | Get of pattern * term * process * occurrence
+  | Get of pattern * term * process * process * occurrence
   | Phase of int * process * occurrence
-
+  
 and linktype = 
     NoLink
   | VLink of binder
@@ -118,22 +119,29 @@ and name_info = { mutable prev_inputs : term option;
 		  mutable prev_inputs_meaning : string list }
 
 and funcats = 
-    Red of (term list * term) list
+    Red of rewrite_rules
   | Eq of (term list * term) list
   | Tuple 
   | Name of name_info
   | SpecVar of binder
   | Syntactic of funsymb	
   | General_var
+  | General_mayfail_var
   | Choice
+  | Failure
 
-and funsymb = { f_name : string;
+and rewrite_rule = term list * term * (term * term) list
+
+and rewrite_rules = rewrite_rule list
+
+and funsymb = { 
+		f_name : string;
 		mutable f_type : typet list * typet; (* type of the arguments, type of the result *)
-                mutable f_cat : funcats;
+		mutable f_cat : funcats;
 		f_initial_cat : funcats; (* Used to memorize f_cat before closing using the
                                             equational theory. The initial f_cat is used in reduction.ml,
 					    and also in check_several_types *)
-	    	f_private : bool; (* true when the function cannot be applied by the adversary *)
+		f_private : bool; (* true when the function cannot be applied by the adversary *)
 		f_options : int
               }
 
@@ -164,13 +172,18 @@ and fact =
    a false constraint leads to the immediate removal of the rule.
 *)
 
-type constraints = Neq of term * term
+type constraints = 
+	| Neq of term * term
+	
+(* Rule descriptions for History.get_rule_hist *)
 
-(* Rule descriptions *)
+type rulespec =
+  | RElem of predicate list * predicate
+  | RTestUnif
+  | RApplyFunc of funsymb * predicate
+  | RApplyProj of funsymb * int * predicate  (* For projections corresponding to data constructors *)
 
-type funspec =
-    Func of funsymb
-  | Proj of funsymb * int  (* For projections corresponding to data constructors *)
+(* History of construction of rules *)
 
 type onestatus =
     No | NonInj | Inj
@@ -191,12 +204,12 @@ type hypspec =
   | OutputPTag of occurrence
   | InsertTag of occurrence
   | GetTag of occurrence
+  | GetTagElse of occurrence
 
 type label =
     ProcessRule of hypspec list * term list 
-  | ProcessRule2 of hypspec list * term list * term list 
-  | Apply of funspec * predicate
-  | TestApply of funspec * predicate
+  | Apply of funsymb * predicate
+  | TestApply of funsymb * predicate
   | TestEq of predicate
   | LblEquiv
   | LblClause
@@ -205,6 +218,7 @@ type label =
   | Rs of predicate * predicate
   | Ri of predicate * predicate
   | Ro of predicate * predicate
+  | Rfail of predicate
   | TestComm of predicate * predicate
   | InputSecr of predicate
   | OutputSecr of predicate
@@ -217,6 +231,8 @@ type label =
   | LblNone
   | Elem of predicate list * predicate
   | TestUnif
+  | TestDeterministic of funsymb
+  | TestTotal of funsymb
 
 (* Rules *)
 

@@ -1,11 +1,11 @@
 %{
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -84,6 +84,10 @@ exception Syntax
 %token PHASE
 %token AMONG
 %token WEAKSECRET
+%token CANTEXT
+%token FAIL
+%token WHERE
+%token OTHERWISE
 
 /* Untyped front-end only */
 %token DATA
@@ -96,7 +100,7 @@ exception Syntax
 %right WEDGE 
 
 %start all
-%type <Piptree.decl list> all
+%type <Piptree.decl list * Piptree.process> all
 
 %%
 
@@ -104,45 +108,55 @@ exception Syntax
 /*** Untyped front-end ***/
 
 
-all:
-	privateopt FUN IDENT SLASH INT DOT all
+lib:
+	privateopt FUN IDENT SLASH INT DOT lib
 	{ (FunDecl($3, $5, $1)) :: $7 }
-|       DATA IDENT SLASH INT DOT all
+|       DATA IDENT SLASH INT DOT lib
 	{ (DataFunDecl($2, $4)) :: $6 }
-|	EQUATION term EQUAL term DOT all
+|	EQUATION term EQUAL term DOT lib
 	{ (Equation($2, $4)) :: $6 }
-|	privateopt REDUCTION reduc all
-	{ (Reduc($3,$1)) :: $4 }
-|       PREDICATE IDENT SLASH INT neidentseq DOT all
+|	privateopt REDUCTION term EQUAL term SEMI reduc lib
+	{ (Reduc(($3,$5)::$7, $1)) :: $8 }
+	
+|	privateopt REDUCTION reducmayfailseq DOT lib
+	{ (ReducFail($3,$1)) :: $5 }
+	
+|       PREDICATE IDENT SLASH INT neidentseq DOT lib
         { (PredDecl($2, $4, $5)) :: $7 }
-|       PREDICATE IDENT SLASH INT DOT all
+|       PREDICATE IDENT SLASH INT DOT lib
         { (PredDecl($2, $4, [])) :: $6 }
-|	LET IDENT EQUAL process DOT all
+|	LET IDENT EQUAL process DOT lib
 	{ (PDef($2,$4)) :: $6 }
-|       NOUNIF gfactformat optint foptbindingseq DOT all
+|       NOUNIF gfactformat optint foptbindingseq DOT lib
         { (NoUnif ($2,$3,$4)) :: $6 } 
-|       PARAM IDENT EQUAL IDENT DOT all
+|       PARAM IDENT EQUAL IDENT DOT lib
         { (Param($2,S $4)) :: $6 }
-|       PARAM IDENT EQUAL INT DOT all
+|       PARAM IDENT EQUAL INT DOT lib
         { (Param($2,I $4)) :: $6 }
-|       QUERY queryseq DOT all
+|       QUERY queryseq DOT lib
         { (Query($2)) :: $4 }
-|	NONINTERF niseq DOT all
+|	NONINTERF niseq DOT lib
         { (Noninterf($2)) :: $4 }
-|	WEAKSECRET IDENT DOT all
+|	WEAKSECRET IDENT DOT lib
         { (Weaksecret($2)) :: $4 }
-|	NOT gterm optphase optbindingseq DOT all
+|	NOT gterm optphase optbindingseq DOT lib
 	{ (Not(((PGSimpleFact(("attacker",dummy_ext), [$2]),dummy_ext),$3),$4)) :: $6 }
-|	NOT event optbindingseq DOT all
+|	NOT event optbindingseq DOT lib
 	{ (Not($2,$3)) :: $5 }
-|       ELIMTRUE fact DOT all
-        { (Elimtrue ($2)) :: $4 } 
-|       privateopt FREE neidentseq DOT all
+|       ELIMTRUE fact DOT lib
+        { (Elimtrue ($2, [])) :: $4 } 
+|       ELIMTRUE fact WHERE varmayfail CANTEXT FAIL DOT lib
+        { (Elimtrue ($2, $4)) :: $8 } 
+|       privateopt FREE neidentseq DOT lib
         { (Free($3,$1)) :: $5 }
-|       CLAUSES clauses all
+|       CLAUSES clauses lib
         { (Clauses($2)) :: $3 }
-|	PROCESS process EOF
-	{ [Process $2] }
+|	
+	{ [] }
+	 
+all: 
+|       lib PROCESS process EOF
+	{ $1, $3 }
 
 privateopt:
 	PRIVATE
@@ -158,10 +172,31 @@ reduc:
 |	term EQUAL term DOT
 	{ [($1,$3)] }
 
-
+varmayfail:
+        IDENT COMMA varmayfail
+        { $1::$3 }
+|       IDENT
+        { [$1] }
+            
+reducmayfail:
+        term EQUAL term WHERE varmayfail CANTEXT FAIL
+        { ($1,$3,$5) }
+|	term EQUAL term
+        { ($1,$3,[]) }
+        
+reducmayfailseq:
+	reducmayfail OTHERWISE reducmayfailseq
+	{ $1::$3 }
+|	reducmayfail
+	{ [$1] }
+       
+	
 /* Terms */
 
 term:
+|	FAIL
+	{ PFail, parse_extent () }
+|
 	IDENT LPAREN termseq RPAREN
 	{ PFunApp ($1, $3), parse_extent() }
 |       CHOICE LBRACKET term COMMA term RBRACKET
@@ -401,10 +436,16 @@ clause:
 |       factand EQUIVEQ fact
         { PEquiv($1,$3,false) }
 
+clausemayfail:
+        clause WHERE varmayfail CANTEXT FAIL
+        { ($1,$3) }
+|       clause
+        { ($1,[]) }
+
 clauses:
-	clause SEMI clauses
+	clausemayfail SEMI clauses
 	{ $1 :: $3 }
-|	clause DOT
+|	clausemayfail DOT
 	{ [$1] }
 
 /* Process */

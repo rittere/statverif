@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -45,7 +45,7 @@ let add_no_unif f n =
   if !Param.verbose_term then
     begin
       print_string "nounif "; 
-      display_fact_format f; 
+      Display.Text.display_fact_format f; 
       print_string ("/" ^ (string_of_int n));
       Display.Text.newline()
     end;
@@ -64,7 +64,20 @@ let rec has_same_format_term t1 t2 =
    | (Var _, FVar v2) | (_, FAny v2) -> 
        begin
 	 match v2.link with
-	   NoLink -> (Terms.link v2 (TLink t1)); true
+	   NoLink -> 
+	     begin
+	       if v2.unfailing then 
+		 begin
+		   Terms.link v2 (TLink t1);
+		   true
+		 end
+	       else
+		 (* v2 is a message variable; the matching works only if t1 is a message *)
+		 match t1 with
+		   Var v' when v'.unfailing -> false
+		 | FunApp(f,[]) when f.f_cat = Failure -> false
+		 | _ -> Terms.link v2 (TLink t1); true
+	     end
 	 | TLink t1' -> Terms.equal_terms t1 t1'
 	 | _ -> Parsing_helper.internal_error "unexpected link in has_same_format_term"
        end
@@ -87,10 +100,11 @@ let rec format_equal t1 t2 =
         (f1 == f2) && (List.for_all2 format_equal l1 l2)
    | (FVar v1, FVar v2) | (FAny v1, FAny v2) -> 
        begin
-	 match v2.link with
+	 (v1.unfailing == v2.unfailing) &&
+	 (match v2.link with
 	   NoLink -> Terms.link v2 (VLink v1); true
 	 | VLink v1' -> v1 == v1'
-	 | _ -> Parsing_helper.internal_error "unexpected link in format_equal"
+	 | _ -> Parsing_helper.internal_error "unexpected link in format_equal")
        end
    | (_,_) -> false
 

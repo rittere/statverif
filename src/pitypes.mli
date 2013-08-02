@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -63,7 +63,8 @@ type eventstatus =
 (* Equivalence queries *)
 
 type eq_query =
-    ChoiceQuery 
+  | DestructorQuery
+  | ChoiceQuery 
   | NonInterfQuery of (Types.funsymb * Types.term list option) list
   | WeakSecret of Types.funsymb
 
@@ -80,9 +81,9 @@ type reduc_type =
   | ROutput1 of int * term * term 
   | ROutput2 of int * term * term
   | ROutput3 of int * term * term
-  | RTest1 of int * term * term 
-  | RTest2 of int * term * term
-  | RTest3 of int * term * term
+  | RTest1 of int * term  
+  | RTest2 of int * term 
+  | RTest3 of int * term
   | RBegin1 of int * term
   | RBegin2 of int * term
   | REnd of int * term
@@ -95,16 +96,17 @@ type reduc_type =
   | RInsert1 of int * term 
   | RInsert2 of int * term
   | RGet of int * pattern * term * term
+  | RGet2 of int
   | RInit
 
 (* 'a may be term (for reduction.ml) or term * term (for reduction_bipro.ml) *)
 
-type 'a name_param_info = 
-    Always of string * 'a
-  | IfQueryNeedsIt of string * 'a
+type name_param_info = 
+    Always of string * term
+  | IfQueryNeedsIt of string * term
 
 type 'a info = 
-    InputInfo of 'a list * 'a list * 'a * ('a name_param_info) list * hypspec list * ('a * ('a list * 'a list) option) list
+    InputInfo of 'a list * 'a list * 'a * name_param_info list * hypspec list * ('a * ('a list * 'a list) option) list
 	(* Channel name after decomposition of tuples,
 	   Public set of values at last test,
 	   Channel name,
@@ -145,7 +147,7 @@ type 'a info =
   | Nothing
 
 type 'a sub_proc =
-    process * (('a name_param_info) list) * (hypspec list) * (fact list) * ('a info) 
+    process * (name_param_info list) * (hypspec list) * (fact list) * ('a info) 
       (* process (always closed -- only bound variables can occur; no variable with link *)
       (* list of name_params (terms received as input + session ids), always closed -- no variables *)
       (* list of occurrences of inputs and replications already seen in the reduction *)
@@ -159,12 +161,14 @@ type 'a loc_info =
   | LocProcess of int * 'a sub_proc
 
 type weak_test =
-    DestrTest of term
+    FailTest of term
   | EqTest of term * term
 
 type 'a noninterf_test =
     ProcessTest of hypspec list * term list * (int * 'a sub_proc) option ref(*location where test found*)
+  | InputProcessTest of hypspec list * term list * term * (int * 'a sub_proc) option ref(*location where test found*)
   | ApplyTest of funsymb * 'a list
+  | NIFailTest of 'a
   | CommTest of 'a(*input channel*) * 'a(*output channel*) * 
 	('a loc_info(*location where input found*) * 'a loc_info(*location where output found*)) option ref
   | InputTest of 'a(*input channel*) * ('a loc_info) option ref(*location where input found*)
@@ -196,7 +200,7 @@ type 'a reduc_state =
 
       prepared_attacker_rule : (predicate * 'a list * 'a list) list; (* attacker rules *)
                                (* predicate, hypothesis, conclusion *)
-      io_rule : (int * fact list * hypspec list * 'a list * fact) list; (* process rules *)
+      io_rule : (int * fact list * hypspec list * term list * fact) list; (* process rules *)
                 (* rule number, hypotheses, occurrence labels, name params, conclusion *)
 
       previous_state : ('a reduc_state) option; (* previous semantic state *)
@@ -205,3 +209,13 @@ type 'a reduc_state =
       current_phase : int;
       comment : reduc_type  (* type of the reduction *)
     }
+
+
+(* Indications of term occurrences that should be added to name_params *)
+
+type term_occ =
+      OTest of int
+    | OLet of int
+    | OInChannel of int
+    | OEvent of int
+    | OLetFilter of int

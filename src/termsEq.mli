@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -28,8 +28,10 @@
 (* This module contains basic functions to manipulate terms modulo
    an equational theory *)
 
+open Types
+
 (* Register an equation *)
-val register_equation : Types.term * Types.term -> unit
+val register_equation : term * term -> unit
 
 (* returns true when at least one equation has been registered since last
    call to record_eqs *)
@@ -38,34 +40,69 @@ val hasEquationsToRecord : unit -> bool
 (* returns true when at least one equation has been registered *)
 val hasEquations : unit -> bool
 
-(* Transforms equations into "equational destructors"
+(* Transforms equations into rewrite rules on constructors
    When !Param.html_output is set, an HTML file must be open to receive 
    the display. *)
 val record_eqs : unit -> unit
 
 
-val close_term_eq : (Types.term -> unit) -> Types.term -> unit
-val close_term_list_eq : (Types.term list -> unit) -> Types.term list -> unit
-val close_fact_eq : (Types.fact -> unit) -> Types.fact -> unit
-val close_fact_list_eq : (Types.fact list -> unit) -> Types.fact list -> unit
-val close_rule_eq : (Types.reduction -> unit) -> Types.reduction -> unit
-val close_rule_destr_eq : (Types.fact list * Types.fact * Types.constraints list list -> unit) -> Types.fact list * Types.fact * Types.constraints list list -> unit
+(* Close clauses modulo the equational theory *
+ close_rule_eq is used for clauses entered by the user in Horn-clause 
+ front-ends,
+ close_fact_eq is used for closing the goals *)
+val close_term_eq : (term -> unit) -> term -> unit
+val close_term_list_eq : (term list -> unit) -> term list -> unit
+val close_fact_eq : (fact -> unit) -> fact -> unit
+val close_fact_list_eq : (fact list -> unit) -> fact list -> unit
+val close_rule_eq : (reduction -> unit) -> reduction -> unit
+
+(* Close clauses by rewrite rules of constructors and destructors. *
+   Used for clauses that define predicates (for LetFilter). *)
+val close_rule_destr_eq : (fact list * fact * constraints list list -> unit) -> fact list * fact * constraints list list -> unit
 
 (* Unification modulo the equational theory *)
-val unify_modulo : (unit -> 'a) -> Types.term -> Types.term -> 'a
-val unify_modulo_list : (unit -> 'a) -> Types.term list -> Types.term list -> 'a
-val unify_modulo_env : (unit -> 'a) -> (Types.binder * Types.term) list -> (Types.binder * Types.term) list -> 'a
+val unify_modulo : (unit -> 'a) -> term -> term -> 'a
+val unify_modulo_list : (unit -> 'a) -> term list -> term list -> 'a
+val unify_modulo_env : (unit -> 'a) -> (binder * term) list -> (binder * term) list -> 'a
 
-val copy_remove_syntactic : Types.term -> Types.term
-val copy_remove_syntactic_fact : Types.fact -> Types.fact
-val copy_remove_syntactic_constra : Types.constraints list -> Types.constraints list
-val remove_syntactic_term : Types.term -> Types.term
-val remove_syntactic_fact : Types.fact -> Types.fact
-val remove_syntactic_constra : Types.constraints list -> Types.constraints list
+val copy_remove_syntactic : term -> term
+val copy_remove_syntactic_fact : fact -> fact
+val copy_remove_syntactic_constra : constraints list -> constraints list
+val remove_syntactic_term : term -> term
+val remove_syntactic_fact : fact -> fact
+val remove_syntactic_constra : constraints list -> constraints list
 
-(* Closes destructor reductions under the equational theory *)
-val close_destr_eq : Types.funsymb -> (Types.term list * Types.term) list -> (Types.term list * Types.term) list
+(* Treatment of inequatity constraints *)
+
+(* [check_constraint_list constra] checks that the constraints [constra] 
+   are still satisfiable. It raises Unify when they are not. 
+   It returns the simplified constraints when they are. *)
+val check_constraint_list : constraints list list -> constraints list list
+
+(* [simplify_constra_list rule constralist] 
+   simplifies the constraints [constralist] knowing that 
+   they occur in a clause containing the facts in the list [rule].
+   Raises FalseConstraint when the constraints are not satisfiable. *)
+exception FalseConstraint
+val simplify_constra_list : fact list -> constraints list list -> constraints list list
+
+(* [implies_constra_list rule formula1 formula2 ()] 
+   checks that the inequalities in [formula1] imply those in [formula2]. 
+   It returns unit when the check succeeds and raises NoMatch when it fails.
+   [formula2] is supposed to contain links that come from a previous matching.
+   [rule] is a list of facts of the clause that contains [formula1]. 
+   (The argument [rule] is used to know which variables should be preserved in 
+   the simplification of the instance of [formula2], which after substitution 
+   uses variables of the clause [rule, formula1]. *)
+
+val implies_constra_list : fact list -> constraints list list -> constraints list list -> unit -> unit
+
+(* Transforms equations into rewrite rules on constructors, also closing
+   the rewrite rules of destructors modulo equations.
+   When !Param.html_output is set, an HTML file must be open to receive 
+   the display. *)
+val record_eqs_with_destr : unit -> unit
 
 (* Simplifies a term using the equations *)
 exception Reduces
-val simp_eq : Types.term -> Types.term
+val simp_eq : term -> term

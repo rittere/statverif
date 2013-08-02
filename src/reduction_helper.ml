@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -31,17 +31,10 @@ open Terms
 
 let main_process = ref Nil
 let min_choice_phase = ref 0
+let terms_to_add_in_name_params = ref ([] : term_occ list)
 
 (* Functions that handle processes *)
-
-(* Get the type of a pattern *)
-
-let get_pat_type = function
-    PatVar b -> b.btype
-  | PatTuple (f,l) -> snd f.f_type
-  | PatEqual t -> get_term_type t
     
-
 (* Generate a variable from a pattern, reusing variable names as much
    as possible *)
 
@@ -72,8 +65,8 @@ let rec occurs_var_proc v = function
   | Par(p1,p2) -> (occurs_var_proc v p1) || (occurs_var_proc v p2)
   | Repl(p,_) -> occurs_var_proc v p
   | Restr(_,p,_) -> occurs_var_proc v p
-  | Test(t1,t2,p1,p2,_) -> 
-      (Terms.occurs_var v t1) || (Terms.occurs_var v t2) ||
+  | Test(t,p1,p2,_) -> 
+      (Terms.occurs_var v t) || 
       (occurs_var_proc v p1) || (occurs_var_proc v p2)
   | Input(t,pat,p,_) ->
       (Terms.occurs_var v t) || (occurs_var_pat v pat) ||
@@ -91,9 +84,9 @@ let rec occurs_var_proc v = function
       (Terms.occurs_var v t) || (occurs_var_proc v p)
   | Insert(t,p,_) ->
       (Terms.occurs_var v t) || (occurs_var_proc v p)
-  | Get(pat,t,p,_) ->
+  | Get(pat,t,p,q,_) ->
       (occurs_var_pat v pat) || (Terms.occurs_var v t) || 
-      (occurs_var_proc v p)
+      (occurs_var_proc v p) || (occurs_var_proc v q)
   | Phase(_,p,_) -> occurs_var_proc v p
 
 (* Determine which variables should be included as arguments of names,
@@ -166,34 +159,6 @@ let rec add_at n a' l =
     [] -> Parsing_helper.internal_error "add_at"
   | (a::l) -> a::(add_at (n-1) a' l)
 
-(* Convert a function specification (function symbol or projection) 
-   into a function symbol *)
-
-let funsymb_from_funspec = function
-    Func f -> f
-  | Proj(f,n) ->
-      if fst f.f_type == [] then 
-	(* f is a constant, the projection just tests equality *)
-	let cat = Red [([], FunApp(Terms.true_cst,[]))] in
-	{ f_name = 
-	  (if f.f_name = "" then "is-0-tuple" else "is-" ^ f.f_name);
-	  f_type = [snd f.f_type], Param.bool_type;
-	  f_cat = cat;
-	  f_initial_cat = cat;
-          f_private = f.f_private;
-	  f_options = f.f_options }
-      else
-	let vars = var_gen (fst f.f_type) in
-	let cat = Red [(vars, List.nth vars n)] in
-	{ f_name = (string_of_int n) ^ "-th" ^ 
-	  (* TO DO should I include the types in the function name *)
-	  (if f.f_name = "" then "" else "-" ^ f.f_name);
-	  f_type = [snd f.f_type], List.nth (fst f.f_type) n;
-	  f_cat = cat;
-	  f_initial_cat = cat;
-          f_private = f.f_private;
-	  f_options = f.f_options }
-	  
 (* Test equality. t1 and t2 must be closed, but they
    may contain variables linked with TLink
    Optimized code when we have no equations *)
@@ -234,14 +199,7 @@ let match_modulo_list next_f l1 l2 =
 (* Creates a new name *)
 
 let new_name p s t =
-  let cat = Name { prev_inputs = None; prev_inputs_meaning = [] } in
-  { f_name = Terms.fresh_id s;
-    f_type = [], t;
-    f_cat = cat;
-    f_initial_cat = cat;
-    f_private = p;
-    f_options = 0
-  }
+  Terms.create_name (Terms.fresh_id s) ([], t) p
 
 let rec get_name_charac t =
   match t with
@@ -281,12 +239,18 @@ let add_name_for_pat t =
   try 
     Rev_name_tab.find name_mapping t
   with Not_found ->
-    (* print_string "Could not find "; Display.Text.WithLinks.term t; *)
     let n = new_name true (
       match t with
 	FunApp(f,_) -> f.f_name
       |	_ -> "a") (Terms.get_term_type t)
     in
+    (*
+    print_string "New abbreviation: ";
+    print_string n.f_name;
+    print_string " = ";
+    Display.Text.display_term t;
+    print_newline();
+    *)
     Rev_name_tab.add name_mapping t n;
     n
   
@@ -314,6 +278,7 @@ let display_hyp_spec = function
 | OutputPTag o -> print_string "op"; print_string (string_of_int o)
 | InsertTag o -> print_string "it"; print_string (string_of_int o)
 | GetTag o -> print_string "gt"; print_string (string_of_int o)
+| GetTagElse o -> print_string "gte"; print_string (string_of_int o)
 
 let display_tag hsl nl =
   print_string "Process(";
@@ -381,10 +346,10 @@ let rec process_subst p n1 n2 =
   | Let(pat,t,p,q,occ) -> Let(pat_subst pat n1 n2, term_subst t n1 n2, process_subst p n1 n2, process_subst q n1 n2,occ)
   | Input(t, pat, p, occ) -> Input(term_subst t n1 n2, pat_subst pat n1 n2, process_subst p n1 n2, occ)
   | Output(tc, t, p, occ) -> Output(term_subst tc n1 n2, term_subst t n1 n2, process_subst p n1 n2, occ)
-  | Test(t, t', p, q, occ) -> Test(term_subst t n1 n2, term_subst t' n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ)
+  | Test(t, p, q, occ) -> Test(term_subst t n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ)
   | Event(t, p, occ) -> Event(term_subst t n1 n2, process_subst p n1 n2, occ)
   | Insert(t, p, occ) -> Insert(term_subst t n1 n2, process_subst p n1 n2, occ)
-  | Get(pat, t, p, occ) -> Get(pat_subst pat n1 n2, term_subst t n1 n2, process_subst p n1 n2, occ)
+  | Get(pat, t, p, q, occ) -> Get(pat_subst pat n1 n2, term_subst t n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ)
   | Phase(n,p,occ) -> Phase(n,process_subst p n1 n2,occ)
   | LetFilter(bl, f, p, q, occ) -> LetFilter(bl, fact_subst f n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ) 
 
@@ -413,10 +378,10 @@ let rec copy_process = function
   | Let(pat, t, p, q, occ) -> let pat' = copy_pat pat in Let(pat', copy_term2 t, copy_process p, copy_process q, occ)
   | Input(t, pat, p, occ) -> let pat' = copy_pat pat in Input(copy_term2 t, pat', copy_process p, occ)
   | Output(tc,t,p, occ) -> Output(copy_term2 tc, copy_term2 t, copy_process p, occ)
-  | Test(t,t',p,q,occ) -> Test(copy_term2 t, copy_term2 t', copy_process p, copy_process q,occ)
+  | Test(t,p,q,occ) -> Test(copy_term2 t, copy_process p, copy_process q,occ)
   | Event(t, p, occ) -> Event(copy_term2 t, copy_process p, occ)
   | Insert(t, p, occ) -> Insert(copy_term2 t, copy_process p, occ)
-  | Get(pat, t, p, occ) -> let pat' = copy_pat pat in Get(pat', copy_term2 t, copy_process p, occ)
+  | Get(pat, t, p, q, occ) -> let pat' = copy_pat pat in Get(pat', copy_term2 t, copy_process p, copy_process q, occ)
   | Phase(n,p,occ) -> Phase(n, copy_process p,occ)
   | LetFilter(bl, f, p, q, occ) -> let bl' = List.map copy_binder bl in LetFilter(bl', copy_fact2 f, copy_process p, copy_process q, occ)
 
@@ -453,12 +418,10 @@ let rec close_tree tree =
   | FEquation son -> close_tree son
   | FRule(_,tags,constra,sons) ->
       List.iter close_tree sons;
-      List.iter (List.iter (fun (Neq(t1,t2)) -> close_term t1; close_term t2)) constra;
+      List.iter (List.iter (function 
+      	| Neq(t1,t2) -> close_term t1; close_term t2)) constra;
       match tags with
         ProcessRule (hsl,nl) -> List.iter close_term nl
-      | ProcessRule2 (hsl,nl1,nl2) ->
-          List.iter close_term nl1;
-          List.iter close_term nl2
       | _ -> ()
 
 (* Close terms for testing equality modulo of open terms
@@ -595,12 +558,10 @@ let rec close_tree_collect_links links tree =
   | FEquation son -> close_tree_collect_links links son
   | FRule(_,tags,constra,sons) -> 
       List.iter (close_tree_collect_links links) sons;
-      List.iter (List.iter (fun (Neq(t1,t2)) -> close_term_collect_links links t1; close_term_collect_links links t2)) constra;
+      List.iter (List.iter (function 
+      	| Neq(t1,t2) -> close_term_collect_links links t1; close_term_collect_links links t2)) constra;
       match tags with
 	ProcessRule (hsl,nl) -> List.iter (close_term_collect_links links) nl
-      |	ProcessRule2 (hsl,nl1,nl2) -> 
-	  List.iter (close_term_collect_links links) nl1;
-	  List.iter (close_term_collect_links links) nl2
       |	_ -> ()
 
 (* Compute the phase number of a predicate *)
@@ -612,4 +573,68 @@ let getphase p =
   | [Table n] | [TableBin n] ->
       n
   | _ -> Parsing_helper.internal_error "Bad predicate for getphase"
+
+(* Evaluates an inequality constraint of a destructor *)
+
+let disequation_evaluation (t1,t2) = 
+  let assoc_gen_with_var = ref [] in (* Association list general var * var *)
+  (* all general variable in [constra] are replaced by classic variables *)	
+  let t1' = replace_f_var assoc_gen_with_var t1
+  and t2' = replace_f_var assoc_gen_with_var t2 in
+  Terms.auto_cleanup (fun () ->
+    try
+      TermsEq.unify_modulo (fun () -> false) t1' t2'
+    with Unify -> true)
+  
+(* Test if the term is "fail" *)
+
+let is_fail = function  
+  | FunApp(f,[]) when f.f_cat = Failure -> true
+  | _ -> false
+
+(* Check is a term may be represented by several patterns,
+   equal modulo the equational theory. In this case, if
+   Param.eq_in_names is true, we add the considered term
+   to the arguments of names defined afterwards. 
+
+Note: it is important that terms are added in name_params in exactly
+the same cases in the generation of clauses and in attack
+reconstruction.  In the generation of clauses, we use the function
+transl_check_several_patterns to check if this addition should be
+done. However, we cannot use the same function in attack
+reconstruction. Indeed, terms are substituted during the evaluation of
+the process, so the result of transl_check_several_patterns would not
+be the same in pitransl and in reduction, leading to different values
+of name_params, so errors.  Hence, in transl_check_several_patterns we
+store in terms_to_add_in_name_params which terms are added to
+name_params (by storing their occurrence occ), and we reuse the stored
+value in reduction_check_several_patterns, which we call in attack
+reconstruction.
+
+*)
+
+let rec check_several_patterns_rec = function
+    Var _ -> false
+  | FunApp(f,l) ->
+      (List.exists check_several_patterns_rec l) || 
+      (match f.f_cat with
+       	Red rules -> 
+	  begin
+	    match f.f_initial_cat with
+	      Red init_rules -> List.length rules > List.length init_rules
+	    | _ -> Parsing_helper.internal_error "Reduction_helper.check_several_patterns_rec: f_initial_cat Red expected"
+	  end
+      | Eq rules -> List.length rules > 0
+      | _ -> false)
+	
+let transl_check_several_patterns occ t = 
+  let add_name_param = (!Param.eq_in_names) && (check_several_patterns_rec t) in
+  if add_name_param &&
+    (not (List.mem occ (!terms_to_add_in_name_params))) then 
+    terms_to_add_in_name_params := occ :: (!terms_to_add_in_name_params);
+  add_name_param
+
+let rec reduction_check_several_patterns occ = 
+  (!Param.eq_in_names) &&
+  (List.mem occ (!terms_to_add_in_name_params))
 

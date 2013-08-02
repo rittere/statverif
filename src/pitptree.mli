@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -32,9 +32,10 @@
 type ident = Ptree.ident
 
 type term = PIdent of ident
+	  | PFail
           | PFunApp of ident * term_e list
-	  | PTuple of term_e list
-
+          | PTuple of term_e list    
+          
 and term_e = term * Parsing_helper.extent
 
 (* Equational theory *)
@@ -92,10 +93,9 @@ type pterm =
   | PPFunApp of ident * pterm_e list
   | PPTuple of pterm_e list
   | PPRestr of ident * ident(*type*) * pterm_e
-  | PPTest of pterm_e * pterm_e * pterm_e
-  | PPLetIn of tpattern * pterm_e * pterm_e 
-  | PPLet of tpattern * pterm_e * pterm_e * pterm_e 
-  | PPLetFilter of (ident * ident(*type*)) list * pterm_e * pterm_e * pterm_e
+  | PPTest of pterm_e * pterm_e * pterm_e option
+  | PPLet of tpattern * pterm_e * pterm_e * pterm_e option 
+  | PPLetFilter of (ident * ident(*type*)) list * pterm_e * pterm_e * pterm_e option
 
 and pterm_e = pterm * Parsing_helper.extent
 
@@ -119,11 +119,12 @@ type tprocess =
   | PEvent of ident * pterm_e list * tprocess
   | PPhase of int * tprocess
   | PInsert of ident * pterm_e list * tprocess
-  | PGet of ident * tpattern list * pterm_e option * tprocess
+  | PGet of ident * tpattern list * pterm_e option * tprocess * tprocess
 
 (* Declarations *)
 
 type envdecl = (ident(*variable*) * ident(*type*)) list
+type may_fail_env_decl = (ident(*variable*) * ident(*type*) * bool (* may-fail*)) list
 
 type tdecl = 
     TTypeDecl of ident (* type declaration *)
@@ -131,6 +132,7 @@ type tdecl =
   | TEventDecl of ident * ident list(*argument types*)
   | TConstDecl of ident * ident(*type*) * ident list(*options*)
   | TReduc of (envdecl * term_e * term_e) list * ident list(*options*)
+  | TReducFail of ident * ident list * ident * (may_fail_env_decl * term_e * term_e) list * ident list(*options*)
   | TEquation of envdecl * term_e * term_e
   | TPredDecl of ident * ident list(*argument types*) * ident list(*options*)
   | TTableDecl of ident * ident list(*argument types*)
@@ -141,9 +143,9 @@ type tdecl =
   | TWeaksecret of ident
   | TNoUnif of envdecl * nounif_t 
   | TNot of envdecl * gterm_e
-  | TElimtrue of envdecl * term_e
+  | TElimtrue of may_fail_env_decl * term_e
   | TFree of ident * ident(*type*) * ident list(*options*)
-  | TClauses of (envdecl * tclause) list
+  | TClauses of (may_fail_env_decl * tclause) list
   | TDefine of ident * ident list * tdecl list
   | TExpand of ident * ident list
   | TLetFun of ident * envdecl * pterm_e

@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -28,6 +28,82 @@
 open Types
 open Pitypes
 
+(* Helper function to make the display more readable: we abbreviate names with
+   just a constant symbol. *)
+
+let find_abbrev abbrev_table t =
+  let rec find_abbrev_rec = function
+      [] -> 
+	begin
+	  match t with
+	    FunApp(f,l) -> 
+	      let f_base_name = 
+		try
+		  let pos = String.rindex f.f_name '_' in
+		  String.sub f.f_name 0 pos
+		with Not_found -> f.f_name
+	      in
+	      let t'' = Var (Terms.new_var f_base_name (snd f.f_type)) in
+	      abbrev_table := (t'',t) :: (!abbrev_table);
+	      t''
+	  | _ -> Parsing_helper.internal_error "Function application expected in find_abbrev"
+	end
+    | (t'',t')::l ->
+	if Terms.equal_terms t t' then
+	  t'' 
+	else
+	  find_abbrev_rec l
+  in
+  find_abbrev_rec (!abbrev_table)
+
+let rec abbrev_term abbrev_table = function
+    Var { link = TLink t } -> abbrev_term abbrev_table t
+  | Var { link = VLink v } -> (Var v)
+  | Var v -> Var v
+  | FunApp(f,l) ->
+      let l' = List.map (abbrev_term abbrev_table) l in
+      match f.f_cat, l with
+	(Name _), (_::_) -> 
+	  (* Abbreviate names with arguments *)
+	  find_abbrev abbrev_table (FunApp(f,l')) 
+      | _ -> FunApp(f,l')
+
+let abbrev_fact abbrev_table = function
+    Pred(p,l) -> Pred(p, List.map (abbrev_term abbrev_table) l)
+  | Out(t,l) -> Out(abbrev_term abbrev_table t, 
+		    List.map (fun (v,t) -> (v, abbrev_term abbrev_table t)) l)
+
+let abbrev_constra abbrev_table = List.map (List.map (function 
+    Neq(t1,t2) -> Neq(abbrev_term abbrev_table t1, abbrev_term abbrev_table t2)))
+
+(* Return a new rule and an association table where the names are abbreviated *)
+
+let abbreviate_rule ((hyp, concl, hist, constra)) = 
+  let abbrev_table = ref [] in
+  let rule' = (List.map (abbrev_fact abbrev_table) hyp, abbrev_fact abbrev_table concl, 
+	       hist, abbrev_constra abbrev_table constra) 
+  in
+  (!abbrev_table,rule')
+
+(* Return an abbreviated derivation and an association table where the names are abbreviated *)
+
+let abbreviate_derivation tree =
+  let abbrev_table = ref [] in
+  let rec abbrev_tree tree = 
+    { desc = 
+      begin
+	match tree.desc with
+	  (FEmpty | FHAny | FRemovedWithProof _) as x -> x
+	|	FRule(n, descr, constra, hl) -> 
+	    FRule(n, descr, abbrev_constra abbrev_table constra, List.map abbrev_tree hl)
+	|	FEquation h -> FEquation (abbrev_tree h)
+      end;
+      thefact = abbrev_fact abbrev_table tree.thefact
+    } 
+  in
+  let tree' = abbrev_tree tree in
+  (!abbrev_table, tree')
+  	
 type cl = CFun | CName | CVar | CPred | CType | CExplain | CKeyword | CConn
 
 module type LangSig =
@@ -47,6 +123,7 @@ val impl_connective : string
 val red_connective : string
 val before_connective : string
 val diff_connective : string
+val equal_connective : string
 val eq1_connective : string
 val eq2_connective : string
 val hline : string
@@ -134,6 +211,7 @@ let impl_connective = "->"
 let red_connective = "=>"
 let before_connective = "==>"
 let diff_connective = "<>"
+let equal_connective = "="
 let eq1_connective = "<->"
 let eq2_connective = "<=>"
 
@@ -212,7 +290,7 @@ let close() =
 
 let display_occ n =
   let ns = string_of_int n in
-  print_string ("<a href=\"process.html#occ" ^ ns ^ "\" target=\"process\" class=\"occ\">{" ^ ns ^ "}</a>")
+  print_string ("<a href=\"process_"^(string_of_int !Param.process_number)^".html#occ" ^ ns ^ "\" target=\"process\" class=\"occ\">{" ^ ns ^ "}</a>")
 
 let display_occ_ref n =
   let ns = string_of_int n in
@@ -258,6 +336,7 @@ let impl_connective = "-&gt;"
 let red_connective = "=&gt;"
 let before_connective = "==&gt;"
 let diff_connective = "&lt;&gt;"
+let equal_connective = "="
 let eq1_connective = "&lt;-&gt;"
 let eq2_connective = "&lt;=&gt;"
 
@@ -312,6 +391,7 @@ let display_keyword s =
 let varname v =
   if v.vname == -1 then
     Parsing_helper.internal_error "Variables created by new_var_noren should never be displayed"
+    (*v.sname*)
   else if v.vname != 0 then 
     v.sname ^ "_" ^ (string_of_int v.vname)
   else
@@ -348,15 +428,7 @@ let display_phase p =
   | _ -> ()
 
 let display_function_name f =
-  match f.f_cat with
-    Tuple when f.f_name = "" -> 
-      let arity = List.length (fst f.f_type) in
-      if (arity = 0) || (!Param.ignore_types) then
-	display_idcl CFun ((string_of_int arity) ^ "-tuple")
-      else
-	display_idcl CFun ((Terms.tl_to_string "-" (fst f.f_type)) ^ "-tuple")
-  | _ -> display_idcl CFun f.f_name
-
+  display_idcl CFun (Terms.get_function_name f)
 
 module DisplayFun =
   functor (Link : sig
@@ -382,6 +454,25 @@ module DisplayFun =
 			print_string ")"
 		    | _ -> Parsing_helper.internal_error "infix operators should have 2 arguments"
 		  end
+	      |	"if-then-else" ->
+		  begin
+		    match l with
+		      [t1;t2;t3] ->
+			print_string "(";
+			display_idcl CKeyword "if"; 
+			print_string " ";
+			term t1;
+			print_string " ";
+			display_idcl CKeyword "then"; 
+			print_string " ";
+			term t2;
+			print_string " ";
+			display_idcl CKeyword "else"; 
+			print_string " ";
+			term t3;
+			print_string ")"
+		    | _ -> Parsing_helper.internal_error "if-then-else should have 3 arguments"
+		  end		  
 	      |	_ ->
               match f.f_cat with
                 Name { prev_inputs_meaning = sl } ->
@@ -394,11 +485,11 @@ module DisplayFun =
                   print_string "[";
                   term_list l;
                   print_string "]"
-	      | General_var -> 
+	      | General_var | General_mayfail_var -> 
 		  display_idcl CFun f.f_name
               | _ ->
 		  display_idcl CFun f.f_name;
-		  if (l != []) || not (!Param.typed_frontend) then 
+		  if (l != []) || (f.f_name = "") || not (!Param.typed_frontend) then 
 		    begin
                       print_string "(";
                       term_list l;
@@ -441,7 +532,12 @@ module DisplayFun =
 	  term a;
           print_string ",";
           name_list l sl
-      |	_ -> Parsing_helper.internal_error "prev_inputs_meaning should have the same length as the arguments of the name"
+      |	_ ->
+        Printf.printf "\nPrev meaning:\n";
+        display_list print_string "; " sl;
+        Printf.printf "\nArgument\n:";
+        display_list term "; " l;
+        Parsing_helper.internal_error "prev_inputs_meaning should have the same length as the arguments of the name 2"
 
 let fact = function
     Pred(chann,t) ->
@@ -462,6 +558,8 @@ let fact = function
 	term t) l;
       if !Param.typed_frontend then print_string ")"
 
+(* Collect existential variables in a term, in order to display it *)
+
 let simple_constra = function
     Neq(t1,t2) ->
       term t1;
@@ -479,7 +577,7 @@ let rec constra_rec = function
 (* Collect general variables in a term, in order to display it *)
 
 let rec collect_gen_vars accu = function
-    FunApp(f, []) when f.f_cat == General_var -> 
+    FunApp(f, []) when f.f_cat == General_var || f.f_cat == General_mayfail_var -> 
       if not (List.memq f (!accu)) then
 	accu := f :: (!accu)
   | FunApp(f,l) -> List.iter (collect_gen_vars accu) l
@@ -510,6 +608,8 @@ let constra a =
    if (!gen_vars <> []) then
      print_string ")"
 
+let constra_list c = display_list_and constra c     
+     
 let concl upper concl tag =
   match tag with
     OutputTag occ :: _ ->
@@ -647,9 +747,14 @@ let rec display_format = function
            print_string "[";
            if (sl = []) || (!Param.tulafale = 1) then display_format_list l else display_name_list l sl;
            print_string "]"
+       | Choice -> 
+	   display_idcl CKeyword f.f_name;
+           print_string "[";
+           display_format_list l;
+           print_string "]"
        | _ ->
 	   display_idcl CFun f.f_name;
-	   if (l != []) || not (!Param.typed_frontend) then
+	   if (l != []) || (f.f_name = "") || not (!Param.typed_frontend) then
 	     begin
                print_string "(";
                display_format_list l;
@@ -828,6 +933,8 @@ let rec display_hyp hyp tag =
       end;
       print_string ",";
       newline()
+  | (h, GetTagElse occ :: t) ->
+      display_hyp h t
   | ([],[]) -> ()
   | _ -> Parsing_helper.internal_error "Unexpected hypothesis"
 
@@ -851,6 +958,7 @@ let rec empty_hyp hyp tags =
 	empty_hyp h t
   | [], _ -> true
   | _ -> false
+    		
 
 let display_rule_num ((hyp,concl,hist,constra) as rule) =
   match hist with
@@ -867,24 +975,21 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	  | Init -> print_string "(Initial knowledge of the attacker.)"
 	  | PhaseChange -> print_string "(Knowledge is communicated from one phase to the next.)"
 	  | TblPhaseChange -> print_string "(Tables are communicated from one phase to the next.)"
-	  | Apply(Func(f),p) ->
+	  | TestDeterministic(f) ->
+	      print_string ("(The destructor ");
+	      display_function_name f;
+	      print_string " is not deterministic)"
+	  | TestTotal(f) ->
+	      print_string ("(The destructor ");
+	      display_function_name f;
+	      print_string " is not total)"
+	  | Apply(f,p) ->
 	      print_string "(The attacker applies function ";
 	      display_function_name f;
 	      display_phase p;
 	      print_string ".)"
-	  | Apply(Proj(f,n),p) ->
-	      print_string ("(The attacker applies the " ^ (string_of_int n) ^ "th inverse of function ");
-	      display_function_name f;
-	      display_phase p;
-	      print_string ".)"
-	  | TestApply(Func(f),p) ->
+	  | TestApply(f,p) ->
 	      print_string "(The attacker tests whether ";
-	      display_function_name f;
-	      print_string " is applicable";
-	      display_phase p;
-	      print_string ".)"
-	  | TestApply(Proj(f,n),p) ->
-	      print_string "(The attacker tests whether an inverse of function ";
 	      display_function_name f;
 	      print_string " is applicable";
 	      display_phase p;
@@ -909,6 +1014,10 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string "(The attacker can output on all channels it has";
 	      display_phase p;
 	      print_string ".)"
+	  | Rfail(p) ->
+	      print_string "(The attacker can test the failure of a term)";
+	      display_phase p;
+	      print_string ".)"
 	  | TestComm(p,p') ->
 	      print_string "(If an input and an output are done";
 	      display_phase p;
@@ -926,7 +1035,7 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	  | Elem(pl,p) -> ()
 	  | TestUnif ->
 	      print_string "(The attacker can test whether these terms unify.)"
-	  | ProcessRule(tags, _) | ProcessRule2(tags, _, _) -> 
+	  | ProcessRule(tags, _) -> 
 	      if empty_hyp hyp tags && constra == [] then
 		begin
 		  print_string "(";
@@ -960,26 +1069,77 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string "(The attacker has all names created in the compromised sessions.)"
 	  | LblNone -> ()
 	  end;
-	  Lang.end_cl CExplain;
-	  newline()
+	  Lang.end_cl CExplain
 	end
   | _ -> Lang.basic_item(); display_rule_nonewline rule
-
-let display_initial_clauses l =
-  print_string Lang.start_list;
-  List.iter display_rule_num l;
-  print_string Lang.end_list
   
 let display_eq (leq, req) =
    display_term leq;
    display_connective "=";
-   display_term req
+   display_term req    
+
+let display_abbrev_table l =
+  print_string "Abbreviations:";
+  display_item_list display_eq (List.rev l)  
+  
+let display_rule_num_abbrev rule =
+  if !Param.abbreviate_clauses then
+    begin
+      let abbrev_table,rule' = abbreviate_rule rule in
+      display_rule_num rule';
+      newline();
+      if abbrev_table != [] then 
+	display_abbrev_table abbrev_table  
+    end
+  else
+    begin
+      display_rule_num rule;
+      (* If a clause may be displayed on several lines, leave an empty line 
+         between clauses *)
+      if !Param.verbose_explain_clauses = Param.ExplainedClauses then
+	newline()
+    end
+
+let display_initial_clauses l =
+  print_string Lang.start_list;
+  List.iter display_rule_num_abbrev l;
+  print_string Lang.end_list
+  
+
 
 let display_red f l =
-  List.iter (fun (leq, req) ->
+  let collect = Std.collect_gen_vars in
+  
+  let display_diseq (t1,t2) = 
+    let gen_vars = ref [] in
+    collect gen_vars t1;
+    collect gen_vars t2;
+    
+    if (!gen_vars <> []) then
+      begin
+      	print_string "(forall ";
+	display_list (fun f -> display_idcl CFun f.f_name) "," (!gen_vars);
+	print_string ". "
+      end;
+					
+    display_term t1;
+    display_connective Lang.diff_connective;
+    display_term t2;
+    
+    if (!gen_vars <> []) then print_string ")"
+    
+  in
+
+  List.iter (fun (leq, req,side) ->
     display_term (FunApp(f,leq));
     display_connective Lang.red_connective;
     display_term req;
+    if List.length side <> 0
+    then
+    	begin
+    	  print_string " if ";
+    	  display_list_and display_diseq side
+    	end;
     newline()) l
 
 (* Display functions by Xavier Allamigeon and Bruno Blanchet *)
@@ -1004,6 +1164,7 @@ let rec display_term2 = function
 		    end
 	      | _ -> Parsing_helper.internal_error "Choice expects 2 arguments"
 	    end
+	
 	| _ ->
 	    match f.f_name with
 	      "=" | "&&" | "||" | "<>" ->
@@ -1020,9 +1181,28 @@ let rec display_term2 = function
 		      print_string ")"
 		  | _ -> Parsing_helper.internal_error "infix operators should have 2 arguments"
 		end
+	      |	"if-then-else" ->
+		  begin
+		    match l with
+		      [t1;t2;t3] ->
+			print_string "(";
+			display_idcl CKeyword "if"; 
+			print_string " ";
+			display_term2 t1;
+			print_string " ";
+			display_idcl CKeyword "then"; 
+			print_string " ";
+			display_term2 t2;
+			print_string " ";
+			display_idcl CKeyword "else"; 
+			print_string " ";
+			display_term2 t3;
+			print_string ")"
+		    | _ -> Parsing_helper.internal_error "if-then-else should have 3 arguments"
+		  end		  
 	    | _ ->
 		display_idcl CFun f.f_name;
-		if (l != []) || not (!Param.typed_frontend) then
+		if (l != []) || (f.f_name = "") || not (!Param.typed_frontend) then
 		  begin
 		    print_string "(";
 		    display_term_list2 l;
@@ -1044,7 +1224,7 @@ let rec display_pattern = function
 	end
   | PatTuple (f,l) -> 
       display_idcl CFun f.f_name;
-      if (l != []) || not (!Param.typed_frontend) then
+      if (l != []) || (f.f_name = "") || not (!Param.typed_frontend) then
 	begin
 	  print_string "(";
 	  display_pattern_list l;
@@ -1087,8 +1267,8 @@ let rec may_have_else = function
 	there is inside will be surrounded by these parentheses so does not
 	need further parentheses *)
   | Repl(p,_) -> may_have_else p
-  | Test _ | Let _ | LetFilter _ -> true
-  | Restr(_,p,_) | Event(_,p,_) | Output(_,_,p,_) | Input(_,_,p,_) | Insert(_,p,_) | Get(_,_,p,_) 
+  | Test _ | Let _ | LetFilter _ | Get _ -> true
+  | Restr(_,p,_) | Event(_,p,_) | Output(_,_,p,_) | Input(_,_,p,_) | Insert(_,p,_) 
   | Phase(_,p,_) -> may_have_else p
 
 let display_proc show_occ align proc =
@@ -1140,14 +1320,12 @@ let display_proc show_occ align proc =
 	    display_idcl CType (snd f.f_type).tname
 	  end;
 	display_opt_process align p
-    | Test (t, t', p, p',occ) ->
+    | Test (t, p, p',occ) ->
 	print_string align;
 	display_occ occ;
 	display_idcl CKeyword "if";
 	print_string " ";
 	display_term2 t;
-	print_string " = ";
-	display_term2 t';
 	print_string " ";
         display_idcl CKeyword "then";
 	newline();
@@ -1216,7 +1394,7 @@ let display_proc show_occ align proc =
 	print_string " ";
 	display_term2 f;
 	display_opt_process align p
-    | Get(pat,t,p,occ) ->
+    | Get(pat,t,p,elsep,occ) ->
 	print_string align;
 	display_occ occ;
 	display_idcl CKeyword "get";
@@ -1232,7 +1410,16 @@ let display_proc show_occ align proc =
 	print_string " ";
 	display_idcl CKeyword "in";
 	newline();
-	display_process align p
+	if elsep = Nil then
+	  display_process align p
+	else
+	  begin
+	    display_process_paren align p;
+	    print_string align;
+	    display_idcl CKeyword "else";
+	    newline();
+	    display_process (align^Lang.indentstring) elsep
+	  end	    
     | Phase(n,p,occ) ->
 	print_string align;
 	display_occ occ;
@@ -1378,7 +1565,8 @@ let display_corresp_putbegin_query = function
 
 
 let display_eq_query = function
-    ChoiceQuery -> print_string "Observational equivalence"
+  | DestructorQuery -> print_string "Deterministic and total destructors"  
+  | ChoiceQuery -> print_string "Observational equivalence"
   | NonInterfQuery l ->
       print_string "Non-interference ";
       display_list (fun (f, tset) ->
@@ -1412,17 +1600,9 @@ let rec display_history_tree align ftree =
 		  print_string "simplif "; display_idcl CPred p.p_name
 	      | TestUnif ->
 		  print_string "testunif"
-	      | Apply(Func(f),p) ->
-		  if f.f_name = "" then
-		    let arity = List.length (fst f.f_type) in
-		    if (arity = 0) || (!Param.ignore_types) then
-		      display_idcl CFun ((string_of_int arity) ^ "-tuple")
-		    else
-		      display_idcl CFun ((Terms.tl_to_string "-" (fst f.f_type)) ^ "-tuple")
-		  else
-		    display_idcl CFun (f.f_name ^ "-tuple")
-	      | Apply(Proj(f,n),p) ->
-		  display_idcl CFun ((string_of_int n) ^"-th")
+	      | Apply(f,p) ->
+		  print_string "apply ";
+		  display_function_name f
 	      | _ -> 
 		  Parsing_helper.internal_error "unsupported get_rule_hist"
 	    end;
@@ -1475,7 +1655,9 @@ let display_attacker_fact = function
       print_string " (resp. ";
       WithLinks.term v';
       print_string ") in off-line phase"
-  | _ -> Parsing_helper.internal_error "Unexpected attacker fact"
+  | f -> 
+      print_string "Error: "; display_fact f;
+      Parsing_helper.internal_error "Unexpected attacker fact in Display.display_attacker_fact"
 
 let display_tbl_fact = function
     Pred({p_info = [Table(n)]}, [v]) ->
@@ -1567,6 +1749,7 @@ let display_hyp_spec = function
   | OutputPTag o -> print_string "op"; print_string (string_of_int o)
   | InsertTag o ->  print_string "it"; print_string (string_of_int o)
   | GetTag o ->  print_string "gt"; print_string (string_of_int o)
+  | GetTagElse o ->  print_string "gte"; print_string (string_of_int o)
 
 let rec display_hyp hyp hl tag =
   match (hyp, hl, tag) with
@@ -1716,6 +1899,8 @@ let rec display_hyp hyp hl tag =
       end;
       print_string ".";
       newline()
+  | (h, l, GetTagElse occ :: t) ->
+      display_hyp h hl t
   | ([],[],[]) -> ()
   | _ -> 
       display_list WithLinks.fact " & " hyp;
@@ -1760,7 +1945,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_tbl_fact concl;
       print_string ".";
       newline()
-  | Apply(Func(f),p) ->
+  | Apply(f,p) ->
       display_attacker_hyp hyp_num_list hl;
       print_string "Using the function ";
       display_function_name f;
@@ -1768,25 +1953,24 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_attacker_fact concl;
       print_string ".";
       newline()
-  | Apply(Proj(f,n),p) ->
+  | TestDeterministic(f) ->
       display_attacker_hyp hyp_num_list hl;
-      print_string ("Using the " ^ (string_of_int n) ^ "th inverse of function ");
+      display_constra_list constra;
+      print_string "Test whether ";
       display_function_name f;
-      print_string " the attacker may obtain ";
-      display_attacker_fact concl;
-      print_string ".";
+      print_string " is deterministic.";
       newline()
-  | TestApply(Func(f),p) ->
+  | TestTotal(f) ->
+      display_attacker_hyp hyp_num_list hl;
+      display_constra_list constra;
+      print_string "Test whether ";
+      display_function_name f;
+      print_string " is total.";
+      newline()
+  | TestApply(f,p) ->
       display_attacker_hyp hyp_num_list hl;
       display_constra_list constra;
       print_string "The attacker tests whether ";
-      display_function_name f;
-      print_string " is applicable, which may allow it to distinguish cases.";
-      newline()
-  | TestApply(Proj(f,n),p) ->
-      display_attacker_hyp hyp_num_list hl;
-      display_constra_list constra;
-      print_string "The attacker tests whether an inverse of function ";
       display_function_name f;
       print_string " is applicable, which may allow it to distinguish cases.";
       newline()
@@ -1840,6 +2024,10 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
   | Ro(p,p') ->
       display_attacker_hyp hyp_num_list hl;
       print_string "So the attacker may trigger an output on this channel.";
+      newline()
+  | Rfail(p) ->
+      display_attacker_hyp hyp_num_list hl;
+      print_string "So the attacker may test the failure of this term, which may allow it to distinguish cases.";
       newline()
   | TestComm(p,p') ->
       begin
@@ -1929,7 +2117,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       newline()
   | Elem _ | TestUnif | LblComp ->
       Parsing_helper.internal_error "These tags should have been handled before"
-  | ProcessRule(tags, _) | ProcessRule2(tags, _, _) ->
+  | ProcessRule(tags, _) ->
       if hl == [] && constra == [] then
 	WithLinks.concl true concl tags
       else
@@ -2046,10 +2234,6 @@ let explain_history_tree tree =
   ignore (display_history tree);
   print_string Lang.end_numbered_list
 
-let display_abbrev_table l =
-  print_string "Abbreviations:";
-  display_item_list display_eq (List.rev l)
-
 (* Convert the integer n into a string corresponding to (n+1)-th *)
 
 let order_of_int n = 
@@ -2110,23 +2294,17 @@ let display_step = function
       print_string ", ";
       display_term2 t;
       print_string ") destructor fails"
-  | RTest1(n, t1, t2) ->
+  | RTest1(n, t) ->
       print_string ((order_of_int n) ^" process: If ");
-      display_term2 t1;
-      print_string " = ";
-      display_term2 t2;
+      display_term2 t;
       print_string " succeeds"
-  | RTest2(n, t1, t2) ->
+  | RTest2(n, t) ->
       print_string ((order_of_int n) ^" process: If ");
-      display_term2 t1;
-      print_string " = ";
-      display_term2 t2;
+      display_term2 t;
       print_string " fails"
-  | RTest3(n, t1, t2) ->
+  | RTest3(n, t) ->
       print_string ((order_of_int n) ^" process: If ");
-      display_term2 t1;
-      print_string " = ";
-      display_term2 t2;
+      display_term2 t;
       print_string " destructor fails"
   | RBegin1(n, t) ->
       print_string ((order_of_int n) ^" process: Event(");
@@ -2221,6 +2399,8 @@ let display_step = function
       end;
       print_string " done with entry ";
       display_term2 m
+  | RGet2(n) ->
+      print_string ((order_of_int n) ^" process: else branch of Get taken ");
   | RInit -> print_string "Initial state"
 
 let display_step_short display_loc = function
@@ -2269,6 +2449,12 @@ let display_step_short display_loc = function
   | RGet(n, pat, t, m) ->
       display_keyword "get ";
       display_term2 m;
+      display_loc n;
+      newline();
+      newline()
+  | RGet2(n) ->
+      display_keyword "get";
+      print_string ": else branch taken";
       display_loc n;
       newline();
       newline()
@@ -2388,10 +2574,10 @@ let rec display_reduc_state display_a display_state state =
     end;
   size_public
 
-let display_process_loc a_to_term p =
+let display_process_loc p =
   match p with
-    (Test(_,_,_,_,occ) | Let(_,_,_,_,occ) | Input(_,_,_,occ) | Output(_,_,_,occ) | Restr(_,_,occ) |
-    LetFilter(_,_,_,_,occ) | Event(_,_,occ) | Insert(_,_,occ) | Get(_,_,_,occ)), 
+    (Test(_,_,_,occ) | Let(_,_,_,_,occ) | Input(_,_,_,occ) | Output(_,_,_,occ) | Restr(_,_,occ) |
+    LetFilter(_,_,_,_,occ) | Event(_,_,occ) | Insert(_,_,occ) | Get(_,_,_,_,occ)), 
     name_params, _, _, _ ->
       print_string " at ";
       display_occ occ;
@@ -2400,36 +2586,36 @@ let display_process_loc a_to_term p =
 	  Always("!", sid) -> 
 	    if !first then print_string " in copy " else print_string ", ";
 	    first := false;
-	    display_term2 (a_to_term sid)
+	    display_term2 sid
 	| _ -> ()
 	      ) (List.rev name_params)
   | _ -> Parsing_helper.internal_error "Unexpected process"
   
-let display_loc a_to_term = function
+let display_loc = function
     LocAttacker -> 
       print_string " by the attacker"
   | LocProcess(n,p) -> 
       match !Param.trace_display with
 	Param.NoDisplay | Param.ShortDisplay ->  
-	  display_process_loc a_to_term p
+	  display_process_loc p
       | Param.LongDisplay -> 
 	  print_string (" in the " ^ (order_of_int n) ^ " process")
     
-let rec display_labeled_trace a_to_term state =
+let rec display_labeled_trace state =
   if (!Param.display_init_state) || (state.previous_state != None) then
     (* Do not display the initial state when the 
        beginning of the trace has already been displayed *)
     begin
       begin
 	match state.previous_state with
-	  Some s -> display_labeled_trace a_to_term s
+	  Some s -> display_labeled_trace s
 	| None -> ()
       end;
       let display_loc n =
 	match state.previous_state with
 	  None -> Parsing_helper.internal_error "Previous state should exist"
 	| Some s ->
-	    display_process_loc a_to_term (List.nth s.subprocess n)
+	    display_process_loc (List.nth s.subprocess n)
       in
       display_step_short display_loc state.comment
     end
@@ -2497,7 +2683,7 @@ let display_explained_fact = function
   | _ -> Parsing_helper.internal_error "Unexpected goal"
 
 
-let display_goal a_to_term display_a noninterftest_to_string g hyp = 
+let display_goal display_a noninterftest_to_string g hyp = 
   begin
   match g with
     Fact f -> 
@@ -2523,9 +2709,9 @@ let display_goal a_to_term display_a noninterftest_to_string g hyp =
       print_string "The attacker tests whether ";
       begin
 	match t with
-	  DestrTest t' ->
+	  FailTest t' ->
 	    display_term2 t';
-	    print_string " succeeds knowing "
+	    print_string " is fail knowing "
 	| EqTest(t1,t2) ->
 	    display_term2 t1;
 	    print_string " = ";
@@ -2545,7 +2731,7 @@ let display_goal a_to_term display_a noninterftest_to_string g hyp =
       newline()
   | NonInterfGoal t ->
       match t with
-	ProcessTest(hypspec,tl,loc) ->
+	ProcessTest(hypspec,tl,loc) | InputProcessTest(hypspec,tl,_,loc)->
 	  begin
 	    match !loc with
 	      None -> Parsing_helper.internal_error "Location should have been filled"
@@ -2553,10 +2739,11 @@ let display_goal a_to_term display_a noninterftest_to_string g hyp =
 		match !Param.trace_display with
 		  Param.NoDisplay | Param.ShortDisplay -> 
 		    print_string ("A" ^ (noninterftest_to_string t));
-		    display_process_loc a_to_term p;
+		    display_process_loc p;
 		    print_string "."
 		| Param.LongDisplay -> 
 		    print_string ("The " ^ (order_of_int n) ^ (noninterftest_to_string t));
+		    print_string "."
 	  end;
 	  newline()
       |	ApplyTest(f,tl) ->
@@ -2568,6 +2755,13 @@ let display_goal a_to_term display_a noninterftest_to_string g hyp =
 	  newline();
 	  print_string (noninterftest_to_string t);
 	  newline()
+      |	NIFailTest t' ->
+	  print_string "The attacker tests whether ";
+	  display_a t';
+	  print_string " is fail.";
+	  newline();
+	  print_string (noninterftest_to_string t);
+	  newline()	  
       |	CommTest(t1,t2,loc) ->
 	  print_string "An input on channel ";
 	  display_a t1;
@@ -2580,11 +2774,11 @@ let display_goal a_to_term display_a noninterftest_to_string g hyp =
 	      None -> Parsing_helper.internal_error "Location should have been filled"
 	    | Some(iloc,oloc) ->
 		print_string "(The input is performed";
-		display_loc a_to_term iloc;
+		display_loc iloc;
 		print_string ";";
 		newline();
 		print_string "The output is performed";
-		display_loc a_to_term oloc;
+		display_loc oloc;
 		print_string ".)";
 		newline()
 	  end;
@@ -2597,7 +2791,7 @@ let display_goal a_to_term display_a noninterftest_to_string g hyp =
 	  begin
 	    match !loc with
 	      None -> Parsing_helper.internal_error "Location should have been filled"
-	    | Some iloc -> display_loc a_to_term iloc
+	    | Some iloc -> display_loc iloc
 	  end;
 	  print_string ".";
 	  newline();
@@ -2610,7 +2804,7 @@ let display_goal a_to_term display_a noninterftest_to_string g hyp =
 	  begin
 	    match !loc with
 	      None -> Parsing_helper.internal_error "Location should have been filled"
-	    | Some oloc -> display_loc a_to_term oloc
+	    | Some oloc -> display_loc oloc
 	  end;
 	  print_string ".";
 	  newline();

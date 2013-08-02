@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -667,7 +667,7 @@ let implies_mod_eq (hyp1, concl1, _, constr1) (hyp2, concl2, _, constr2) =
       begin
 	try 
 	  Terms.auto_cleanup (fun () ->
-	    Rules.implies_constra_list 
+	    TermsEq.implies_constra_list 
 	      (List.map (fun f -> specvar_to_var_fact (TermsEq.remove_syntactic_fact f)) (concl2 :: hyp2)) 
 	      (List.map (fun c -> specvar_to_var_constra (TermsEq.remove_syntactic_constra c)) constr2) 
 	      (List.map (fun c -> specvar_to_var_constra (TermsEq.remove_syntactic_constra c)) constr1) ())
@@ -677,8 +677,7 @@ let implies_mod_eq (hyp1, concl1, _, constr1) (hyp2, concl2, _, constr2) =
       (Rules.reorder hyp1) hyp2 ()) concl1 concl2
 
 let implies_mod_eq r1 r2 =
-  if !current_bound_vars != [] then
-    internal_error "Bad bound vars in implies_mod_eq"; 
+  assert (!current_bound_vars == []);
   put_constants_rule r2;
   let (hyp_cl, concl_cl, hist_cl, constra_cl) = r2 in
   let r2' = (List.map copy_fact2 hyp_cl, 
@@ -868,7 +867,7 @@ let rec implies_q restwork (hyp1, hyp1_q, concl1, constr1) (hyp2, concl2, _, con
 	 begin
 	   try 
 	     Terms.auto_cleanup (fun () ->
-	       Rules.implies_constra_list 
+	       TermsEq.implies_constra_list 
 		 (List.map (fun f -> specvar_to_var_fact (TermsEq.remove_syntactic_fact f)) (concl2 :: hyp2)) 
 		 (List.map (fun c -> specvar_to_var_constra (TermsEq.remove_syntactic_constra c)) constr2) 
 		 (List.map (fun c -> specvar_to_var_constra (TermsEq.remove_syntactic_constra c)) constr1) ())
@@ -960,8 +959,7 @@ and clause_match_elem restwork e cl h =
   let concl = event_to_end_fact e in
   let (hyp, hyp_q, constra, eq_left, eq_right) = events_to_hyp h in
   (* Replace all variables in the clause with constants "SpecVar" *)
-  if !current_bound_vars != [] then
-    internal_error "Bad bound vars in clause_match_elem"; 
+  assert (!current_bound_vars == []);
   put_constants_rule cl;
   let (hyp_cl, concl_cl, hist_cl, constra_cl) = cl in
   let cl' = (List.map copy_fact2 hyp_cl, 
@@ -995,8 +993,7 @@ and clause_match_elem restwork e cl h =
 and clauses_match restwork non_nested q clauses =
   let list_started = ref false in
   let result =
-    if !current_bound_vars != [] then
-      internal_error "Bad bound vars in clauses_match"; 
+    assert (!current_bound_vars == []);
     let q' = copy_query q in
     cleanup();
     let simple_query = is_simple_query q' in
@@ -1099,8 +1096,7 @@ and clauses_match restwork non_nested q clauses =
   result
 
 and clauses_match_inj restwork q clauses =
-  if !current_bound_vars != [] then
-    internal_error "Bad bound vars in clauses_match"; 
+  assert (!current_bound_vars == []);
   let Before(e,l) = copy_query q in
   cleanup();
   match clauses with
@@ -1133,8 +1129,7 @@ and check_query restwork non_nested rec_call display_query (Before(e, hypll) as 
 	  Display.Html.print_string "</span><br>\n"
 	end
     end;
-  if !current_bound_vars != [] then
-    internal_error "Bound vars should be cleaned up (check_query)"; 
+  assert (!current_bound_vars == []);
   let f = event_to_end_fact e in
   let clauses = Rules.query_goal_std f in
       (* Remove clauses subsumed modulo equational theory *)

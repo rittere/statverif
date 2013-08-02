@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -58,8 +58,7 @@ let rec contains_bound_name fl = function
 let unify_up_to_x next_stage t1 t2 =
   let vlsecr = List.map (fun f -> (f,Terms.new_var f.f_name (snd f.f_type))) (!Param.secret_vars) in
   let vl = ref vlsecr in
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (noninterf)";
+  assert (!current_bound_vars == []);
   let t1' = replace_f_var vl t1 in
   let t2' = replace_f_var vl t2 in
   let fl = List.map fst (!vl) in
@@ -100,35 +99,62 @@ let unify_up_to_x next_stage t1 t2 =
 (* II. Swap pairs (variable, secret), (variable, general variable),
    (secret, general variable). Eliminate pairs (general variable, _) *)
 
-let rec swap next_stage t1done t2done t1remain t2remain = 
+let rec swap t1done t2done t1remain t2remain = 
   match (t1remain,t2remain) with
     [],[] -> 
-      next_stage (List.rev t1done) (List.rev t2done)
+      (List.rev t1done, List.rev t2done)
+  | (FunApp(f1,[]) :: l1),(a2::l2) 
+	when f1.f_cat = General_mayfail_var ->
+	  swap t1done t2done l1 l2
+  | (a1::l1),(FunApp(f,[])::l2) 
+	when f.f_cat = General_mayfail_var -> 
+	  let rep = replace_name f a1 in
+	  let t2done' = List.map rep t2done in
+	  let l2' = List.map rep l2 in
+	  swap t1done t2done' l1 l2'
+  | (FunApp(f1,[]) :: l1),(a2::l2) 
+	when f1.f_cat = General_var ->
+	  (* Here a2 cannot be a may-fail variable, because
+	     in this unification links the may-fail variable
+	     to the general message variable, thus the pair
+	     is ordered (may-fail variable, general variable) *)
+	  swap t1done t2done l1 l2
+  | ((Var v)::l1),(FunApp(f,[])::l2) 
+	when f.f_cat = General_var && v.unfailing -> 
+	  (* When we have a pair (v = may-fail variable, genx = general variable),
+	     replace v with a message variable, since it cannot be fail, because
+	     genx cannot be fail. *)
+	  let v' = Var (Terms.new_var v.sname v.btype) in
+	  Terms.link v (TLink v');
+	  let rep = replace_name f v' in
+	  let t2done' = List.map rep t2done in
+	  let l2' = List.map rep l2 in
+	  swap t1done t2done' l1 l2'
+  | (a1::l1),(FunApp(f,[])::l2) 
+	when f.f_cat = General_var -> 
+	  let rep = replace_name f a1 in
+	  let t2done' = List.map rep t2done in
+	  let l2' = List.map rep l2 in
+	  swap t1done t2done' l1 l2'
   | ((Var v as a1)::l1),((FunApp(f,[]) as a2)::l2) 
 	when List.memq f (!Param.secret_vars) -> 
 	  let rep = replace_name f a1 in
 	  let t2done' = List.map rep t2done in
 	  let l2' = List.map rep l2 in
-	  swap next_stage (a2 :: t1done) (a1 :: t2done') l1 l2'
-  | ((Var v as a1)::l1),(FunApp(f,[])::l2) 
-	when f.f_cat = General_var -> 
-	  let rep = replace_name f a1 in
-	  let t2done' = List.map rep t2done in
-	  let l2' = List.map rep l2 in
-	  swap next_stage t1done t2done' l1 l2'
-  | ((FunApp(f1,[]) as a1)::l1),(FunApp(f2,[])::l2) 
-	when List.memq f1 (!Param.secret_vars)
-	&& f2.f_cat = General_var ->
-	  let rep = replace_name f2 a1 in
-	  let t2done' = List.map rep t2done in
-	  let l2' = List.map rep l2 in
-	  swap next_stage t1done t2done' l1 l2'
-  | (FunApp(f1,[]) :: l1),(a2::l2) 
-	when f1.f_cat = General_var ->
-	  swap next_stage t1done t2done l1 l2
+	  swap (a2 :: t1done) (a1 :: t2done') l1 l2'
   | (a1::l1),(a2::l2) ->
-      swap next_stage (a1::t1done) (a2::t2done) l1 l2
+      swap (a1::t1done) (a2::t2done) l1 l2
   | _ -> Parsing_helper.internal_error "Lists of different lengths in swap"
+
+let swap_with_copy next_stage hypbefore hypafter concl hist constra l1 l2 =
+  assert (!Terms.current_bound_vars == []);
+  let l1', l2' = swap [] [] l1 l2 in
+  let hypbefore' = List.map Terms.copy_fact3 hypbefore in
+  let hypafter' = List.map Terms.copy_fact3 hypafter in
+  let concl' = Terms.copy_fact3 concl in
+  let constra' = List.map Terms.copy_constra3 constra in
+  Terms.cleanup();
+  next_stage hypbefore' hypafter' concl' hist constra' l1' l2'
 
 (**** 
    III. If all bindings of testunif are of the form x,M
@@ -202,8 +228,7 @@ in
 
   let vlsecr = List.map (fun f -> (f,Terms.new_var f.f_name (snd f.f_type))) (!Param.secret_vars) in
   let vl = ref vlsecr in
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (noninterf)";
+  assert (!current_bound_vars == []);
   let t1' = List.map (replace_f_var vl) t1 in
   let t2' = List.map (replace_f_var vl) t2 in
   try 
@@ -228,7 +253,7 @@ let check_testunif_true next_stage hypbefore hypafter concl hist constra l1 l2 =
        Display.Text.display_rule (List.rev_append hypbefore hypafter, concl, hist, constra)) hypbefore hypafter concl hist constra l1 l2;
       *)
      (* Testunif true *)
-     let hist2 = History.get_rule_hist TestUnif in
+     let hist2 = History.get_rule_hist RTestUnif in
      let hist' = Resolution(hist2, List.length hypbefore, hist) in
      secr_in_sets next_stage hypbefore hypafter concl hist' constra l1 l2
     end
@@ -293,8 +318,7 @@ let inst_elim next_stage repeat_next_stage hypbefore hypafter concl hist constra
 	 repeat_next_stage ((List.rev_append hypbefore hypafter), concl, hist, constra))
 	 hypbefore' hypafter' concl' hist constra' l1' l2'
    in
-   if !Terms.current_bound_vars != [] then
-     Parsing_helper.internal_error "bound vars should be cleaned up (inst_elim)";
+   assert (!Terms.current_bound_vars == []);
    List.iter2 (fun l1 l2 -> 
      match (l1,l2) with
        (Var v1), (FunApp(f,l)) 
@@ -328,6 +352,13 @@ let inst_elim next_stage repeat_next_stage hypbefore hypafter concl hist constra
 	     Terms.link v1 (TLink (FunApp(f, lvar)));
 	     redo_all_optim := true
 	   end
+     | (Var v1), (Var v2) 
+	 when (contains_att_x v1) && (contains_att_x v2) &&
+              v2.unfailing && not v1.unfailing ->
+	   (* when v2 may fail and v1 cannot be fail, we can link
+	      only in the direction that v2 is set to v1. *)
+	   Terms.link v2 (TLink (Var v1));
+	   redo_all_optim := true
      | (Var v1), (Var v2) 
 	 when (contains_att_x v1) && (contains_att_x v2) ->
 	   Terms.link v1 (TLink (Var v2));
@@ -373,8 +404,7 @@ let rec unify_secrets todo = function
 let secr_in_sets t1 t2 =
   let vlsecr = List.map (fun f -> (f,Terms.new_var f.f_name (snd f.f_type))) (!Param.secret_vars) in
   let vl = ref vlsecr in
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (noninterf)";
+  assert (!current_bound_vars == []);
   let t1' = List.map (replace_f_var vl) t1 in
   let t2' = List.map (replace_f_var vl) t2 in
   try 
@@ -415,7 +445,7 @@ let simplify next_stage repeat_next_stage ((hyp, concl, hist, constra) as r) =
 	   dec_out_rule rebuilds the standard rule format.
 	      print_string "Simplifying ";
 	      Display.Text.display_rule r; *)
-	      unify_up_to_x (swap (inst_elim (check_sets (check_testunif_true simplify_testunif)) repeat_next_stage hypbefore l concl hist constra) [] []) t1 t2
+	      unify_up_to_x (swap_with_copy (inst_elim (check_sets (check_testunif_true simplify_testunif)) repeat_next_stage) hypbefore l concl hist constra) t1 t2
 	  | _ -> simplify_testunif (a::hypbefore) l concl hist constra
     in
     simplify_testunif [] hyp concl hist constra

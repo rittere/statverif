@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -101,14 +101,7 @@ let check_name_decl (s,ext) ty =
     ignore(Hashtbl.find Param.fun_decls s);
     input_error ("name " ^ s ^ " already defined as a function") ext
   with Not_found ->
-    let cat = Name { prev_inputs = None; prev_inputs_meaning = [] } in
-    let r = { f_name = s; 
-	      f_type = Param.tmp_type, t; 
-              f_cat = cat;
-	      f_initial_cat = cat;
-              f_private = true;
-	      f_options = 0 } 
-    in
+    let r = Terms.create_name s (Param.tmp_type, t) true in
     Hashtbl.add name_env s r
 
 (* Functions *)
@@ -145,6 +138,7 @@ let check_fun_decl (name, ext) argtypes restype options =
       |	("typeConverter",_) -> 
 	  if List.length tyarg != 1 then
 	    input_error "only unary functions can be declared \"typeConverter\"" ext;
+	  is_tuple := true;
 	  opt := (!opt) lor Param.fun_TYPECONVERTER
       |	(_,ext) ->
 	input_error "for functions, the only allowed options are data and typeConverter" ext) options;
@@ -402,11 +396,11 @@ let rec check_red = function
 	incr rule_counter;
 	let (hyp, constra) = List.fold_right (fun onehyp accu -> check_one_hyp accu env onehyp) i ([],[]) in
 	let concl = check_simple_fact env c in
-	let constra = Rules.simplify_constra_list (concl :: hyp) constra in
+	let constra = TermsEq.simplify_constra_list (concl :: hyp) constra in
 	rules := (hyp, concl, 
 	 Rule(!rule_counter, LblNone, hyp, concl, constra), constra) :: (!rules)
 
-      with Rules.FalseConstraint -> ()
+      with TermsEq.FalseConstraint -> ()
       end
   | (env, Equiv(i,c,select))::l -> 
       check_red l;
@@ -435,9 +429,9 @@ let gen_data_clauses () =
   in
 
   let gen_fun pred f =
-    output_rule_hist (Apply(Func(f), pred));
+    output_rule_hist (RApplyFunc(f, pred));
     for n = 0 to (List.length (fst f.f_type))-1 do
-      output_rule_hist (Apply(Proj(f,n), pred))
+      output_rule_hist (RApplyProj(f,n, pred))
     done
   in
 

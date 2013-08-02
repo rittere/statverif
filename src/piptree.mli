@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -32,6 +32,7 @@
 type ident = Ptree.ident
 
 type term = PIdent of ident
+	  | PFail
           | PFunApp of ident * term_e list
 	  | PTuple of term_e list
 
@@ -134,17 +135,17 @@ type decl =
     FunDecl of ident * int * bool
   | DataFunDecl of ident * int
   | Reduc of fundef * bool
+  | ReducFail of (term_e * term_e * ident list) list * bool
   | Equation of equation
   | PredDecl of ident * int * ident list
   | Param of ident * Ptree.pval
   | PDef of ident * process
-  | Process of process
   | Query of query list
   | Noninterf of (ident * term_e list option) list
   | Weaksecret of ident
   | NoUnif of gfact_format * int * (ident * gformat_e) list
   | Not of (gfact_e * int) * (ident * gterm_e) list
-  | Elimtrue of fact_e
+  | Elimtrue of fact_e * ident list
   | Free of ident list * bool
-  | Clauses of clause list
+  | Clauses of (clause * ident list) list
 

@@ -1,10 +1,10 @@
 (*************************************************************
  *                                                           *
- *       Cryptographic protocol verifier                     *
+ *  Cryptographic protocol verifier                          *
  *                                                           *
- *       Bruno Blanchet and Xavier Allamigeon                *
+ *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
  *                                                           *
- *       Copyright (C) INRIA, LIENS, MPII 2000-2012          *
+ *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
  *                                                           *
  *************************************************************)
 
@@ -30,7 +30,6 @@ open Parsing_helper
 open Terms
 
 exception HistoryUnifyError
-exception InternalError of string
 
 (* add a rule and return its history *)
 
@@ -54,17 +53,18 @@ let get_rule_hist descr =
   try
     Hashtbl.find rule_hash descr
   with Not_found ->
-    let (hyp,concl,constra) = 
+    let (hyp,concl,constra,hdescr) = 
       match descr with
-        Elem(preds, ({ p_type = [t1;t2] } as p)) ->
+        RElem(preds, ({ p_type = [t1;t2] } as p)) ->
 	  let v = Terms.new_var_def t1 in
 	  let v' = Terms.new_var_def t2 in
 	  (List.map (fun p' -> Pred(change_type_attacker p' t1, [v])) preds, 
 	   Pred(p, [v;v']), 
-	   [])
-      | TestUnif ->
-	  ([], Pred(Param.testunif_pred, [Terms.new_var_def Param.any_type; Terms.new_var_def Param.any_type]), [])
-      | Apply(Func(f),p) ->
+	   [], Elem(preds,p))
+      | RTestUnif ->
+	  ([], Pred(Param.testunif_pred, [Terms.new_var_def Param.any_type; Terms.new_var_def Param.any_type]), 
+	   [], TestUnif)
+      | RApplyFunc(f,p) ->
 	  let rec gen_vars n =
 	    if n = 0 then
 	      [] 
@@ -74,8 +74,9 @@ let get_rule_hist descr =
 	  let concl = gen_vars (List.length p.p_type) in
 	  let hypl = reorganize_fun_app f concl in
 	  (List.map (fun h -> Pred((change_type_attacker p (Terms.get_term_type (List.hd h))), h)) hypl, 
-	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), concl), [])
-      | Apply(Proj(f,nproj),p) ->
+	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), concl), [],
+	   Apply(f,p))
+      | RApplyProj(f,nproj,p) ->
 	  let rec gen_vars n =
 	    if n = 0 then
 	      [] 
@@ -85,11 +86,12 @@ let get_rule_hist descr =
 	  let hyp = gen_vars (List.length p.p_type) in
 	  let concl = List.nth (reorganize_fun_app f hyp) nproj in
 	  ([Pred((change_type_attacker p (Terms.get_term_type (List.hd hyp))),hyp)], 
-	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), concl), [])
-      | _ -> 
+	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), concl), [],
+	   Apply(Terms.projection_fun(f,nproj+1), p))
+      |	_ -> 
 	  internal_error "unsupported get_rule_hist"
     in
-    let hist = Rule(-1, descr, hyp, concl, constra) in
+    let hist = Rule(-1, hdescr, hyp, concl, constra) in
     Hashtbl.add rule_hash descr hist;
     hist
 
@@ -345,8 +347,6 @@ let rec build_fact_tree = function
 	match descr with
 	  ProcessRule(hypspec,name_params) -> 
 	    ProcessRule(hypspec,List.map copy_term name_params)
-	| ProcessRule2(hypspec,name_params1,name_params2) -> 
-	    ProcessRule2(hypspec,List.map copy_term name_params1,List.map copy_term name_params2)
 	| x -> x
       in
       cleanup();
@@ -365,69 +365,9 @@ let rec build_fact_tree = function
       d.desc <- t1.desc;
       t2
 
-(* Abbreviate some terms in a derivation *)
-
-
-let abbreviate_derivation tree =
-  let abbrev_table = ref [] in
-  let rec find_abbrev t = function
-      [] -> 
-	begin
-	  match t with
-	    FunApp(f,l) -> 
-	      let f_base_name = 
-		try
-		  let pos = String.rindex f.f_name '_' in
-		  String.sub f.f_name 0 pos
-		with Not_found -> f.f_name
-	      in
-	      let t'' = Var (Terms.new_var f_base_name (snd f.f_type)) in
-	      abbrev_table := (t'',t) :: (!abbrev_table);
-	      t''
-	  | _ -> Parsing_helper.internal_error "Function application expected in find_abbrev"
-	end
-    | (t'',t')::l ->
-	if Terms.equal_terms t t' then
-	  t'' 
-	else
-	  find_abbrev t l
-  in
-  let rec abbrev_term = function
-      Var { link = TLink t } -> abbrev_term t
-    | Var { link = VLink v } -> (Var v)
-    | Var v -> Var v
-    | FunApp(f,l) ->
-	let l' = List.map abbrev_term l in
-	match f.f_cat, l with
-	  (Name _), (_::_) -> 
-	    (* Abbreviate names with arguments *)
-	    find_abbrev (FunApp(f,l')) (!abbrev_table)
-	| _ -> FunApp(f,l')
-  in
-  let abbrev_fact = function
-      Pred(p,l) -> Pred(p, List.map abbrev_term l)
-    | Out(t,l) -> Out(abbrev_term t, List.map (fun (v,t) -> (v, abbrev_term t)) l)
-  in
-  let abbrev_constra = List.map (List.map (function Neq(t1,t2) -> Neq(abbrev_term t1, abbrev_term t2))) in
-  let rec abbrev_tree tree = 
-    { desc = 
-      begin
-	match tree.desc with
-	  (FEmpty | FHAny | FRemovedWithProof _) as x -> x
-	|	FRule(n, descr, constra, hl) -> 
-	    FRule(n, descr, abbrev_constra constra, List.map abbrev_tree hl)
-	|	FEquation h -> FEquation (abbrev_tree h)
-      end;
-      thefact = abbrev_fact tree.thefact
-    } 
-  in
-  let tree' = abbrev_tree tree in
-  (!abbrev_table, tree')
-
 
 let build_history (subgoals, orig_fact, hist_done, constra) =
-  if !current_bound_vars != [] then
-    Parsing_helper.internal_error "bound vars should be cleaned up (history)";
+  assert (!current_bound_vars == []);
   if not (!Param.reconstruct_derivation) then 
     begin
       if !Param.typed_frontend then
@@ -456,7 +396,7 @@ let build_history (subgoals, orig_fact, hist_done, constra) =
 	let qs = string_of_int (!Param.derivation_number) in
 	if !Param.abbreviate_derivation then
 	  begin
-	    let (abbrev_table, new_tree2) = abbreviate_derivation new_tree1 in
+	    let (abbrev_table, new_tree2) = Display.abbreviate_derivation new_tree1 in
 	    (* Display short derivation *)
 	    Display.LangHtml.openfile ((!Param.html_dir) ^ "/derivation" ^ qs ^ ".html") ("ProVerif: derivation for query " ^ qs);
 	    Display.Html.print_string "<H1>Derivation</H1>\n";
@@ -491,7 +431,7 @@ let build_history (subgoals, orig_fact, hist_done, constra) =
     else if !Param.display_derivation then
       begin
 	if !Param.abbreviate_derivation then
-	  let (abbrev_table, new_tree2) = abbreviate_derivation new_tree1 in
+	  let (abbrev_table, new_tree2) = Display.abbreviate_derivation new_tree1 in
 	  if abbrev_table != [] then Display.Text.display_abbrev_table abbrev_table;
 	  if !Param.explain_derivation then
 	    Display.Text.explain_history_tree new_tree2
@@ -516,6 +456,4 @@ let build_history (subgoals, orig_fact, hist_done, constra) =
       end
       else
         internal_error "Unification failed in history rebuilding"
-    | InternalError s ->
-        internal_error s
 
