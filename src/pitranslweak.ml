@@ -47,7 +47,12 @@ let rec has_choice_pat = function
 
 let min_choice_phase = ref max_int
 
-let rec find_min_choice_phase current_phase = function
+let rec find_min_choice_phase current_phase process =
+  let set() =
+    if current_phase < !min_choice_phase then
+      min_choice_phase := current_phase
+  in
+  match process with
     Nil -> ()
   | Par(p,q) -> 
       find_min_choice_phase current_phase p;
@@ -57,62 +62,42 @@ let rec find_min_choice_phase current_phase = function
   | Restr(n,p,_) ->
       find_min_choice_phase current_phase p
   | Test(t,p,q,_) ->
-      if has_choice t then
-	begin
-	  if current_phase < !min_choice_phase then
-	    min_choice_phase := current_phase
-	end;
+      if has_choice t then set();
       find_min_choice_phase current_phase p;
       find_min_choice_phase current_phase q
   | Input(tc,pat,p,_) ->
-      if (has_choice tc) || (has_choice_pat pat) then 
-	begin
-	  if current_phase < !min_choice_phase then
-	    min_choice_phase := current_phase
-	end;
+      if (has_choice tc) || (has_choice_pat pat) then set();
       find_min_choice_phase current_phase p
   | Output(tc,t,p,_) ->
-      if has_choice tc || has_choice t then 
-	begin
-	  if current_phase < !min_choice_phase then
-	    min_choice_phase := current_phase
-	end;
+      if has_choice tc || has_choice t then set();
       find_min_choice_phase current_phase p
       
   | Let(pat,t,p,q,_) ->
-      if (has_choice t) || (has_choice_pat pat) then
-	begin
-	  if current_phase < !min_choice_phase then
-	    min_choice_phase := current_phase
-	end;
+      if (has_choice t) || (has_choice_pat pat) then set();
       find_min_choice_phase current_phase p;
       find_min_choice_phase current_phase q
   | LetFilter(vlist,f,p,q,_) ->
       user_error "Predicates are currently incompatible with proofs of equivalences.\n"
   | Event(t,p,_) ->
-      if has_choice t then
-	begin
-	  if current_phase < !min_choice_phase then
-	    min_choice_phase := current_phase
-	end;      
+      if has_choice t then set();
       find_min_choice_phase current_phase p
   | Insert(t,p,_) ->
-      if has_choice t then
-	begin
-	  if current_phase < !min_choice_phase then
-	    min_choice_phase := current_phase
-	end;      
+      if has_choice t then set();
       find_min_choice_phase current_phase p
   | Get(pat,t,p,q,_) ->
-      if (has_choice t) || (has_choice_pat pat) then
-	begin
-	  if current_phase < !min_choice_phase then
-	    min_choice_phase := current_phase
-	end;
+      if (has_choice t) || (has_choice_pat pat) then set();
       find_min_choice_phase current_phase p;
       find_min_choice_phase current_phase q
   | Phase(n,p,_) ->
       find_min_choice_phase n p
+  | Lock(_,p,_) | Unlock(_,p,_) ->
+      find_min_choice_phase current_phase p
+  | ReadAs(sp,p,_) ->
+      if (List.exists (fun (_,p) -> has_choice_pat p) sp) then set();
+      find_min_choice_phase current_phase p
+  | Assign(st,p,_) ->
+      if (List.exists (fun (_,t) -> has_choice t) st) then set();
+      find_min_choice_phase current_phase p
       
 (*********************************************
           Function For Rules
