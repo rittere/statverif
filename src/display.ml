@@ -1269,7 +1269,8 @@ let rec may_have_else = function
   | Repl(p,_) -> may_have_else p
   | Test _ | Let _ | LetFilter _ | Get _ -> true
   | Restr(_,p,_) | Event(_,p,_) | Output(_,_,p,_) | Input(_,_,p,_) | Insert(_,p,_) 
-  | Phase(_,p,_) -> may_have_else p
+  | Phase(_,p,_) | Lock(_,p,_) | Unlock(_,p,_)
+  | ReadAs(_,p,_) | Assign(_,p,_) -> may_have_else p
 
 let display_proc show_occ align proc =
   let display_occ occ =
@@ -1470,6 +1471,38 @@ let display_proc show_occ align proc =
 	  end
 	else
 	  display_process align p
+    | Lock(st,p,occ) | Unlock(st,p,occ) ->
+	print_string align;
+	display_occ occ;
+	display_idcl CKeyword (match proc with Lock _ -> "lock" | _ -> "unlock");
+	print_string " ";
+	display_list (fun cell -> display_idcl CName cell.f_name) "," st;
+	print_string ";";
+	newline();
+	display_process align p
+    | ReadAs(pairs,p,occ) ->
+        print_string align;
+        display_occ occ;
+        display_idcl CKeyword "read";
+        print_string " ";
+        display_list (fun (cell,_) -> display_idcl CName cell.f_name) "," pairs;
+        print_string " ";
+        display_idcl CKeyword "as";
+        print_string " ";
+        display_pattern_list (List.map snd pairs);
+        print_string ";";
+        newline();
+        display_process align p
+    | Assign(pairs,p,occ) ->
+        print_string align;
+        display_occ occ;
+        display_list (fun (cell,_) -> display_idcl CName cell.f_name) "," pairs;
+        print_string " := ";
+        display_term_list (List.map snd pairs);
+        print_string ";";
+        newline();
+        display_process align p
+
   and display_opt_process align p =
     match p with
       Nil -> newline()

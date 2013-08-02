@@ -108,6 +108,12 @@ exception Syntax
 %token PROOF
 %token EQUIVALENCE
 %token OTHERWISE
+%token CELL
+%token LOCK
+%token UNLOCK
+%token READ
+%token AS
+%token ASSIGN
 
 /* Tables of keys */
 %token TABLE
@@ -217,6 +223,8 @@ lib:
         { (TDefine($2, $4, $7)) :: $9 }
 |       EXPAND IDENT LPAREN typeidseq RPAREN DOT lib
         { (TExpand($2, $4)) :: $7 }
+|       CELL neidentseq COLON typeid options DOT lib
+        { (List.map (fun x -> TCell(x, $4, $5)) $2) @ $7 }
 | 
         { [] }
 
@@ -633,6 +641,14 @@ tprocess:
         { PEvent($2, [], $3) }
 |       PHASE INT opttprocess
         { PPhase($2, $3) }
+|       LOCK neidentseq opttprocess
+        { PLock($2, $3) }
+|       UNLOCK neidentseq opttprocess
+        { PUnlock($2, $3) }
+|       READ neidentseq AS nepatternseq opttprocess
+        { PReadAs(List.combine $2 $4, $5) }
+|       neidentseq ASSIGN neptermseq opttprocess
+        { PAssign(List.combine $1 $3, $4) }
 
 opttprocess:
         SEMI tprocess

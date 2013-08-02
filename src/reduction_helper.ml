@@ -352,6 +352,10 @@ let rec process_subst p n1 n2 =
   | Get(pat, t, p, q, occ) -> Get(pat_subst pat n1 n2, term_subst t n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ)
   | Phase(n,p,occ) -> Phase(n,process_subst p n1 n2,occ)
   | LetFilter(bl, f, p, q, occ) -> LetFilter(bl, fact_subst f n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ) 
+  | Lock(st, p, occ) -> Lock(st, process_subst p n1 n2, occ)
+  | Unlock(st, p, occ) -> Unlock(st, process_subst p n1 n2, occ)
+  | ReadAs(sp, p, occ) -> ReadAs(List.map (fun (s,p) -> s,pat_subst p n1 n2) sp, process_subst p n1 n2, occ)
+  | Assign(st, p, occ) -> Assign(List.map (fun (s,t) -> s,term_subst t n1 n2) st, process_subst p n1 n2, occ)
 
 (* let process_subst = Profile.f4 "process_subst" process_subst *)
 

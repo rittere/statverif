@@ -76,6 +76,7 @@ and envElement =
     EFun of funsymb
   | EVar of binder
   | EName of funsymb
+  | ECell of funsymb
   | EPred of predicate
   | EEvent of funsymb
   | EType of typet
@@ -105,6 +106,10 @@ and process =
   | Insert of term * process * occurrence
   | Get of pattern * term * process * process * occurrence
   | Phase of int * process * occurrence
+  | Lock of funsymb list * process * occurrence
+  | Unlock of funsymb list * process * occurrence
+  | ReadAs of (funsymb * pattern) list * process * occurrence
+  | Assign of (funsymb * term) list * process * occurrence
   
 and linktype = 
     NoLink

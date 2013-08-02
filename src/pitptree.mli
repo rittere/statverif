@@ -120,6 +120,10 @@ type tprocess =
   | PPhase of int * tprocess
   | PInsert of ident * pterm_e list * tprocess
   | PGet of ident * tpattern list * pterm_e option * tprocess * tprocess
+  | PLock of ident list * tprocess
+  | PUnlock of ident list * tprocess
+  | PReadAs of (ident * tpattern) list * tprocess
+  | PAssign of (ident * pterm_e) list * tprocess
 
 (* Declarations *)
 
@@ -149,5 +153,6 @@ type tdecl =
   | TDefine of ident * ident list * tdecl list
   | TExpand of ident * ident list
   | TLetFun of ident * envdecl * pterm_e
+  | TCell of ident * ident(*type*) * ident list(*options*)
 
 

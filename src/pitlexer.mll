@@ -84,7 +84,12 @@ let keyword_table =
   "weaksecret", WEAKSECRET;
   "equivalence", EQUIVALENCE;
   "otherwise", OTHERWISE;
-  "choice", CHOICE ]
+  "choice", CHOICE;
+  "cell", CELL;
+  "lock", LOCK;
+  "unlock", UNLOCK;
+  "read", READ;
+  "as", AS]
 
 }
 
@@ -139,6 +144,7 @@ rule token = parse
 | "<=>" { EQUIVEQ } 
 | "<>" { DIFF }
 | "==>" { BEFORE }
+| ":=" { ASSIGN }
 | "inj-event" { INJEVENT }
 | eof { EOF }	
 | _ { input_error "Illegal character" (extent lexbuf) }

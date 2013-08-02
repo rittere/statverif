@@ -25,6 +25,18 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
+
+let rec last = function
+   [] -> raise (Failure "last")
+ | [x] -> x
+ | x::l -> last l
+
+let rec map4 f l1 l2 l3 l4 =
+  match (l1, l2, l3, l4) with
+     ([], [], [], []) -> []
+   | (x1::l1, x2::l2, x3::l3, x4::l4) -> (f x1 x2 x3 x4) :: (map4 f l1 l2 l3 l4)
+   | (_, _, _, _) -> raise (Failure "map4")
+
 open Parsing_helper
 open Ptree
 open Pitptree
@@ -120,7 +132,7 @@ let check_type_decl (s, ext) =
   if s = "sid" then
     input_error "type sid reserved for session identifiers" ext;
   if StringMap.mem s (!global_env) then
-    input_error ("identifier " ^ s ^ " already defined (as a free name, a function, a predicate, or a type)") ext;
+    input_error ("identifier " ^ s ^ " already defined (as a free name, a cell, a function, a predicate, or a type)") ext;
   let r = { tname = s } in 
   Param.all_types := r :: (!Param.all_types);
   global_env := StringMap.add s (EType r) (!global_env)
@@ -314,7 +326,7 @@ let check_fun_decl (name, ext) argtypes restype options =
   let tyarg = List.map get_type argtypes in
   let tyres = get_type restype in
   if StringMap.mem name (!global_env) then
-    input_error ("identifier " ^ name ^ " already defined (as a free name, a function, a predicate, or a type)") ext;
+    input_error ("identifier " ^ name ^ " already defined (as a free name, a cell, a function, a predicate, or a type)") ext;
   let is_tuple = ref false in
   let is_private = ref false in
   let opt = ref 0 in
@@ -452,7 +464,7 @@ let check_red_may_fail (f,ext) type_arg type_res tlist options =
   let ty_res = get_type type_res in
   
   if StringMap.mem f (!global_env) then
-    input_error ("identifier " ^ f ^ " already defined (as a free name, a function, a predicate, or a type)") ext;
+    input_error ("identifier " ^ f ^ " already defined (as a free name, a cell, a function, a predicate, or a type)") ext;
     
   if List.mem f special_functions then
     input_error (f ^ " not allowed here") ext;	  
@@ -547,7 +559,7 @@ let check_red tlist options =
       	    input_error (f ^ " not allowed here") ext;	
         
       	  if StringMap.mem f (!global_env) then
-      	    input_error ("identifier " ^ f ^ " already defined (as a free name, a function, a predicate, or a type)") ext;
+      	    input_error ("identifier " ^ f ^ " already defined (as a free name, a cell, a function, a predicate, or a type)") ext;
           
       	  let red_list, ty_red_list = List.split (
       	    List.map (function
@@ -650,7 +662,7 @@ let check_pred (c,ext) tl info =
   if c = "attacker" || c = "mess" || c = "event" || c = "inj-event" then
     input_error ("predicate name " ^ c ^ " is reserved. You cannot declare it") ext;
   if StringMap.mem c (!global_env) then
-    input_error ("identifier " ^ c ^ " already defined (as a free name, a function, a predicate, or a type)") ext;
+    input_error ("identifier " ^ c ^ " already defined (as a free name, a cell, a function, a predicate, or a type)") ext;
   let tyl = List.map (get_type_polym true false) tl in
   let r = { p_name = c; p_type = tyl; p_prop = 0; p_info = [] } in
   List.iter (interpret_info tyl r) info;
@@ -760,13 +772,30 @@ let add_free_name (s,ext) t options =
   List.iter (function 
     | ("private",_) -> is_private := true
     | (_,ext) ->
-	input_error "for free names, the only allowed option is private" ext) options;
+	input_error "for free names, the only allowed option is `private'" ext) options;
   let ty = get_type t in
   if StringMap.mem s (!global_env) then
-    input_error ("identifier " ^ s ^ " already declared (as a free name, a function, a predicate, or a type)") ext;
+    input_error ("identifier " ^ s ^ " already declared (as a free name, a cell, a function, a predicate, or a type)") ext;
   let r = Terms.create_name s ([],ty) (!is_private) in 
   global_env := StringMap.add s (EName r) (!global_env);
   freenames := r :: !freenames
+
+(* List of the cells of the process *)
+
+let cells = Param.cells
+
+let add_cell (s,ext) t options =
+  let is_private = ref false in
+  List.iter (function
+    | ("private",_) -> is_private := true
+    | (_,ext) ->
+        input_error "for cells, the only allowed option is `private'" ext) options;
+  let ty = get_type t in
+  if StringMap.mem s (!global_env) then
+    input_error ("identifier " ^ s ^ " already declared (as a free name, a cell, a function, a predicate or a type)") ext;
+  let r = Terms.create_name s ([],ty) (!is_private) in
+  global_env := StringMap.add s (ECell r) (!global_env);
+  cells := r :: !cells
 
 
 (* Check non-interference terms *)
@@ -843,6 +872,14 @@ let get_term_from_ident env (s, ext) =
 			(string_of_int (List.length (fst f.f_type))) ^
 			" arguments but is used without arguments") ext
      | _ -> input_error ("identifier " ^ s ^ " should be a variable, a function, or a name") ext
+   with Not_found ->
+     input_error ("Variable, function, or name " ^ s ^ " not declared") ext
+
+let get_cell_from_ident env (s,ext) =
+   try
+     match StringMap.find s env with
+       ECell r -> r
+     | _ -> input_error ("identifier "^ s ^ " should be a cell") ext
    with Not_found ->
      input_error ("Variable, function, or name " ^ s ^ " not declared") ext
 
@@ -1712,8 +1749,41 @@ let rec check_process env process = match process with
        end
    
    | PPhase(n,p) -> Phase(n, check_process env p, Terms.new_occurrence())
-       
-   
+
+   | PLock(st,p) ->
+       Lock(List.map (fun id -> get_cell_from_ident env id) st,
+         check_process env p, Terms.new_occurrence())
+
+   | PUnlock(st,p) ->
+       Unlock(List.map (fun id -> get_cell_from_ident env id) st,
+         check_process env p, Terms.new_occurrence())
+
+   | PReadAs(pairs,p) ->
+       let ids, patterns = List.split pairs in
+       let cells = List.map (get_cell_from_ident env) ids in
+       let cell_types = List.map (fun cell -> Some (snd cell.f_type)) cells in
+
+       let layer_list, env', _ = check_pattern_list
+         (Parsing_helper.merge_ext (snd (List.hd ids)) (snd (last ids)))
+         env cell_types patterns env in
+       layer_list (fun pattern_list ->
+         ReadAs(List.combine cells pattern_list, check_process env' p, Terms.new_occurrence())
+       )
+
+   | PAssign(pairs,p) ->
+       let ids, terms = List.split pairs in
+       let cells = List.map (get_cell_from_ident env) ids in
+       let layer_list, type_list = check_term_list env terms in
+       layer_list (fun term_list ->
+         let pairs' = map4 (fun (_,ext) cell term term_type ->
+           let cell_type = snd cell.f_type in
+           if cell_type != term_type then
+             input_error ("the term is of type "^term_type.tname^" but the type "^cell_type.tname^" was expected") ext;
+           (cell, term)) terms cells term_list type_list in
+         Assign(pairs', check_process env p, Terms.new_occurrence())
+       )
+
+
 (*********************************************
                Other Checking
 **********************************************)	 
@@ -1913,6 +1983,10 @@ let rec rename_process = function
   | PInsert(i,l,p) -> PInsert(rename_ie i ,List.map rename_pterm l, rename_process p)
   | PGet(i,patl,topt,p,elsep) -> PGet(rename_ie i ,List.map rename_pat patl, (match topt with None -> None | Some t -> Some (rename_pterm t)), rename_process p, rename_process elsep)
   | PPhase(n,p) -> PPhase(n, rename_process p)
+  | PLock(st,p) -> PLock(List.map rename_ie st, rename_process p)
+  | PUnlock(st,p) -> PUnlock(List.map rename_ie st, rename_process p)
+  | PReadAs(st,p) -> PReadAs(List.map (fun (s,pat) -> (rename_ie s, rename_pat pat)) st, rename_process p)
+  | PAssign(st,p) -> PAssign(List.map (fun (s,m) -> (rename_ie s, rename_pterm m)) st, rename_process p)
   
 let rename_env env = List.map (fun (i,ty) -> (rename_ie i, rename_ie ty)) env 
 
@@ -1946,6 +2020,7 @@ let rename_decl = function
   | TNot(env, t) -> TNot(rename_env env, rename_gterm t)
   | TElimtrue(env, f) -> TElimtrue(rename_may_fail_env env, rename_term f)
   | TFree(i,ty, opt) -> TFree(rename_ie i, rename_ie ty, opt)
+  | TCell(i,ty, opt) -> TCell(rename_ie i, rename_ie ty, opt)
   | TClauses l -> TClauses (List.map (fun (env, cl) -> (rename_may_fail_env env, rename_clause cl)) l)
   | TDefine((s1,ext1),argl,def) ->
       input_error "macro definitions are not allowed inside macro definitions" ext1
@@ -2011,6 +2086,8 @@ let rec check_one = function
       not_list := (env, no) :: (!not_list)
   | TFree (name,ty,i) -> 
       add_free_name name ty i
+  | TCell (name,ty,i) ->
+      add_cell name ty i
   | TClauses c ->
       List.iter check_clause c
   | TLetFun ((s,ext), args, p) -> 
@@ -2120,6 +2197,7 @@ let rec set_max_used_phase = function
       if n > !Param.max_used_phase then
 	Param.max_used_phase := n;
       set_max_used_phase p
+  | Lock(_,p,_) | Unlock(_,p,_) | ReadAs(_,p,_) | Assign(_,p,_) -> set_max_used_phase p
 
       
 let parse_file s = 
@@ -2136,6 +2214,7 @@ let parse_file s =
     | TReducFail((s,ext),_,_,_,_) -> Terms.record_id s ext
     | TPredDecl((s,ext),_,_) -> Terms.record_id s ext
     | TFree((s,ext),_,_) -> Terms.record_id s ext
+    | TCell((s,ext),_,_) -> Terms.record_id s ext
     | TEventDecl((s,ext),_) -> Terms.record_id s ext
     | TTableDecl((s,ext),_) -> Terms.record_id s ext
     | TLetFun((s,ext),_,_) -> Terms.record_id s ext
