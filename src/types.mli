@@ -76,7 +76,7 @@ and envElement =
     EFun of funsymb
   | EVar of binder
   | EName of funsymb
-  | ECell of funsymb
+  | ECell of funsymb * term(*initial value*)
   | EPred of predicate
   | EEvent of funsymb
   | EType of typet

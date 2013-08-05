@@ -784,17 +784,32 @@ let add_free_name (s,ext) t options =
 
 let cells = Param.cells
 
-let add_cell (s,ext) t options =
+let add_cell (s,ext) opt_t init options =
   let is_private = ref false in
   List.iter (function
     | ("private",_) -> is_private := true
     | (_,ext) ->
         input_error "for cells, the only allowed option is `private'" ext) options;
-  let ty = get_type t in
+  let opt_ty = match opt_t with
+    | Some t -> Some (get_type t)
+    | None -> None
+  in
   if StringMap.mem s (!global_env) then
     input_error ("identifier " ^ s ^ " already declared (as a free name, a cell, a function, a predicate or a type)") ext;
-  let r = Terms.create_name s ([],ty) (!is_private) in
-  global_env := StringMap.add s (ECell r) (!global_env);
+  let init', init_type = check_eq_term f_eq_tuple_name false false !global_env init in
+  let cell_type = match opt_ty with
+    | Some ty ->
+      begin
+        if init_type != ty then
+          input_error ("term is of type " ^ init_type.tname
+            ^ " but should have type " ^ ty.tname) (snd init);
+        ty
+      end
+    | None ->
+      init_type (* Type of cell becomes type of its initial value. *)
+  in
+  let r = Terms.create_name s ([],cell_type) (!is_private) in
+  global_env := StringMap.add s (ECell(r,init')) (!global_env);
   cells := r :: !cells
 
 
@@ -878,7 +893,7 @@ let get_term_from_ident env (s, ext) =
 let get_cell_from_ident env (s,ext) =
    try
      match StringMap.find s env with
-       ECell r -> r
+       ECell(r,init) -> r
      | _ -> input_error ("identifier "^ s ^ " should be a cell") ext
    with Not_found ->
      input_error ("Variable, function, or name " ^ s ^ " not declared") ext
@@ -2020,7 +2035,8 @@ let rename_decl = function
   | TNot(env, t) -> TNot(rename_env env, rename_gterm t)
   | TElimtrue(env, f) -> TElimtrue(rename_may_fail_env env, rename_term f)
   | TFree(i,ty, opt) -> TFree(rename_ie i, rename_ie ty, opt)
-  | TCell(i,ty, opt) -> TCell(rename_ie i, rename_ie ty, opt)
+  | TCell(i,Some ty,init,opt) -> TCell(rename_ie i, Some (rename_ie ty), rename_term init, opt)
+  | TCell(i,None,init,opt) -> TCell(rename_ie i, None, rename_term init, opt)
   | TClauses l -> TClauses (List.map (fun (env, cl) -> (rename_may_fail_env env, rename_clause cl)) l)
   | TDefine((s1,ext1),argl,def) ->
       input_error "macro definitions are not allowed inside macro definitions" ext1
@@ -2086,8 +2102,8 @@ let rec check_one = function
       not_list := (env, no) :: (!not_list)
   | TFree (name,ty,i) -> 
       add_free_name name ty i
-  | TCell (name,ty,i) ->
-      add_cell name ty i
+  | TCell (name,opt_ty,init,i) ->
+      add_cell name opt_ty init i
   | TClauses c ->
       List.iter check_clause c
   | TLetFun ((s,ext), args, p) -> 
@@ -2214,7 +2230,7 @@ let parse_file s =
     | TReducFail((s,ext),_,_,_,_) -> Terms.record_id s ext
     | TPredDecl((s,ext),_,_) -> Terms.record_id s ext
     | TFree((s,ext),_,_) -> Terms.record_id s ext
-    | TCell((s,ext),_,_) -> Terms.record_id s ext
+    | TCell((s,ext),_,_,_) -> Terms.record_id s ext
     | TEventDecl((s,ext),_) -> Terms.record_id s ext
     | TTableDecl((s,ext),_) -> Terms.record_id s ext
     | TLetFun((s,ext),_,_) -> Terms.record_id s ext

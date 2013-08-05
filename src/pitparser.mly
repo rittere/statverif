@@ -223,8 +223,8 @@ lib:
         { (TDefine($2, $4, $7)) :: $9 }
 |       EXPAND IDENT LPAREN typeidseq RPAREN DOT lib
         { (TExpand($2, $4)) :: $7 }
-|       CELL neidentseq COLON typeid options DOT lib
-        { (List.map (fun x -> TCell(x, $4, $5)) $2) @ $7 }
+|       CELL neidentseq opttype ASSIGN term options DOT lib
+        { (List.map (fun x -> TCell(x, $3, $5, $6)) $2) @ $8 }
 | 
         { [] }
 
@@ -294,6 +294,12 @@ vartype:
         { $1 }
 | 
         { [] }
+
+opttype:
+        COLON typeid
+        { Some $2 }
+|
+        { None }
 
 forallvartype:
         FORALL nevartype SEMI
