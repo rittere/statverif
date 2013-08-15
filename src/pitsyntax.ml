@@ -809,8 +809,8 @@ let add_cell (s,ext) opt_t init options =
       init_type (* Type of cell becomes type of its initial value. *)
   in
   let r = Terms.create_name s ([],cell_type) (!is_private) in
-  global_env := StringMap.add s (ECell(r,init')) (!global_env);
-  cells := r :: !cells
+  global_env := StringMap.add s (ECell r) (!global_env);
+  cells := (r, init') :: !cells
 
 
 (* Check non-interference terms *)
@@ -893,7 +893,7 @@ let get_term_from_ident env (s, ext) =
 let get_cell_from_ident env (s,ext) =
    try
      match StringMap.find s env with
-       ECell(r,init) -> r
+       ECell(r) -> r
      | _ -> input_error ("identifier "^ s ^ " should be a cell") ext
    with Not_found ->
      input_error ("Variable, function, or name " ^ s ^ " not declared") ext

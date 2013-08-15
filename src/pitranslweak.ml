@@ -28,6 +28,7 @@
 open Parsing_helper
 open Types
 open Pitypes
+open Funmap
 
 (*********************************************
           Function For Phases
@@ -190,6 +191,9 @@ let add_rule hyp concl constra tags =
 (*********************************************
            Preliminary functions
 **********************************************)   
+
+type cell_state = bool (* locked? *)
+                * term (* last known value *)
     
 type transl_state = 
   { hypothesis : fact list; (* Current hypotheses of the rule *)
@@ -203,6 +207,7 @@ type transl_state =
     input_pred : predicate;
     output_pred : predicate;
     cur_phase : int; (* Current phase *)
+    cur_cells : cell_state FunMap.t; (* Current cell states *)
       
     hyp_tags : hypspec list
   }
@@ -212,7 +217,10 @@ let display_transl_state cur_state =
    Printf.printf "\nHypothesis:\n";
    Display.Text.display_list (Display.Text.WithLinks.fact) " ; " cur_state.hypothesis;
    Printf.printf "\nConstraint:\n";
-   Display.Text.WithLinks.constra_list cur_state.constra
+   Display.Text.WithLinks.constra_list cur_state.constra;
+   Printf.printf "\nName params:\n";
+   Display.Text.display_term_list cur_state.name_params;
+   Printf.printf "\n"
    
 (* Tools *)
 
@@ -498,10 +506,10 @@ let rec transl_process cur_state process =
 
   (* DEBUG mode *)
   
-  (*Printf.printf "\n\n**********************\n\n";
+  Printf.printf "\n\n**********************\n\n";
   Display.Text.display_process_occ "" process;
   display_transl_state cur_state;
-  flush_all ();*)
+  flush_all ();
 
   match process with
   | Nil -> ()
@@ -1560,6 +1568,10 @@ let transl p =
        input_pred = Param.get_pred (InputPBin(0));
        output_pred = Param.get_pred (OutputPBin(0));
        cur_phase = 0;
+       cur_cells = List.fold_left (fun init_cells (r, init) ->
+         FunMap.add (r, "") (false, init) init_cells
+         (* XXX: Does 'init' need to be copied? *)
+       ) FunMap.empty !Param.cells;
        hyp_tags = [] 
      } p;
    );

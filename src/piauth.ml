@@ -29,6 +29,7 @@ open Parsing_helper
 open Types
 open Pitypes
 open Terms
+open Funmap
 
 type query_res = True | False | DontKnow
 
@@ -518,13 +519,6 @@ let rec combine_lists2 l1 l2 = match (l1,l2) with
     else
       combine_lists2 l1 l'
 | _ -> internal_error "second list should be at least as long as first list in combine_lists2"
-
-module Fun = struct
-   type t = funsymb * string
-   let compare = compare
-end
-
-module FunMap = Map.Make(Fun)
 
 let current_inj_collector = ref FunMap.empty
 

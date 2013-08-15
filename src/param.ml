@@ -347,7 +347,7 @@ let all_types = ref [channel_type; bitstring_type; bool_type]
 let fun_decls = ((Hashtbl.create 49) : (string, funsymb) Hashtbl.t)
 let pred_env = Hashtbl.create 7
 let freenames = ref ([] : funsymb list)
-let cells = ref ([] : funsymb list)
+let cells = ref []
 let max_used_phase = ref 0
 let session1 = { f_name = "session1"; 
 		 f_type = [], sid_type;
