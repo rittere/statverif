@@ -200,6 +200,7 @@ val fun_decls : (string,Types.funsymb) Hashtbl.t
 val pred_env : (string,Types.predicate) Hashtbl.t
 val freenames : Types.funsymb list ref
 val cells : (Types.funsymb * Types.term) list ref
+val state_fun : unit -> Types.funsymb
 val max_used_phase : int ref
 val session1 : Types.funsymb
 val red_rules : (Types.fact list * Types.fact * Types.constraints list list * Types.label) list ref

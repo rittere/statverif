@@ -10,6 +10,7 @@ OCAMLFLAGS ?= -g -w p
 SRCDIR = src
 
 proverif_SOURCES = $(addprefix $(SRCDIR)/,\
+	misc.mli misc.ml                                                              \
 	parsing_helper.mli parsing_helper.ml stringmap.mli                            \
 	stringmap.ml ptree.mli piptree.mli pitptree.mli types.mli pitypes.mli         \
 	funmap.mli funmap.ml param.mli param.ml parser.mli parser.ml lexer.ml         \

@@ -183,6 +183,7 @@ let sid_type = { tname = "sid" } (* session ids *)
 let event_type = { tname = "event" }
 let bool_type = { tname = "bool" }
 let table_type = { tname = "table" }
+let state_type = { tname = "state" }
 
 let tmp_type = [{ tname = "temporary_type_should_be_removed" }]
 
@@ -199,45 +200,61 @@ let rec tl_to_string sep = function
   | [a] -> a.tname
   | (a::l) -> a.tname ^ sep ^ (tl_to_string sep l)
 
+let cells = ref []
+let state_fun_p = ref None
+let state_fun () =
+  match !state_fun_p with
+    | Some f -> f
+    | None ->
+      let f = {
+        f_name = "cells";
+        f_type = List.map (fun ({f_type=(_,t)},_) -> t) !cells, state_type;
+        f_cat = Tuple;
+        f_initial_cat = Tuple;
+        f_private = true;
+        f_options = 0 }
+      in state_fun_p := Some f; f
+
 let build_pred = function
     Attacker(i,t) -> 
       { p_name = "attacker" ^ (get_type_suffix t) ^ (get_suffix i); 
-	p_type = [t];
-	p_prop = pred_ANY + pred_TUPLE + pred_ATTACKER;
+	p_type = [state_type; t];
+	p_prop = pred_ANY + (if (!cells) == [] then pred_TUPLE else 0) + pred_ATTACKER;
 	p_info = [Attacker(i,t)] }
   | Mess(i,t) ->
       { p_name = "mess" ^ (get_type_suffix t) ^ (get_suffix i); 
-	p_type = [channel_type; t];
+	p_type = [state_type; channel_type; t];
 	p_prop = 0;
 	p_info = [Mess(i,t)] }
   | InputP(i) ->
       { p_name = "input" ^ (get_suffix i); 
-	p_type = [channel_type]; 
+	p_type = [state_type; channel_type];
 	p_prop = 0;
 	p_info = [InputP(i)] }
   | OutputP(i) ->
       { p_name = "output" ^ (get_suffix i); 
-	p_type = [channel_type]; 
+	p_type = [state_type; channel_type];
 	p_prop = 0;
 	p_info = [OutputP(i)] }
   | AttackerBin(i,t) ->
       { p_name = "attacker2" ^ (get_type_suffix t) ^ (get_suffix i); 
-	p_type = [t;t];
-	p_prop = pred_TUPLE + pred_TUPLE_SELECT + pred_ELIMVAR + pred_SIMPEQ + pred_ANY + pred_ATTACKER;
+	p_type = [state_type; t; state_type; t];
+	p_prop = (if (!cells) == [] then pred_TUPLE + pred_TUPLE_SELECT else 0)
+	         + pred_ELIMVAR + pred_SIMPEQ + pred_ANY + pred_ATTACKER;
 	p_info = [AttackerBin(i,t)] }
   | MessBin(i,t) ->
       { p_name = "mess2" ^ (get_type_suffix t) ^ (get_suffix i); 
-	p_type = [channel_type; t; channel_type; t];
+	p_type = [state_type; channel_type; t; state_type; channel_type; t];
 	p_prop = 0;
 	p_info = [MessBin(i,t)] }
   | InputPBin(i) ->
       { p_name = "input2" ^ (get_suffix i); 
-	p_type = [channel_type; channel_type]; 
+	p_type = [state_type; channel_type; state_type; channel_type];
 	p_prop = 0;
 	p_info = [InputPBin(i)] }
   | OutputPBin(i) ->
       { p_name = "output2" ^ (get_suffix i); 
-	p_type = [channel_type; channel_type]; 
+	p_type = [state_type; channel_type; state_type; channel_type];
 	p_prop = 0;
 	p_info = [OutputPBin(i)] }
   | AttackerGuess(t) ->
@@ -347,7 +364,6 @@ let all_types = ref [channel_type; bitstring_type; bool_type]
 let fun_decls = ((Hashtbl.create 49) : (string, funsymb) Hashtbl.t)
 let pred_env = Hashtbl.create 7
 let freenames = ref ([] : funsymb list)
-let cells = ref []
 let max_used_phase = ref 0
 let session1 = { f_name = "session1"; 
 		 f_type = [], sid_type;

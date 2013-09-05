@@ -111,44 +111,20 @@ let nrule = ref 0
 let red_rules = ref ([] : reduction list)
 
 let mergelr = function
-    Pred(p,[t1;t2]) as x ->
-      begin
-	match p.p_info with
-	  | [AttackerBin(i,t)] -> 
-	      if i >= (!min_choice_phase) then x else
-	      let att1_i = Param.get_pred (Attacker(i,t)) in
-	      Terms.unify t1 t2;
-	      Pred(att1_i, [t1])
-	  | [TableBin(i)] ->
-	      if i >= (!min_choice_phase) then x else
-	      let tbl1_i = Param.get_pred (Table(i)) in
-	      Terms.unify t1 t2;
-	      Pred(tbl1_i, [t1])
-	  | [InputPBin(i)] ->
-	      if i >= (!min_choice_phase) then x else
-	      let input1_i = Param.get_pred (InputP(i)) in
-	      Terms.unify t1 t2;
-	      Pred(input1_i, [t1])
-	  | [OutputPBin(i)] ->
-	      if i >= (!min_choice_phase) then x else
-	      let output1_i = Param.get_pred (OutputP(i)) in
-	      Terms.unify t1 t2;
-	      Pred(output1_i, [t1])
-	  | _ -> x
-      end
-  | Pred(p,[t1;t2;t3;t4]) as x ->
-      begin
-	match p.p_info with
-	  | [MessBin(i,t)] ->
-	      if i >= (!min_choice_phase) then x else
-	      let mess1_i = Param.get_pred (Mess(i,t)) in
-	      Terms.unify t1 t3;
-	      Terms.unify t2 t4;
-	      Pred(mess1_i, [t1;t2])
-	  | _ -> x
-      end
+  | Pred({p_info = [AttackerBin(i,_)  | MessBin(i,_) | TableBin(i)
+                  | InputPBin(i) | OutputPBin(i)]} as p, terms)
+  when i < !min_choice_phase ->
+    let terms_left, terms_right = Misc.bisect terms in
+    List.iter2 Terms.unify terms_left terms_right;
+    let mono_pred = match p.p_info with
+      | [AttackerBin(i,t)] -> Attacker(i,t)
+      | [MessBin(i,t)] -> Mess(i,t)
+      | [TableBin(i)] -> Table(i)
+      | [InputPBin(i)] -> InputP(i)
+      | [OutputPBin(i)] -> OutputP(i)
+    in Pred(Param.get_pred mono_pred, terms_left)
   | x -> x
-  
+
 let rec nb_rule_total = ref 0
 
 
@@ -193,7 +169,8 @@ let add_rule hyp concl constra tags =
 **********************************************)   
 
 type cell_state = bool (* locked? *)
-                * term (* last known value *)
+                * term (* last known value (left) *)
+                * term (* last known value (right) *)
     
 type transl_state = 
   { hypothesis : fact list; (* Current hypotheses of the rule *)
@@ -228,19 +205,62 @@ let get_type_from_pattern = function
   | PatVar(v) -> v.btype
   | PatTuple(f,_) -> snd f.f_type
   | PatEqual(t) -> Terms.get_term_type t
-    
+
+(* State manipulation. *)
+
+(* Create fresh variables for all unlocked cells in the given state. *)
+let freshen_cells ts =
+  {ts with
+    cur_cells = FunMap.mapi (fun ({f_name=s; f_type=(_,t)},_) -> function
+      | (true, left, right) ->
+        (true, left, right)
+      | (false, _, _) ->
+        (false, Var(Terms.new_var s t), Var(Terms.new_var s t))) ts.cur_cells}
+
+(* Return term for left/right state. *)
+let x_state getx cell_states =
+  FunApp(Param.state_fun(),
+    List.fold_right (fun (r, _) l ->
+      (getx (FunMap.find (r, "") cell_states))::l)
+      !Param.cells [])
+let left_state = x_state (fun (_, t, _) -> t)
+let right_state = x_state (fun (_, _, t) -> t)
+
+(* Return initial cell states. *)
+let initial_state () =
+  List.fold_left (fun result (cell, init) ->
+    let left = Terms.auto_cleanup (fun () -> Terms.copy_term2 init) in
+    let right = Terms.auto_cleanup (fun () -> Terms.copy_term2 init) in
+    FunMap.add (cell, "") (false, left, right) result
+  ) FunMap.empty !Param.cells
+
+(* Return map of new variables, one for each cell * side. *)
+let new_state () =
+  List.fold_left (fun result ({f_type=_,t} as cell,_) ->
+    FunMap.add (cell, "")
+      (false, Var (Terms.new_var cell.f_name t),
+              Var (Terms.new_var cell.f_name t))
+      result) FunMap.empty !Param.cells
+
+let new_state_format () =
+  FFunApp(Param.state_fun(),
+    List.map (fun ({f_type=_,t} as cell,_) ->
+      FAny(Terms.new_var cell.f_name t)) !Param.cells)
+
 (* Creation of fact of attacker', mess' and table. *)
 
-let att_fact phase t1 t2 =
-  Pred(Param.get_pred (AttackerBin(phase, Terms.get_term_type t1)), [t1; t2])
+let att_fact s phase t1 t2 =
+  Pred(Param.get_pred (AttackerBin(phase, Terms.get_term_type t1)),
+    [left_state s; t1; right_state s; t2])
   
-let mess_fact phase tc1 tm1 tc2 tm2 =
-  Pred(Param.get_pred (MessBin(phase, Terms.get_term_type tm1)), [tc1;tm1;tc2;tm2])
+let mess_fact s phase tc1 tm1 tc2 tm2 =
+  Pred(Param.get_pred (MessBin(phase, Terms.get_term_type tm1)),
+    [left_state s; tc1; tm1; right_state s; tc2; tm2])
 
 let table_fact phase t1 t2 =
   Pred(Param.get_pred (TableBin(phase)), [t1;t2])
   
-(* Outputing a rule *)  
+(* Outputting a rule *)  
 
 let output_rule cur_state out_fact =
   Terms.auto_cleanup (fun _ -> 
@@ -814,21 +834,21 @@ let rec transl_process cur_state process =
                       ) binders) @ cur_state3.name_params;
                     name_params_types = (List.map (fun b -> b.btype) binders)@cur_state3.name_params_types;
                     name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state3.name_params_meaning;
-                    hypothesis = (att_fact cur_state.cur_phase term_pat_left term_pat_right) :: cur_state3.hypothesis;
+                    hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase term_pat_left term_pat_right) :: cur_state3.hypothesis;
                     hyp_tags = (InputTag occ)::cur_state3.hyp_tags
                   } proc;
                   
                   (* Pattern satisfied only on left side *)
                   output_rule { cur_state3 with
                     constra = [Neq(gen_pat_r,x_right)]::cur_state3.constra;
-                    hypothesis = (att_fact cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
+                    hypothesis = (att_fact cur_state3.cur_cells cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
                     hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state3.hyp_tags
                   } (Pred(Param.bad_pred, []));  
                   
                   (* Pattern satisfied only on right side *)
                   output_rule { cur_state3 with
                     constra = [Neq(gen_pat_l,x_left)]::cur_state3.constra;
-                    hypothesis = (att_fact cur_state3.cur_phase x_left term_pat_right) :: cur_state3.hypothesis;
+                    hypothesis = (att_fact cur_state3.cur_cells cur_state3.cur_phase x_left term_pat_right) :: cur_state3.hypothesis;
                     hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state3.hyp_tags
                   } (Pred(Param.bad_pred, []))
                   
@@ -837,7 +857,7 @@ let rec transl_process cur_state process =
                 (* Case left side succeed and right side fail *)
                 transl_one_side_fails (fun cur_state3 ->
                   output_rule { cur_state3 with
-                    hypothesis = (att_fact cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
+                    hypothesis = (att_fact cur_state2.cur_cells cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
                     hyp_tags = (TestUnifTag2 occ)::(InputTag occ)::cur_state3.hyp_tags
                   } (Pred(Param.bad_pred, []))
                 ) cur_state2 [term_pat_right] [term_pat_left]; 
@@ -845,7 +865,7 @@ let rec transl_process cur_state process =
                 (* Case right side succeed and left side fail *)
                 transl_one_side_fails (fun cur_state3 ->
                   output_rule { cur_state3 with
-                    hypothesis = (att_fact cur_state3.cur_phase x_left term_pat_right) :: cur_state3.hypothesis;
+                    hypothesis = (att_fact cur_state3.cur_cells cur_state3.cur_phase x_left term_pat_right) :: cur_state3.hypothesis;
                     hyp_tags = (TestUnifTag2 occ)::(InputTag occ)::cur_state3.hyp_tags
                   } (Pred(Param.bad_pred, []))
                 ) cur_state2 [term_pat_left] [term_pat_right] 
@@ -881,25 +901,26 @@ let rec transl_process cur_state process =
                   
                     (* Pattern satisfied in both sides *)
                     transl_process { cur_state6 with 
-                      hypothesis = (mess_fact cur_state.cur_phase channel_left term_pat_left channel_right term_pat_right)::cur_state6.hypothesis;
+                      hypothesis = (mess_fact cur_state.cur_cells cur_state.cur_phase channel_left term_pat_left channel_right term_pat_right)::cur_state6.hypothesis;
                       hyp_tags = (InputTag occ)::cur_state6.hyp_tags
                     } proc;
                     
                     output_rule { cur_state6 with
                       hyp_tags = (InputPTag occ) :: cur_state6.hyp_tags
-                    } (Pred(cur_state6.input_pred, [channel_left; channel_right]));
+                    } (Pred(cur_state6.input_pred, [left_state cur_state6.cur_cells; channel_left;
+                                                    right_state cur_state6.cur_cells; channel_right]));
                     
                     (* Pattern satisfied only on left side *)
                     output_rule { cur_state5 with
                       constra = [Neq(gen_pat_r,x_right)]::cur_state5.constra;
-                      hypothesis = (mess_fact cur_state.cur_phase channel_left term_pat_left channel_right x_right)::cur_state5.hypothesis;
+                      hypothesis = (mess_fact cur_state.cur_cells cur_state.cur_phase channel_left term_pat_left channel_right x_right)::cur_state5.hypothesis;
                       hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
                     } (Pred(Param.bad_pred, []));  
                   
                     (* Pattern satisfied only on right side *)
                     output_rule { cur_state5 with
                       constra = [Neq(gen_pat_l,x_left)]::cur_state5.constra;
-                      hypothesis = (mess_fact cur_state.cur_phase channel_left x_left channel_right term_pat_right)::cur_state5.hypothesis;
+                      hypothesis = (mess_fact cur_state.cur_cells cur_state.cur_phase channel_left x_left channel_right term_pat_right)::cur_state5.hypothesis;
                       hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
                     } (Pred(Param.bad_pred, []))
                   
@@ -909,7 +930,7 @@ let rec transl_process cur_state process =
                   
                   transl_one_side_fails (fun cur_state5 ->
                     output_rule { cur_state5 with
-                      hypothesis = (mess_fact cur_state.cur_phase channel_left term_pat_left channel_right x_right)::cur_state5.hypothesis;
+                      hypothesis = (mess_fact cur_state.cur_cells cur_state.cur_phase channel_left term_pat_left channel_right x_right)::cur_state5.hypothesis;
                       hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
                     } (Pred(Param.bad_pred, []))
                   ) cur_state4 [term_pat_right] [term_pat_left]; 
@@ -918,7 +939,7 @@ let rec transl_process cur_state process =
                   
                   transl_one_side_fails (fun cur_state5 ->
                     output_rule { cur_state5 with
-                      hypothesis = (mess_fact cur_state.cur_phase channel_left x_left channel_right term_pat_right)::cur_state5.hypothesis;
+                      hypothesis = (mess_fact cur_state.cur_cells cur_state.cur_phase channel_left x_left channel_right term_pat_right)::cur_state5.hypothesis;
                       hyp_tags = TestUnifTag2(occ)::(InputTag occ)::cur_state5.hyp_tags
                     } (Pred(Param.bad_pred, []))
                   ) cur_state4 [term_pat_left] [term_pat_right]
@@ -955,7 +976,7 @@ let rec transl_process cur_state process =
                     
                   output_rule { cur_state2 with
                       hyp_tags = (OutputTag occ)::cur_state2.hyp_tags
-                    } (att_fact cur_state2.cur_phase term_left term_right)
+                    } (att_fact cur_state2.cur_cells cur_state2.cur_phase term_left term_right)
                 ) cur_state1 [term_left] [term_right];
                 
                 (* Case left side succeed and right side fail *)
@@ -983,11 +1004,12 @@ let rec transl_process cur_state process =
                       
                     output_rule { cur_state3 with
                         hyp_tags = (OutputPTag occ) :: cur_state3.hyp_tags
-                      } (Pred(cur_state3.output_pred, [channel_left; channel_right]));
+                      } (Pred(cur_state3.output_pred, [left_state cur_state3.cur_cells; channel_left;
+                                                       right_state cur_state3.cur_cells; channel_right]));
                     
                     output_rule { cur_state3 with
                         hyp_tags = (OutputTag occ)::cur_state3.hyp_tags
-                      } (mess_fact cur_state3.cur_phase channel_left term_left channel_right term_right)
+                      } (mess_fact cur_state3.cur_cells cur_state3.cur_phase channel_left term_left channel_right term_right)
                   ) cur_state2 [channel_left;term_left] [channel_right;term_right];
                 
                   (* Case left side succeed and right side fail *)
@@ -1210,8 +1232,9 @@ let rules_Rf_for_red phase f_symb red_rules =
     List.iter (fun red_rule ->
       let (hyp1, concl1, side_c1) = Terms.copy_red red_rule in
       
-      add_rule (List.map (fun t1 -> att_fact phase t1 t1) hyp1)
-      	(att_fact phase concl1 concl1) 
+      let vs = new_state () in
+      add_rule (List.map (fun t1 -> att_fact vs phase t1 t1) hyp1)
+      	(att_fact vs phase concl1 concl1) 
       	(List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1)
       	(Apply(f_symb, result_predicate))
         ) red_rules
@@ -1221,8 +1244,9 @@ let rules_Rf_for_red phase f_symb red_rules =
         let (hyp1, concl1, side_c1) = Terms.copy_red red_rule1
         and (hyp2, concl2, side_c2) = Terms.copy_red red_rule2 in
                   
-        add_rule (List.map2 (fun t1 t2 -> att_fact phase t1 t2) hyp1 hyp2)
-      	  (att_fact phase concl1 concl2) 
+        let vs = new_state () in
+        add_rule (List.map2 (fun t1 t2 -> att_fact vs phase t1 t2) hyp1 hyp2)
+      	  (att_fact vs phase concl1 concl2) 
       	  ((List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1) @ (List.map (function (t1,t2) -> [Neq(t1,t2)]) side_c2))
       	  (Apply(f_symb, result_predicate))
       	  ) red_rules
@@ -1239,22 +1263,24 @@ let transl_attacker phase =
     let mess_pred = Param.get_pred (MessBin(phase,t)) in
 
     (* The attacker has any message sent on a channel he has (Rule Rl)*)
+    let vs = new_state () in
     let v1 = Terms.new_var_def t in
     let vc1 = Terms.new_var_def Param.channel_type in
     let v2 = Terms.new_var_def t in
     let vc2 = Terms.new_var_def Param.channel_type in
-    add_rule [Pred(mess_pred, [vc1; v1; vc2; v2]); att_fact phase vc1 vc2]
-      (Pred(att_pred, [v1; v2])) [] (Rl(att_pred, mess_pred));
+    add_rule [Pred(mess_pred, [left_state vs; vc1; v1; right_state vs; vc2; v2]); att_fact vs phase vc1 vc2]
+      (Pred(att_pred, [left_state vs; v1; right_state vs; v2])) [] (Rl(att_pred, mess_pred));
 
     if (!Param.active_attacker) then
       begin
         (* The attacker can send any message he has on any channel he has (Rule Rs) *)
+	let vs = new_state () in
 	let v1 = Terms.new_var_def t in
 	let vc1 = Terms.new_var_def Param.channel_type in
 	let v2 = Terms.new_var_def t in
 	let vc2 = Terms.new_var_def Param.channel_type in
-	add_rule [att_fact phase vc1 vc2; Pred(att_pred, [v1; v2])]
-          (Pred(mess_pred, [vc1; v1; vc2; v2])) [] (Rs(att_pred, mess_pred))
+	add_rule [att_fact vs phase vc1 vc2; Pred(att_pred, [left_state vs; v1; right_state vs; v2])]
+          (Pred(mess_pred, [left_state vs; vc1; v1; right_state vs; vc2; v2])) [] (Rs(att_pred, mess_pred))
       end;
 
     (* Clauses for equality *)
@@ -1266,11 +1292,12 @@ let transl_attacker phase =
     if phase >= !min_choice_phase 
     then
       begin
+        let vs = new_state () in
         let x = Terms.new_var_def t
         and fail = Terms.get_fail_term t in
         
-        add_rule [Pred(att_pred, [x; fail])] (Pred(Param.bad_pred, [])) [] (Rfail(att_pred));
-        add_rule [Pred(att_pred, [fail; x])] (Pred(Param.bad_pred, [])) [] (Rfail(att_pred))
+        add_rule [Pred(att_pred, [left_state vs; x; right_state vs; fail])] (Pred(Param.bad_pred, [])) [] (Rfail(att_pred));
+        add_rule [Pred(att_pred, [left_state vs; fail; right_state vs; x])] (Pred(Param.bad_pred, [])) [] (Rfail(att_pred))
       end;
     
     
@@ -1281,29 +1308,35 @@ let transl_attacker phase =
       let att_pred = Param.get_pred (AttackerBin(phase,Param.channel_type)) in
       let input_pred = Param.get_pred (InputPBin(phase)) in
       let output_pred = Param.get_pred (OutputPBin(phase)) in
- 
-      (* The attacker can do communications (Rule Ri and Ro)*)
+
+      (* The attacker can do communications (Rule Ri and Ro) *)
+      let vs = new_state () in
       let vc1 = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
-      add_rule [Pred(att_pred, [vc1; vc2])] (Pred(input_pred, [vc1;vc2])) [] (Ri(att_pred, input_pred));
+      add_rule [Pred(att_pred, [left_state vs; vc1; right_state vs; vc2])]
+               (Pred(input_pred, [left_state vs; vc1; right_state vs; vc2])) [] (Ri(att_pred, input_pred));
+      let vs = new_state () in
       let vc1 = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
-      add_rule [Pred(att_pred, [vc1; vc2])] (Pred(output_pred, [vc1; vc2])) [] (Ro(att_pred, output_pred));
+      add_rule [Pred(att_pred, [left_state vs; vc1; right_state vs; vc2])]
+               (Pred(output_pred, [left_state vs; vc1; right_state vs; vc2])) [] (Ro(att_pred, output_pred));
 
       (* Check communications do not reveal secrets (Rule Rcom and Rcom')*)
+      let vs = new_state () in
       let vc = Terms.new_var_def Param.channel_type in
       let vc1 = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
-      add_rule [Pred(input_pred, [vc; vc1]); 
-		 Pred(output_pred, [vc; vc2])] 
+      add_rule [Pred(input_pred, [left_state vs; vc; right_state vs; vc1]); 
+		 Pred(output_pred, [left_state vs; vc; right_state vs; vc2])] 
 	 (Pred(Param.bad_pred, [])) [[Neq(vc1,vc2)]] 
 	 (TestComm(input_pred, output_pred));
 	   
+      let vs = new_state () in
       let vc = Terms.new_var_def Param.channel_type in
       let vc1 = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
-      add_rule [Pred(input_pred, [vc1; vc]); 
-		 Pred(output_pred, [vc2; vc])] 
+      add_rule [Pred(input_pred, [left_state vs; vc1; right_state vs; vc]); 
+		 Pred(output_pred, [left_state vs; vc2; right_state vs; vc])] 
 	(Pred(Param.bad_pred, [])) [[Neq(vc1,vc2)]] 
 	(TestComm(input_pred, output_pred))
 
@@ -1479,7 +1512,7 @@ let transl p =
     List.iter (fun t ->
       (* The attacker has the fail constants *)
       let fail_term = Terms.get_fail_term t in
-      add_rule [] (att_fact i fail_term fail_term) [] Init;
+      add_rule [] (att_fact (initial_state()) i fail_term fail_term) [] Init;
     
       let att_i = Param.get_pred (AttackerBin(i,t)) in
       if i < !min_choice_phase then
@@ -1487,14 +1520,14 @@ let transl p =
 	  (* Phase coded by unary predicates *)
 	  let v = Terms.new_var Param.def_var_name t in
 	  let att_i = Param.get_pred (Attacker(i,t)) in
-	  Selfun.add_no_unif (att_i, [FVar v]) Selfun.never_select_weight
+	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v]) Selfun.never_select_weight
 	end
       else
 	begin
 	  (* Phase coded by binary predicates *)
 	  let v1 = Terms.new_var Param.def_var_name t in
 	  let v2 = Terms.new_var Param.def_var_name t in
-	  Selfun.add_no_unif (att_i, [FVar v1; FVar v2]) Selfun.never_select_weight
+	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight
 	end;
 	
       if i > 0 then
@@ -1524,13 +1557,13 @@ let transl p =
    (* The attacker has the public free names *)
    List.iter (fun ch ->
       if not ch.f_private then
-        add_rule [] (att_fact 0 (FunApp(ch, [])) (FunApp(ch, []))) [] Init) (!Param.freenames);
+        add_rule [] (att_fact (initial_state()) 0 (FunApp(ch, [])) (FunApp(ch, []))) [] Init) (!Param.freenames);
 
    List.iter (fun t ->
      (* The attacker can create new names *)
      let v1 = Terms.new_var_def Param.sid_type in
      let new_name_fun = Terms.new_name_fun t in			
-     add_rule [] (att_fact 0 (FunApp(new_name_fun, [v1])) (FunApp(new_name_fun, [v1]))) 
+     add_rule [] (att_fact (initial_state()) 0 (FunApp(new_name_fun, [v1])) (FunApp(new_name_fun, [v1]))) 
        [] (Rn (Param.get_pred (AttackerBin(0, t))));
 
      (* Rules that derive bad are necessary only in the last phase.
@@ -1539,16 +1572,20 @@ let transl p =
      let att_pred = Param.get_pred (AttackerBin(!Param.max_used_phase, t)) in
 
      (* The attacker can perform equality tests *)
+     let vs = new_state () in
      let v1 = Terms.new_var_def t in
      let v2 = Terms.new_var_def t in
      let v3 = Terms.new_var_def t in
-     add_rule [Pred(att_pred, [v1; v2]); Pred(att_pred, [v1; v3])]
+     add_rule [Pred(att_pred, [left_state vs; v1; right_state vs; v2]);
+               Pred(att_pred, [left_state vs; v1; right_state vs; v3])]
        (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred));
 
+     let vs = new_state () in
      let v1 = Terms.new_var_def t in
      let v2 = Terms.new_var_def t in
      let v3 = Terms.new_var_def t in
-     add_rule [Pred(att_pred, [v2; v1]); Pred(att_pred, [v3; v1])]
+     add_rule [Pred(att_pred, [left_state vs; v2; right_state vs; v1]);
+               Pred(att_pred, [left_state vs; v3; right_state vs; v1])]
        (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred))
 
    ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);  
@@ -1568,11 +1605,8 @@ let transl p =
        input_pred = Param.get_pred (InputPBin(0));
        output_pred = Param.get_pred (OutputPBin(0));
        cur_phase = 0;
-       cur_cells = List.fold_left (fun init_cells (r, init) ->
-         FunMap.add (r, "") (false, init) init_cells
-         (* XXX: Does 'init' need to be copied? *)
-       ) FunMap.empty !Param.cells;
-       hyp_tags = [] 
+       cur_cells = initial_state ();
+       hyp_tags = [];
      } p;
    );
      

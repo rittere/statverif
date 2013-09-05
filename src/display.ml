@@ -27,6 +27,7 @@
 *)
 open Types
 open Pitypes
+open Misc
 
 (* Helper function to make the display more readable: we abbreviate names with
    just a constant symbol. *)
@@ -675,7 +676,7 @@ let concl upper concl tag =
 	    print_string " may be triggered at ";
 	    Lang.display_occ occ;
 	    display_phase p
-	| Pred({p_info = [InputPBin(n)]} as p, [e;e']) ->
+	| Pred({p_info = [InputPBin(n)]} as p, [_; e; _; e']) ->
 	    term e;
 	    print_string " (resp. ";
 	    term e';
@@ -693,7 +694,7 @@ let concl upper concl tag =
 	    print_string " may be triggered at ";
 	    Lang.display_occ occ;
 	    display_phase p
-	|  Pred({p_info = [OutputPBin(n)]} as p, [e;e']) ->
+	|  Pred({p_info = [OutputPBin(n)]} as p, [_; e; _; e']) ->
 	    term e;
 	    print_string " (resp. ";
 	    term e';
@@ -868,7 +869,7 @@ let rec display_hyp hyp tag =
 	    display_phase p;
 	    print_string " at input ";
 	    Lang.display_occ occ
-	| Pred({p_info = [AttackerBin(n,_)]} as p, [v;v']) ->
+	| Pred({p_info = [AttackerBin(n,_)]} as p, [_; v; _; v']) ->
 	    print_string "the message ";
 	    display_term v;
 	    print_string " (resp. ";
@@ -877,7 +878,7 @@ let rec display_hyp hyp tag =
 	    display_phase p;
 	    print_string " at input ";
 	    Lang.display_occ occ
-	| Pred({p_info = [MessBin(n,_)]} as p, [vc;v;vc';v']) ->
+	| Pred({p_info = [MessBin(n,_)]} as p, [_; vc; v; _; vc'; v']) ->
 	    print_string "the message ";
 	    display_term v;
 	    print_string " is received on channel ";
@@ -1852,7 +1853,7 @@ let rec display_hyp hyp hl tag =
 	    display_step_low s;
 	    print_string " may be received at input ";
 	    Lang.display_occ occ
-	| Pred({p_info = [AttackerBin(n,_)]} as p, [v;v']) ->
+	| Pred({p_info = [AttackerBin(n,_)]} as p, [_; v; _; v']) ->
 	    print_string "The message ";
 	    WithLinks.term v;
 	    print_string " (resp. ";
@@ -1862,7 +1863,7 @@ let rec display_hyp hyp hl tag =
 	    display_step_low s;
 	    print_string " may be received at input ";
 	    Lang.display_occ occ
-	| Pred({p_info = [MessBin(n,_)]} as p, [vc;v;vc';v']) ->
+	| Pred({p_info = [MessBin(n,_)]} as p, [_; vc; v; _; vc'; v']) ->
 	    print_string "The message ";
 	    WithLinks.term v;
 	    print_string " that may be sent on channel ";

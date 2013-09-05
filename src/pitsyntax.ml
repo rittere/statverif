@@ -26,17 +26,6 @@
 
 *)
 
-let rec last = function
-   [] -> raise (Failure "last")
- | [x] -> x
- | x::l -> last l
-
-let rec map4 f l1 l2 l3 l4 =
-  match (l1, l2, l3, l4) with
-     ([], [], [], []) -> []
-   | (x1::l1, x2::l2, x3::l3, x4::l4) -> (f x1 x2 x3 x4) :: (map4 f l1 l2 l3 l4)
-   | (_, _, _, _) -> raise (Failure "map4")
-
 open Parsing_helper
 open Ptree
 open Pitptree
@@ -810,7 +799,7 @@ let add_cell (s,ext) opt_t init options =
   in
   let r = Terms.create_name s ([],cell_type) (!is_private) in
   global_env := StringMap.add s (ECell r) (!global_env);
-  cells := (r, init') :: !cells
+  cells := !cells @ [r, init']
 
 
 (* Check non-interference terms *)
@@ -1779,7 +1768,7 @@ let rec check_process env process = match process with
        let cell_types = List.map (fun cell -> Some (snd cell.f_type)) cells in
 
        let layer_list, env', _ = check_pattern_list
-         (Parsing_helper.merge_ext (snd (List.hd ids)) (snd (last ids)))
+         (Parsing_helper.merge_ext (snd (List.hd ids)) (snd (Misc.last ids)))
          env cell_types patterns env in
        layer_list (fun pattern_list ->
          ReadAs(List.combine cells pattern_list, check_process env' p, Terms.new_occurrence())
@@ -1790,7 +1779,7 @@ let rec check_process env process = match process with
        let cells = List.map (get_cell_from_ident env) ids in
        let layer_list, type_list = check_term_list env terms in
        layer_list (fun term_list ->
-         let pairs' = map4 (fun (_,ext) cell term term_type ->
+         let pairs' = Misc.map4 (fun (_,ext) cell term term_type ->
            let cell_type = snd cell.f_type in
            if cell_type != term_type then
              input_error ("the term is of type "^term_type.tname^" but the type "^cell_type.tname^" was expected") ext;
