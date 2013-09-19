@@ -29,6 +29,9 @@ open Types
 open Pitypes
 open Misc
 
+(* Use singular/plural based on a number. *)
+let plural n singular plural = if n = 1 then singular else plural
+
 (* Helper function to make the display more readable: we abbreviate names with
    just a constant symbol. *)
 
@@ -646,6 +649,30 @@ let concl upper concl tag =
       end;
       print_string " at output ";
       Lang.display_occ occ
+  | AssignTag(occ, cells) :: _ ->
+      begin
+        match concl with
+          Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
+            print_string ((if upper then "The " else "the ")
+              ^ plural (List.length cells) "cell " "cells "
+              ^ String.concat "," (List.map (fun s -> s.f_name) cells)
+              ^ " may be assigned the values ");
+            let t1, t2 = List.split (List.map (fun s ->
+              let rec find = function
+                | ((s',_)::cells, t1::vs1, t2::vs2) ->
+                  if s == s' then (t1, t2)
+                  else find (cells, vs1, vs2)
+              in find (!Param.cells, vs1, vs2)
+            ) cells) in
+            term_list t1;
+            print_string " (resp. ";
+            term_list t2;
+            print_string ")";
+            display_phase p
+        | _ -> Parsing_helper.internal_error "Unexpected conclusion for AssignTag"
+      end;
+      print_string " at assignment ";
+      Lang.display_occ occ
   | TestUnifTag occ :: _ | TestUnifTag2 occ :: _ ->
       begin
 	print_string (if upper then "The attacker can make a distinguishing test at " else "the attacker can make a distinguishing test at ");
@@ -826,6 +853,7 @@ let display_rule r =
                     tag associated with no hypothesis
    BeginFact: event, associated with one hypothesis begin:... [always followed by BeginEvent(occ)]
    LetTag(occ): let, associated with no hypothesis
+   AssignTag(occ,cells): assignment, associated with one hypothesis
 
 clauses H -> input:... and H -> output:... for non_interference currently 
 have no tag for describing their conclusion
@@ -836,7 +864,7 @@ let rec display_hyp hyp tag =
     (_::h, TestUnifTag _ :: t) | (h, TestUnifTag2 _ :: t) | (h, TestTag _ :: t) 
   | (h, LetTag _ :: t) | (h, InputPTag _ :: t) | (h, OutputPTag _ :: t) 
   | (h, OutputTag _ :: t) | (h, InsertTag _ :: t) | (h, LetFilterTag _ :: t)
-  | (h, BeginEvent _ :: t) ->
+  | (h, BeginEvent _ :: t) | (_::h, AssignTag _ :: t)->
       display_hyp h t
   | (h, ReplTag _ :: t) ->
       if !Param.non_interference then
@@ -944,7 +972,7 @@ let rec empty_hyp hyp tags =
     (_::h, TestUnifTag _ :: t) | (h, TestUnifTag2 _ :: t) | (h, TestTag _ :: t) 
   | (h, LetTag _ :: t) | (h, InputPTag _ :: t) | (h, OutputPTag _ :: t) 
   | (h, OutputTag _ :: t) | (h, LetFilterTag _ :: t) | (h, InsertTag _ :: t) 
-  | (h, BeginEvent _ :: t) -> empty_hyp h t
+  | (h, BeginEvent _ :: t) | (_::h, AssignTag _ :: t) -> empty_hyp h t
   | (h, ReplTag _ :: t) ->
       if !Param.non_interference then
 	if !Param.key_compromise == 1 then
@@ -1798,7 +1826,8 @@ let rec display_hyp hyp hl tag =
   | (h, hl, TestUnifTag2 _ :: t) | (h, hl, TestTag _ :: t) 
   | (h, hl, LetTag _ :: t) | (h, hl, InputPTag _ :: t) 
   | (h, hl, OutputPTag _ :: t) | (h, hl, BeginEvent _ :: t)
-  | (h, hl, OutputTag _ :: t) | (h, hl, InsertTag _ :: t) ->
+  | (h, hl, OutputTag _ :: t) | (h, hl, InsertTag _ :: t)
+  | (_::h, _::hl, AssignTag _ :: t) ->
       display_hyp h hl t
   | (h, hl, ReplTag _ :: t) ->
       if !Param.non_interference then
