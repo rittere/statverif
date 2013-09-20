@@ -211,6 +211,7 @@ type hypspec =
   | GetTag of occurrence
   | GetTagElse of occurrence
   | AssignTag of occurrence * funsymb list
+  | ReadAsTag of occurrence * funsymb list
 
 type label =
     ProcessRule of hypspec list * term list 

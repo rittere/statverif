@@ -32,6 +32,12 @@ open Misc
 (* Use singular/plural based on a number. *)
 let plural n singular plural = if n = 1 then singular else plural
 
+(* Given a list of terms for states, return the item corresponding to the cell s. *)
+let pick_state terms s =
+  let rec find ((s',_)::cells) (t::vs) =
+    if s == s' then t else find cells vs
+  in find (!Param.cells) terms
+
 (* Helper function to make the display more readable: we abbreviate names with
    just a constant symbol. *)
 
@@ -629,13 +635,13 @@ let concl upper concl tag =
 	    print_string " may be sent on channel ";
 	    term vc;
 	    display_phase p
-	| Pred({p_info = [AttackerBin(n,_)]} as p, [v;v']) ->
+	| Pred({p_info = [AttackerBin(n,_)]} as p, [_; v; _; v']) ->
 	    term v;
 	    print_string " (resp. ";
 	    term v';
 	    print_string ") may be sent to the attacker";
 	    display_phase p
-	| Pred({p_info = [MessBin(n,_)]} as p, [vc;v;vc';v']) ->
+	| Pred({p_info = [MessBin(n,_)]} as p, [_; vc; v; _; vc'; v']) ->
 	    term v;
 	    print_string " may be sent on channel ";
 	    term vc;
@@ -657,13 +663,7 @@ let concl upper concl tag =
               ^ plural (List.length cells) "cell " "cells "
               ^ String.concat "," (List.map (fun s -> s.f_name) cells)
               ^ " may be assigned the values ");
-            let t1, t2 = List.split (List.map (fun s ->
-              let rec find = function
-                | ((s',_)::cells, t1::vs1, t2::vs2) ->
-                  if s == s' then (t1, t2)
-                  else find (cells, vs1, vs2)
-              in find (!Param.cells, vs1, vs2)
-            ) cells) in
+            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
             term_list t1;
             print_string " (resp. ";
             term_list t2;
@@ -920,6 +920,27 @@ let rec display_hyp hyp tag =
 	    print_string " at input ";
 	    Lang.display_occ occ
 	| _ -> Parsing_helper.internal_error "Unexpected hypothesis for InputTag"
+      end;
+      print_string ",";
+      newline()
+  | (m::h, (ReadAsTag(occ, cells)) :: t) ->
+      display_hyp h t;
+      begin
+        match m with
+        | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
+            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
+            print_string ("the " ^ plural (List.length cells) "state " "states ");
+            display_term_list t1;
+            print_string " (resp. ";
+            display_term_list t2;
+            print_string (plural (List.length cells) ") is read from cell "
+                                                     ") are read from cells"
+              ^ (String.concat ","
+                 (List.map (fun s -> s.f_name) cells)));
+            display_phase p;
+            print_string " at read ";
+            Lang.display_occ occ;
+        | _ -> Parsing_helper.internal_error "Unexpected hypothesis for ReadAsTag"
       end;
       print_string ",";
       newline()
@@ -1705,7 +1726,7 @@ let display_attacker_fact = function
       WithLinks.term v;
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))
-  | Pred({p_info = [AttackerBin(n,_)]}, [v;v']) ->
+  | Pred({p_info = [AttackerBin(n,_)]}, [_; v; _; v']) ->
       WithLinks.term v;
       print_string " (resp. ";
       WithLinks.term v';
@@ -1812,6 +1833,8 @@ let display_hyp_spec = function
   | InsertTag o ->  print_string "it"; print_string (string_of_int o)
   | GetTag o ->  print_string "gt"; print_string (string_of_int o)
   | GetTagElse o ->  print_string "gte"; print_string (string_of_int o)
+  | AssignTag (o,_) -> print_string ":="; print_string (string_of_int o)
+  | ReadAsTag (o,_) -> print_string "ra"; print_string (string_of_int o)
 
 let rec display_hyp hyp hl tag =
   match (hyp, hl, tag) with
@@ -1907,6 +1930,27 @@ let rec display_hyp hyp hl tag =
 	    print_string " may be received at input ";
 	    Lang.display_occ occ
 	| _ -> Parsing_helper.internal_error "Unexpected hypothesis for InputTag"
+      end;
+      print_string ".";
+      newline()
+  | (m::h,s::hl,(ReadAsTag(occ,cells)) :: t) ->
+      display_hyp h hl t;
+      begin
+        match m with
+        | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
+            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
+            print_string (plural (List.length cells) "The state " "The states ");
+            WithLinks.term_list t1;
+            print_string " (resp. ";
+            WithLinks.term_list t2;
+            print_string ")";
+            display_phase p;
+            display_step_low s;
+            print_string (" may be read from "
+              ^ plural (List.length cells) "cell " "cells "
+              ^ String.concat "," (List.map (fun s -> s.f_name) cells));
+            Lang.display_occ occ
+        | _ -> Parsing_helper.internal_error "Unexpected hypothesis for ReadAsTag"
       end;
       print_string ".";
       newline()

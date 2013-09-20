@@ -835,7 +835,7 @@ let rec transl_process cur_state process =
                       ) binders) @ cur_state3.name_params;
                     name_params_types = (List.map (fun b -> b.btype) binders)@cur_state3.name_params_types;
                     name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state3.name_params_meaning;
-                    hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase term_pat_left term_pat_right) :: cur_state3.hypothesis;
+                    hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase term_pat_left term_pat_right) :: cur_state3.hypothesis;
                     hyp_tags = (InputTag occ)::cur_state3.hyp_tags
                   } proc;
                   
@@ -858,7 +858,7 @@ let rec transl_process cur_state process =
                 (* Case left side succeed and right side fail *)
                 transl_one_side_fails (fun cur_state3 ->
                   output_rule { cur_state3 with
-                    hypothesis = (att_fact cur_state2.cur_cells cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
+                    hypothesis = (att_fact cur_state3.cur_cells cur_state3.cur_phase term_pat_left x_right) :: cur_state3.hypothesis;
                     hyp_tags = (TestUnifTag2 occ)::(InputTag occ)::cur_state3.hyp_tags
                   } (Pred(Param.bad_pred, []))
                 ) cur_state2 [term_pat_right] [term_pat_left]; 
@@ -1256,6 +1256,81 @@ let rec transl_process cur_state process =
             } (Pred(Param.bad_pred, []))
         ) cur_state1 terms_left terms_right
       ) cur_state (List.map snd items)
+
+ | ReadAs(items, proc, occ) ->
+     let cur_state = freshen_cells cur_state in
+     transl_pat_list (fun cur_state1 terms_pattern binders ->
+       transl_term_list (fun cur_state2 terms_pat_left terms_pat_right ->
+         let x_right = List.map (fun term_pat_right ->
+           Terms.new_var_def (Terms.get_term_type term_pat_right)) terms_pat_right
+         and x_left = List.map (fun term_pat_left ->
+           Terms.new_var_def (Terms.get_term_type term_pat_left)) terms_pat_left in
+         let gen_pats_l, gen_pats_r = List.split (
+           List.map2 (fun term_pat_left term_pat_right ->
+             generate_pattern_with_uni_var binders term_pat_left term_pat_right
+           ) terms_pat_left terms_pat_right
+         ) in
+
+         List.iter2 (fun (cell, _) term_pat_left ->
+           Terms.unify term_pat_left (let _,x,_ = FunMap.find (cell,"") cur_state2.cur_cells in x)
+         ) items terms_pat_left;
+         List.iter2 (fun (cell, _) term_pat_right ->
+           Terms.unify term_pat_right (let _,_,x = FunMap.find (cell,"") cur_state2.cur_cells in x)
+         ) items terms_pat_right;
+
+         (* XXX: Do we need to create these for every clause/etc.? *)
+         let [vc; vm; vc'; vm'] = List.map Terms.new_var_def
+             [Param.channel_type; Param.any_type; Param.channel_type; Param.any_type] in
+         transl_both_side_succeed (fun cur_state3 ->
+           (* Pattern satisfied in both sides. *)
+           transl_process { cur_state3 with
+               name_params = (List.map
+                 (fun b -> match b.link with
+                    | TLink t -> t
+                    | _ -> internal_error "unexpected link in translate_term (7)"
+                 ) binders) @ cur_state3.name_params;
+               name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
+               name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning;
+               hypothesis = (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+               hyp_tags = (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+             } proc;
+
+             (* Pattern satisfied only on left side. *)
+             output_rule { cur_state3 with
+                 constra = (List.map2 (fun gen_pat_r x_right ->
+                     [Neq(gen_pat_r, x_right)]) gen_pats_r x_right)
+                   @ cur_state3.constra;
+                 hypothesis = (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+                 hyp_tags = TestUnifTag2(occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+               } (Pred(Param.bad_pred, []));
+
+             (* Pattern satisfied only on right side. *)
+             output_rule { cur_state3 with
+                 constra = (List.map2 (fun gen_pat_l x_left ->
+                     [Neq(gen_pat_l, x_left)]) gen_pats_l x_left)
+                   @ cur_state3.constra;
+                 hypothesis = (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+                 hyp_tags = TestUnifTag2(occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+               } (Pred(Param.bad_pred, []))
+         ) cur_state2 terms_pat_left terms_pat_right;
+
+         (* Case left side succeeds and right side fails. *)
+         transl_one_side_fails (fun cur_state3 ->
+           output_rule { cur_state3 with
+               hypothesis = (mess_fact cur_state3.cur_cells cur_state3.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+               hyp_tags = (TestUnifTag2 occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+             } (Pred(Param.bad_pred, []))
+         ) cur_state2 terms_pat_right terms_pat_left;
+
+         (* Case right side succeeds and left side fails. *)
+         transl_one_side_fails (fun cur_state3 ->
+           output_rule { cur_state3 with
+               hypothesis = (mess_fact cur_state3.cur_cells cur_state3.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+               hyp_tags = (TestUnifTag2 occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+             } (Pred(Param.bad_pred, []))
+         ) cur_state2 terms_pat_left terms_pat_right;
+       ) cur_state1 terms_pattern
+     ) cur_state (List.map snd items)
 
   
                       
