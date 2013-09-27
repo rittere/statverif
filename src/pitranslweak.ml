@@ -1362,25 +1362,37 @@ let rules_Rf_for_red phase f_symb red_rules =
     List.iter (fun red_rule ->
       let (hyp1, concl1, side_c1) = Terms.copy_red red_rule in
       
-      let vs = new_state () in
-      add_rule (List.map (fun t1 -> att_fact vs phase t1 t1) hyp1)
-      	(att_fact vs phase concl1 concl1) 
-      	(List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1)
-      	(Apply(f_symb, result_predicate))
-        ) red_rules
+      let vs = match hyp1 with
+        | [] when phase = 0 -> Some (initial_state())
+        | [] -> None
+        | _ -> Some (new_state()) in
+      match vs with
+        | None -> () (* inherited from phase 0 *)
+        | Some vs ->
+          add_rule (List.map (fun t1 -> att_fact vs phase t1 t1) hyp1)
+      	    (att_fact vs phase concl1 concl1) 
+      	    (List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1)
+      	    (Apply(f_symb, result_predicate))
+            ) red_rules
   else
     List.iter (fun red_rule1 ->
       List.iter (fun red_rule2 ->
         let (hyp1, concl1, side_c1) = Terms.copy_red red_rule1
         and (hyp2, concl2, side_c2) = Terms.copy_red red_rule2 in
                   
-        let vs = new_state () in
-        add_rule (List.map2 (fun t1 t2 -> att_fact vs phase t1 t2) hyp1 hyp2)
-      	  (att_fact vs phase concl1 concl2) 
-      	  ((List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1) @ (List.map (function (t1,t2) -> [Neq(t1,t2)]) side_c2))
-      	  (Apply(f_symb, result_predicate))
-      	  ) red_rules
-      	) red_rules 
+        let vs = match hyp1, hyp2 with
+          | [], [] when phase = 0 -> Some (initial_state())
+          | [], [] -> None
+          | _ -> Some (new_state()) in
+        match vs with
+          | None -> () (* inherited from phase 0 *)
+          | Some vs ->
+            add_rule (List.map2 (fun t1 t2 -> att_fact vs phase t1 t2) hyp1 hyp2)
+      	      (att_fact vs phase concl1 concl2) 
+      	      ((List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c1) @ (List.map (function (t1,t2) -> [Neq(t1,t2)]) side_c2))
+      	      (Apply(f_symb, result_predicate))
+      	      ) red_rules
+      	    ) red_rules 
     
 let transl_attacker phase =
 
@@ -1657,7 +1669,13 @@ let transl p =
 	  (* Phase coded by binary predicates *)
 	  let v1 = Terms.new_var Param.def_var_name t in
 	  let v2 = Terms.new_var Param.def_var_name t in
-	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight
+	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight;
+	  (* nounif mess2(*vs,vc,vm,*vs2,vc2,vm2)   *)*)
+	  let mess_i = Param.get_pred (MessBin(i,t)) in
+	  let [vc1;vm1;vc2;vm2] = List.map (Terms.new_var Param.def_var_name)
+	    [Param.channel_type; t; Param.channel_type; t] in
+	  Selfun.add_no_unif (mess_i, [new_state_format(); FVar vc1; FVar vm1;
+	                               new_state_format(); FVar vc2; FVar vm2]) Selfun.never_select_weight
 	end;
 	
       if i > 0 then
