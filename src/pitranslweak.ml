@@ -526,10 +526,12 @@ let rec transl_process cur_state process =
 
   (* DEBUG mode *)
   
+  (*
   Printf.printf "\n\n**********************\n\n";
   Display.Text.display_process_occ "" process;
   display_transl_state cur_state;
   flush_all ();
+  *)
 
   match process with
   | Nil -> ()
