@@ -522,6 +522,10 @@ let generate_pattern_with_uni_var binders_list term_pat_left term_pat_right =
               Translate Process
 **********************************************) 
 
+let all_types () =
+  if !Param.ignore_types then [Param.any_type]
+  else !Param.all_types
+
 let rec transl_process cur_state process = 
 
   (* DEBUG mode *)
@@ -1242,12 +1246,14 @@ let rec transl_process cur_state process =
 
           transl_process cur_state3 proc;
 
-          let [vc; vm; vc'; vm'] = List.map Terms.new_var_def
-            [Param.channel_type; Param.any_type; Param.channel_type; Param.any_type] in
-          output_rule { cur_state2 with
-              hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags;
-              hypothesis = (mess_fact cur_state2.cur_cells cur_state.cur_phase vc vm vc' vm')::cur_state2.hypothesis
-            } (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm')
+          List.iter (fun t ->
+            let [vc; vm; vc'; vm'] = List.map Terms.new_var_def
+              [Param.channel_type; t; Param.channel_type; t] in
+            output_rule { cur_state2 with
+                hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags;
+                hypothesis = (mess_fact cur_state2.cur_cells cur_state.cur_phase vc vm vc' vm')::cur_state2.hypothesis
+              } (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm')
+          ) (all_types())
         ) cur_state1 terms_left terms_right;
 
         (* Case left side succeeds and right side fails. *)
@@ -1286,9 +1292,12 @@ let rec transl_process cur_state process =
            Terms.unify term_pat_right (let _,_,x = FunMap.find (cell,"") cur_state2.cur_cells in x)
          ) items terms_pat_right;
 
+         (* Use "channel" type to test state reachability, since we assume a channel is
+            always available anyway, for attacker knowledge inheritance to work. *)
+         let some_type = if !Param.ignore_types then Param.any_type else Param.channel_type in
          (* XXX: Do we need to create these for every clause/etc.? *)
          let [vc; vm; vc'; vm'] = List.map Terms.new_var_def
-             [Param.channel_type; Param.any_type; Param.channel_type; Param.any_type] in
+             [Param.channel_type; some_type; Param.channel_type; some_type] in
          transl_both_side_succeed (fun cur_state3 ->
            (* Pattern satisfied in both sides. *)
            transl_process { cur_state3 with
@@ -1472,7 +1481,7 @@ let transl_attacker phase =
       end;
     
     
-  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+  ) (all_types());
 
   if phase >= !min_choice_phase then 
     begin
@@ -1716,7 +1725,7 @@ let transl p =
 	let w2 = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (AttackerBin(i-1,t)) in
 	add_rule [Pred(att_im1, [w1; w2])] (Pred(att_i, [w1; w2])) [] PhaseChange
-    ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+    ) (all_types());
 
     if i > 0 then
       let w1 = Terms.new_var_def Param.table_type in
@@ -1765,7 +1774,7 @@ let transl p =
                Pred(att_pred, [left_state vs; v3; right_state vs; v1])]
        (Pred(Param.bad_pred, [])) [[Neq(v2,v3)]] (TestEq(att_pred))
 
-   ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);  
+   ) (all_types());  
       
    List.iter (fun ch -> 
      match ch.f_cat with
