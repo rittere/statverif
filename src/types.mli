@@ -108,6 +108,7 @@ and process =
   | Phase of int * process * occurrence
   | Lock of funsymb list * process * occurrence
   | Unlock of funsymb list * process * occurrence
+  | Open of funsymb list * process * occurrence
   | ReadAs of (funsymb * pattern) list * process * occurrence
   | Assign of (funsymb * term) list * process * occurrence
   
@@ -210,6 +211,7 @@ type hypspec =
   | InsertTag of occurrence
   | GetTag of occurrence
   | GetTagElse of occurrence
+  | OpenTag of occurrence
   | AssignTag of occurrence * funsymb list
   | ReadAsTag of occurrence * funsymb list
 
@@ -225,6 +227,8 @@ type label =
   | Rs of predicate * predicate
   | Ri of predicate * predicate
   | Ro of predicate * predicate
+  | Rread
+  | Rwrite of predicate
   | Rfail of predicate
   | TestComm of predicate * predicate
   | InputSecr of predicate

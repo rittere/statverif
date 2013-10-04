@@ -89,7 +89,8 @@ let keyword_table =
   "lock", LOCK;
   "unlock", UNLOCK;
   "read", READ;
-  "as", AS]
+  "as", AS;
+  "open", OPEN]
 
 }
 

@@ -1957,7 +1957,7 @@ let rec simplify_tree first next_f tree =
 	    (* the session identifiers are part of the fact id *)
 	    check_coherent ((HashFactId.Term (List.nth name_params count_params)) :: factId')
 	      (concl, l1, name_params, sons) 
-	| OutputTag occ | InsertTag occ | InputPTag occ | OutputPTag occ ->
+	| OutputTag occ | AssignTag(occ,_) | InsertTag occ | InputPTag occ | OutputPTag occ ->
 	    if l1 == [] then
 	      (* I'm reaching the conclusion *)
 	      let fact_id = HashFactId.build factId' in
@@ -1970,7 +1970,7 @@ let rec simplify_tree first next_f tree =
 	      check_coherent factId' (concl, l1, name_params, sons)
 	| LetTag occ | TestTag occ | TestUnifTag2 occ | GetTagElse occ ->
 	    check_coherent factId' (concl, l1, name_params, sons)
-	| InputTag _ | GetTag _ -> 
+	| InputTag _ | ReadAsTag _ | GetTag _ -> 
 	    let f = (List.hd sons).thefact in
 	    let fact_id = HashFactId.build factId' in
 	    begin

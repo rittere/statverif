@@ -91,7 +91,7 @@ let rec find_min_choice_phase current_phase process =
       find_min_choice_phase current_phase q
   | Phase(n,p,_) ->
       find_min_choice_phase n p
-  | Lock(_,p,_) | Unlock(_,p,_) ->
+  | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_) ->
       find_min_choice_phase current_phase p
   | ReadAs(sp,p,_) ->
       if (List.exists (fun (_,p) -> has_choice_pat p) sp) then set();
@@ -1223,6 +1223,12 @@ let rec transl_process cur_state process =
          FunMap.add (s, "") (false, vs, vs') cur_cells) cur_state.cur_cells cells
      } proc
 
+ | Open(cells, proc, occ) ->
+     List.iter (fun s ->
+       output_rule { cur_state with hyp_tags = (OpenTag occ) :: cur_state.hyp_tags }
+         (att_fact cur_state.cur_cells cur_state.cur_phase (FunApp(s,[])) (FunApp(s,[])))) cells;
+     transl_process cur_state proc
+
  | Assign(items, proc, occ) ->
       transl_term_list (fun cur_state1 terms_left terms_right ->
         (* Case both sides succeed. *)
@@ -1402,6 +1408,14 @@ let transl_attacker phase =
   Hashtbl.iter (Terms.clauses_for_function (rules_Rf_for_red phase)) Param.fun_decls;
   Hashtbl.iter (Terms.clauses_for_function (rules_Rf_for_red phase)) Terms.tuple_table;
 
+  (* The attacker can read any opened cells. *)
+  List.iter (fun (s,_) ->
+    (* TODO: Suppress this clause for cells that are never opened? *)
+    let vs = new_state () in
+    let (_, v1, v2) = FunMap.find (s,"") vs in
+    add_rule [att_fact vs phase (FunApp(s,[])) (FunApp(s,[]))]
+      (att_fact vs phase v1 v2) [] Rread) !Param.cells;
+
   List.iter (fun t ->
     let att_pred = Param.get_pred (AttackerBin(phase,t)) in
     let mess_pred = Param.get_pred (MessBin(phase,t)) in
@@ -1424,7 +1438,20 @@ let transl_attacker phase =
 	let v2 = Terms.new_var_def t in
 	let vc2 = Terms.new_var_def Param.channel_type in
 	add_rule [att_fact vs phase vc1 vc2; Pred(att_pred, [left_state vs; v1; right_state vs; v2])]
-          (Pred(mess_pred, [left_state vs; vc1; v1; right_state vs; vc2; v2])) [] (Rs(att_pred, mess_pred))
+          (Pred(mess_pred, [left_state vs; vc1; v1; right_state vs; vc2; v2])) [] (Rs(att_pred, mess_pred));
+
+        (* The attacker can write any opened cells. *)
+        List.iter (fun ({f_type=(_,cell_type)} as s,_) ->
+          (* TODO: Suppress this clause for cells that are never opened? *)
+          let [v1;vc1;vm1;v2;vc2;vm2] = List.map Terms.new_var_def
+            [cell_type; Param.channel_type; t; cell_type; Param.channel_type; t] in
+          let vs = new_state () in
+          let vs' = FunMap.add (s,"") (false, v1, v2) vs in
+          add_rule [att_fact vs phase (FunApp(s,[])) (FunApp(s,[]));
+                    att_fact vs phase v1 v2;
+                    Pred(mess_pred, [left_state vs; vc1; vm1; right_state vs; vc2; vm2])]
+            (Pred(mess_pred, [left_state vs'; vc1; vm1; right_state vs'; vc2; vm2]))
+            [] (Rwrite(mess_pred))) !Param.cells;
       end;
 
     (* Clauses for equality *)

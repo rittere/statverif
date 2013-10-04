@@ -114,6 +114,7 @@ exception Syntax
 %token READ
 %token AS
 %token ASSIGN
+%token OPEN
 
 /* Tables of keys */
 %token TABLE
@@ -223,8 +224,8 @@ lib:
         { (TDefine($2, $4, $7)) :: $9 }
 |       EXPAND IDENT LPAREN typeidseq RPAREN DOT lib
         { (TExpand($2, $4)) :: $7 }
-|       CELL neidentseq opttype ASSIGN term options DOT lib
-        { (List.map (fun x -> TCell(x, $3, $5, $6)) $2) @ $8 }
+|       CELL neidentseq opttype ASSIGN term DOT lib
+        { (List.map (fun x -> TCell(x, $3, $5)) $2) @ $7 }
 | 
         { [] }
 
@@ -651,6 +652,8 @@ tprocess:
         { PLock($2, $3) }
 |       UNLOCK neidentseq opttprocess
         { PUnlock($2, $3) }
+|       OPEN neidentseq opttprocess
+        { POpen($2, $3) }
 |       READ neidentseq AS nepatternseq opttprocess
         { PReadAs(List.combine $2 $4, $5) }
 |       neidentseq ASSIGN neptermseq opttprocess

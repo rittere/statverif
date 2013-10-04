@@ -773,12 +773,7 @@ let add_free_name (s,ext) t options =
 
 let cells = Param.cells
 
-let add_cell (s,ext) opt_t init options =
-  let is_private = ref false in
-  List.iter (function
-    | ("private",_) -> is_private := true
-    | (_,ext) ->
-        input_error "for cells, the only allowed option is `private'" ext) options;
+let add_cell (s,ext) opt_t init =
   let opt_ty = match opt_t with
     | Some t -> Some (get_type t)
     | None -> None
@@ -797,7 +792,7 @@ let add_cell (s,ext) opt_t init options =
     | None ->
       init_type (* Type of cell becomes type of its initial value. *)
   in
-  let r = Terms.create_name s ([],cell_type) (!is_private) in
+  let r = Terms.create_name s ([],cell_type) (*private =>*)true in
   global_env := StringMap.add s (ECell r) (!global_env);
   cells := !cells @ [r, init']
 
@@ -1759,7 +1754,11 @@ let rec check_process env process = match process with
          check_process env p, Terms.new_occurrence())
 
    | PUnlock(st,p) ->
-       Unlock(List.map (fun id -> get_cell_from_ident env id) st,
+       Unlock(List.map (get_cell_from_ident env) st,
+         check_process env p, Terms.new_occurrence())
+
+   | POpen(st,p) ->
+       Open(List.map (get_cell_from_ident env) st,
          check_process env p, Terms.new_occurrence())
 
    | PReadAs(pairs,p) ->
@@ -1989,6 +1988,7 @@ let rec rename_process = function
   | PPhase(n,p) -> PPhase(n, rename_process p)
   | PLock(st,p) -> PLock(List.map rename_ie st, rename_process p)
   | PUnlock(st,p) -> PUnlock(List.map rename_ie st, rename_process p)
+  | POpen(st,p) -> POpen(List.map rename_ie st, rename_process p)
   | PReadAs(st,p) -> PReadAs(List.map (fun (s,pat) -> (rename_ie s, rename_pat pat)) st, rename_process p)
   | PAssign(st,p) -> PAssign(List.map (fun (s,m) -> (rename_ie s, rename_pterm m)) st, rename_process p)
   
@@ -2024,8 +2024,8 @@ let rename_decl = function
   | TNot(env, t) -> TNot(rename_env env, rename_gterm t)
   | TElimtrue(env, f) -> TElimtrue(rename_may_fail_env env, rename_term f)
   | TFree(i,ty, opt) -> TFree(rename_ie i, rename_ie ty, opt)
-  | TCell(i,Some ty,init,opt) -> TCell(rename_ie i, Some (rename_ie ty), rename_term init, opt)
-  | TCell(i,None,init,opt) -> TCell(rename_ie i, None, rename_term init, opt)
+  | TCell(i,Some ty,init) -> TCell(rename_ie i, Some (rename_ie ty), rename_term init)
+  | TCell(i,None,init) -> TCell(rename_ie i, None, rename_term init)
   | TClauses l -> TClauses (List.map (fun (env, cl) -> (rename_may_fail_env env, rename_clause cl)) l)
   | TDefine((s1,ext1),argl,def) ->
       input_error "macro definitions are not allowed inside macro definitions" ext1
@@ -2091,8 +2091,8 @@ let rec check_one = function
       not_list := (env, no) :: (!not_list)
   | TFree (name,ty,i) -> 
       add_free_name name ty i
-  | TCell (name,opt_ty,init,i) ->
-      add_cell name opt_ty init i
+  | TCell (name,opt_ty,init) ->
+      add_cell name opt_ty init
   | TClauses c ->
       List.iter check_clause c
   | TLetFun ((s,ext), args, p) -> 
@@ -2202,7 +2202,7 @@ let rec set_max_used_phase = function
       if n > !Param.max_used_phase then
 	Param.max_used_phase := n;
       set_max_used_phase p
-  | Lock(_,p,_) | Unlock(_,p,_) | ReadAs(_,p,_) | Assign(_,p,_) -> set_max_used_phase p
+  | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_) | ReadAs(_,p,_) | Assign(_,p,_) -> set_max_used_phase p
 
       
 let parse_file s = 
@@ -2219,7 +2219,7 @@ let parse_file s =
     | TReducFail((s,ext),_,_,_,_) -> Terms.record_id s ext
     | TPredDecl((s,ext),_,_) -> Terms.record_id s ext
     | TFree((s,ext),_,_) -> Terms.record_id s ext
-    | TCell((s,ext),_,_,_) -> Terms.record_id s ext
+    | TCell((s,ext),_,_) -> Terms.record_id s ext
     | TEventDecl((s,ext),_) -> Terms.record_id s ext
     | TTableDecl((s,ext),_) -> Terms.record_id s ext
     | TLetFun((s,ext),_,_) -> Terms.record_id s ext

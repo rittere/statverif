@@ -110,6 +110,7 @@ let rec copy_process add_in_glob_table = function
 	LetFilter(bl', Terms.copy_fact3 f, p', q', occ'))
   | Lock(st,p,_) -> Lock(st, copy_process add_in_glob_table p, new_occurrence())
   | Unlock(st,p,_) -> Unlock(st, copy_process add_in_glob_table p, new_occurrence())
+  | Open(st,p,_) -> Open(st, copy_process add_in_glob_table p, new_occurrence())
   | ReadAs(pairs,p,_) ->
       let pairs' = List.map (fun (cell, pattern) -> (cell, copy_pat add_in_glob_table pattern)) pairs in
       ReadAs(pairs', copy_process add_in_glob_table p, new_occurrence())

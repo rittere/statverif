@@ -655,6 +655,17 @@ let concl upper concl tag =
       end;
       print_string " at output ";
       Lang.display_occ occ
+  | OpenTag(occ) :: _ ->
+      begin
+        match concl with
+          Pred({p_info = [AttackerBin(n,_)]} as p, [_; FunApp(s,[]); _; _]) ->
+            print_string ((if upper then "The " else "the ")
+              ^ "cell " ^ s.f_name ^ " may be opened");
+            display_phase p;
+            print_string " at ";
+            Lang.display_occ occ
+        | _ -> Parsing_helper.internal_error "Unexpected conclusion for OpenTag"
+      end
   | AssignTag(occ, cells) :: _ ->
       begin
         match concl with
@@ -1064,6 +1075,12 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string "(The attacker can output on all channels it has";
 	      display_phase p;
 	      print_string ".)"
+	  | Rread ->
+	      print_string "(The attacker can read open cells.)";
+	  | Rwrite(p) ->
+	      print_string "(The attacker can write to open cells";
+	      display_phase p;
+	      print_string ".)"
 	  | Rfail(p) ->
 	      print_string "(The attacker can test the failure of a term)";
 	      display_phase p;
@@ -1319,7 +1336,7 @@ let rec may_have_else = function
   | Repl(p,_) -> may_have_else p
   | Test _ | Let _ | LetFilter _ | Get _ -> true
   | Restr(_,p,_) | Event(_,p,_) | Output(_,_,p,_) | Input(_,_,p,_) | Insert(_,p,_) 
-  | Phase(_,p,_) | Lock(_,p,_) | Unlock(_,p,_)
+  | Phase(_,p,_) | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_)
   | ReadAs(_,p,_) | Assign(_,p,_) -> may_have_else p
 
 let display_proc show_occ align proc =
@@ -1521,10 +1538,10 @@ let display_proc show_occ align proc =
 	  end
 	else
 	  display_process align p
-    | Lock(st,p,occ) | Unlock(st,p,occ) ->
+    | Lock(st,p,occ) | Unlock(st,p,occ) | Open(st,p,occ) ->
 	print_string align;
 	display_occ occ;
-	display_idcl CKeyword (match proc with Lock _ -> "lock" | _ -> "unlock");
+	display_idcl CKeyword (match proc with Lock _ -> "lock" | Unlock _ -> "unlock" | _ -> "open");
 	print_string " ";
 	display_list (fun cell -> display_idcl CName cell.f_name) "," st;
 	print_string ";";
@@ -1833,6 +1850,7 @@ let display_hyp_spec = function
   | InsertTag o ->  print_string "it"; print_string (string_of_int o)
   | GetTag o ->  print_string "gt"; print_string (string_of_int o)
   | GetTagElse o ->  print_string "gte"; print_string (string_of_int o)
+  | OpenTag o -> print_string "oe"; print_string (string_of_int o)
   | AssignTag (o,_) -> print_string ":="; print_string (string_of_int o)
   | ReadAsTag (o,_) -> print_string "ra"; print_string (string_of_int o)
 
