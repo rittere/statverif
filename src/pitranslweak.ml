@@ -1418,12 +1418,13 @@ let transl_attacker phase =
   Hashtbl.iter (Terms.clauses_for_function (rules_Rf_for_red phase)) Terms.tuple_table;
 
   (* The attacker can read any opened cells. *)
+  (*
   List.iter (fun (s,_) ->
     (* TODO: Suppress this clause for cells that are never opened? *)
     let vs = new_state () in
     let (_, v1, v2) = FunMap.find (s,"") vs in
     add_rule [att_fact vs phase (FunApp(s,[])) (FunApp(s,[]))]
-      (att_fact vs phase v1 v2) [] Rread) !Param.cells;
+      (att_fact vs phase v1 v2) [] Rread) !Param.cells;*)
 
   List.iter (fun t ->
     let att_pred = Param.get_pred (AttackerBin(phase,t)) in
@@ -1449,6 +1450,7 @@ let transl_attacker phase =
 	add_rule [att_fact vs phase vc1 vc2; Pred(att_pred, [left_state vs; v1; right_state vs; v2])]
           (Pred(mess_pred, [left_state vs; vc1; v1; right_state vs; vc2; v2])) [] (Rs(att_pred, mess_pred));
 
+        (*
         (* The attacker can write any opened cells. *)
         List.iter (fun ({f_type=(_,cell_type)} as s,_) ->
           (* TODO: Suppress this clause for cells that are never opened? *)
@@ -1460,7 +1462,7 @@ let transl_attacker phase =
                     att_fact vs phase v1 v2;
                     Pred(mess_pred, [left_state vs; vc1; vm1; right_state vs; vc2; vm2])]
             (Pred(mess_pred, [left_state vs'; vc1; vm1; right_state vs'; vc2; vm2]))
-            [] (Rwrite(mess_pred))) !Param.cells;
+            [] (Rwrite(mess_pred))) !Param.cells;*)
       end;
 
     (* Clauses for equality *)
