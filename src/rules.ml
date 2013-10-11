@@ -46,6 +46,30 @@ let elimtrue_set = ref ([]: (int * fact) list)
 let add_elimtrue f =
   elimtrue_set := f :: (!elimtrue_set)
 
+(* Split predicate arguments into state and non-state parts. *)
+let split_state pred args =
+    if (pred.p_prop land Param.pred_STATEFUL) <> 0 then begin
+        match args with state::rest -> ([state], rest)
+    end else if (pred.p_prop land Param.pred_STATEFUL_2) <> 0 then begin
+        match Misc.bisect args with l_s::l_ns, r_s::r_ns ->
+          ([l_s; r_s], (l_ns @ r_ns))
+    end else begin
+        [], args
+    end
+
+(* ... and recombine them. *)
+let combine_state pred state_args other_args =
+    if (pred.p_prop land Param.pred_STATEFUL) <> 0 then begin
+        state_args @ other_args
+    end else if (pred.p_prop land Param.pred_STATEFUL_2) <> 0 then begin
+        match state_args with [left_state; right_state] ->
+        let left_x, right_x = Misc.bisect other_args in
+        [left_state] @ left_x @ [right_state] @ right_x
+    end else begin
+        assert (state_args = []);
+        other_args
+    end
+
 (* Check that two facts are smaller for all instances *)
 
 let rec get_vars_rep vlist = function
@@ -92,15 +116,14 @@ let add_equiv ((hyp, concl, n) as r) =
 	) (!equiv_set);
   begin
     match concl with
-      Pred(p,((FunApp(f,_) :: _) as l)) when 
-        p.p_prop land Param.pred_TUPLE != 0 &&
-        f.f_cat = Tuple -> 
-	begin
-	try 
-	  let _ = reorganize_fun_app f l in
+    | Pred(p,l) when p.p_prop land Param.pred_TUPLE <> 0 ->
+      let l_s, l_ns = split_state p l in
+      begin match l_ns with FunApp(f,_) :: _ when f.f_cat = Tuple ->
+        try
+          let _ = reorganize_fun_app f l_ns in
 	  Parsing_helper.user_error "Conflict between an equivalence and the decomposition of data constructors:\nan equivalence applies to a fact which is also decomposable by data constructors.\n"
 	with Not_found -> ()
-	end
+      end
     | _ -> ()
   end;
   (* Store the replacement rule *)
@@ -216,9 +239,11 @@ let rec decompose_hyp_rec accu hypl =
 	    [] ->
 	      if chann.p_prop land Param.pred_TUPLE != 0 then
 		try
-		  match l0 with
+		  let l0_s, l0_ns = split_state chann l0 in
+		  match l0_ns with
 		    (FunApp(f,_) :: _) when f.f_cat = Tuple ->
-		      let l = reorganize_fun_app f l0 in
+		      let l_ns = reorganize_fun_app f l0_ns in
+		      let l = List.map (combine_state chann l0_s) l_ns in
 		      let (Rule(_, _, hyp, _, _)) as hist_dec = History.get_rule_hist (RApplyFunc(f,chann)) in
 		      decompose_hyp_rec (hypl, nl+(List.length l)-1, (Resolution(hist_dec, nl, histl))) 
 			(List.map2 (fun (Pred(p', _)) x -> Pred(p', x)) hyp l)
@@ -651,9 +676,11 @@ let decompose_concl_tuples next_stage ((hyp', concl, hist', constra) as r) =
 	  let rec try_equiv_set = function
 	      [] ->
 		if chann.p_prop land Param.pred_TUPLE != 0 then
-		  match l0 with
+		  let l0_s, l0_ns = split_state chann l0 in
+		  match l0_ns with
 		    FunApp(f,_) :: _ when f.f_cat = Tuple ->
-		      let l = reorganize_fun_app f l0 in	    
+		      let l_ns = reorganize_fun_app f l0_ns in	    
+		      let l = List.map (combine_state chann l0_s) l_ns in
 		      list_iter_i (fun n first ->
 			let (Rule(_,_,_,Pred(p',_), _)) as hist_dec = History.get_rule_hist (RApplyProj(f, n, chann)) in
 			let concl' = Pred(p', first) in

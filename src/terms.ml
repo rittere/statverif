@@ -876,7 +876,7 @@ let is_unselectable = function
 
 (* Helper functions for decomposition of tuples *)
       
-let rec reorganize_list l =
+let rec reorganize_list (l: 'a list list): 'a list list =
   let rec get_first = function
       [] -> ([], [])
     | (a ::l)::l' -> 

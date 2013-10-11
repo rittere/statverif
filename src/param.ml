@@ -43,6 +43,8 @@ let pred_ATTACKER = 32
 let pred_ELIMVAR = 64
 let pred_SIMPEQ = 128
 let pred_TUPLE_SELECT = 256
+let pred_STATEFUL = 512
+let pred_STATEFUL_2 = 1024
 
 (* constants for function properties *)
 
@@ -219,43 +221,43 @@ let build_pred = function
     Attacker(i,t) -> 
       { p_name = "attacker" ^ (get_type_suffix t) ^ (get_suffix i); 
 	p_type = [state_type; t];
-	p_prop = pred_ANY + (if (!cells) == [] then pred_TUPLE else 0) + pred_ATTACKER;
+	p_prop = pred_ANY + pred_TUPLE + pred_STATEFUL + pred_ATTACKER;
 	p_info = [Attacker(i,t)] }
   | Mess(i,t) ->
       { p_name = "mess" ^ (get_type_suffix t) ^ (get_suffix i); 
 	p_type = [state_type; channel_type; t];
-	p_prop = 0;
+	p_prop = pred_STATEFUL;
 	p_info = [Mess(i,t)] }
   | InputP(i) ->
       { p_name = "input" ^ (get_suffix i); 
-	p_type = [state_type; channel_type];
-	p_prop = 0;
+	p_type = [state_type; channel_type]; 
+	p_prop = pred_STATEFUL;
 	p_info = [InputP(i)] }
   | OutputP(i) ->
       { p_name = "output" ^ (get_suffix i); 
-	p_type = [state_type; channel_type];
-	p_prop = 0;
+	p_type = [state_type; channel_type]; 
+	p_prop = pred_STATEFUL;
 	p_info = [OutputP(i)] }
   | AttackerBin(i,t) ->
       { p_name = "attacker2" ^ (get_type_suffix t) ^ (get_suffix i); 
 	p_type = [state_type; t; state_type; t];
-	p_prop = (if (!cells) == [] then pred_TUPLE + pred_TUPLE_SELECT else 0)
+	p_prop = pred_TUPLE + pred_TUPLE_SELECT + pred_STATEFUL_2
 	         + pred_ELIMVAR + pred_SIMPEQ + pred_ANY + pred_ATTACKER;
 	p_info = [AttackerBin(i,t)] }
   | MessBin(i,t) ->
       { p_name = "mess2" ^ (get_type_suffix t) ^ (get_suffix i); 
 	p_type = [state_type; channel_type; t; state_type; channel_type; t];
-	p_prop = 0;
+	p_prop = pred_STATEFUL_2;
 	p_info = [MessBin(i,t)] }
   | InputPBin(i) ->
       { p_name = "input2" ^ (get_suffix i); 
 	p_type = [state_type; channel_type; state_type; channel_type];
-	p_prop = 0;
+	p_prop = pred_STATEFUL_2;
 	p_info = [InputPBin(i)] }
   | OutputPBin(i) ->
       { p_name = "output2" ^ (get_suffix i); 
-	p_type = [state_type; channel_type; state_type; channel_type];
-	p_prop = 0;
+	p_type = [state_type; channel_type; state_type; channel_type]; 
+	p_prop = pred_STATEFUL_2;
 	p_info = [OutputPBin(i)] }
   | AttackerGuess(t) ->
       { p_name = "attacker_guess" ^ (get_type_suffix t); 

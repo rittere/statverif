@@ -73,6 +73,8 @@ val pred_ELEM : int
 val pred_ATTACKER : int
 val pred_ELIMVAR : int
 val pred_SIMPEQ : int
+val pred_STATEFUL : int
+val pred_STATEFUL_2 : int
 
 val fun_TYPECONVERTER : int
 
