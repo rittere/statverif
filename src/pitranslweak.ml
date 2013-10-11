@@ -1714,8 +1714,8 @@ let transl p =
 	  let mess_i = Param.get_pred (MessBin(i,t)) in
 	  let [vc1;vm1;vc2;vm2] = List.map (Terms.new_var Param.def_var_name)
 	    [Param.channel_type; t; Param.channel_type; t] in
-	  Selfun.add_no_unif (mess_i, [new_state_format(); FVar vc1; FVar vm1;
-	                               new_state_format(); FVar vc2; FVar vm2]) Selfun.never_select_weight
+	  Selfun.add_no_unif (mess_i, [new_state_format(); FAny vc1; FVar vm1;
+	                               new_state_format(); FAny vc2; FVar vm2]) Selfun.never_select_weight
 	end;
 	
       if i > 0 then
