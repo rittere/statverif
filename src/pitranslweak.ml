@@ -1723,10 +1723,12 @@ let transl p =
 	   because the attacker already has (fail, fail) in all phases
 	   and the cases (fail, x) and (x, fail) immediately lead
 	   to bad in all cases. *)
+	let vs = new_state () in
 	let w1 = Terms.new_var_def t in
 	let w2 = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (AttackerBin(i-1,t)) in
-	add_rule [Pred(att_im1, [w1; w2])] (Pred(att_i, [w1; w2])) [] PhaseChange
+	add_rule [Pred(att_im1, [left_state vs; w1; right_state vs; w2])]
+	  (Pred(att_i, [left_state vs; w1; right_state vs; w2])) [] PhaseChange
     ) (all_types());
 
     if i > 0 then

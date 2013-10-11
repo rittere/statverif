@@ -626,11 +626,11 @@ let concl upper concl tag =
       print_string (if upper then "The message " else "the message ");
       begin
 	match concl with
-	  Pred({p_info = [Attacker(n,_)]} as p, [v]) ->
+	  Pred({p_info = [Attacker(n,_)]} as p, [_; v]) ->
 	    term v;
 	    print_string " may be sent to the attacker";
 	    display_phase p
-	| Pred({p_info = [Mess(n,_)]} as p, [vc;v]) ->
+	| Pred({p_info = [Mess(n,_)]} as p, [_; vc; v]) ->
 	    term v;
 	    print_string " may be sent on channel ";
 	    term vc;
@@ -893,14 +893,14 @@ let rec display_hyp hyp tag =
       display_hyp h t;
       begin
 	match m with
-	  Pred({p_info = [Attacker(n,_)]} as p, [v]) ->
+	  Pred({p_info = [Attacker(n,_)]} as p, [_; v]) ->
 	    print_string "the message ";
 	    display_term v;
 	    print_string " is received from the attacker";
 	    display_phase p;
 	    print_string " at input ";
 	    Lang.display_occ occ
-	| Pred({p_info = [Mess(n,_)]} as p, [vc;v]) ->
+	| Pred({p_info = [Mess(n,_)]} as p, [_; vc; v]) ->
 	    print_string "the message ";
 	    display_term v;
 	    print_string " is received on channel ";
@@ -1906,7 +1906,7 @@ let rec display_hyp hyp hl tag =
       display_hyp h hl t;
       begin
 	match m with
-	  Pred({p_info = [Attacker(n,_)]} as p, [v]) ->
+	  Pred({p_info = [Attacker(n,_)]} as p, [_; v]) ->
 	    print_string "The message ";
 	    WithLinks.term v;
 	    print_string " that the attacker may have";
@@ -1914,7 +1914,7 @@ let rec display_hyp hyp hl tag =
 	    display_step_low s;
 	    print_string " may be received at input ";
 	    Lang.display_occ occ
-	| Pred({p_info = [Mess(n,_)]} as p, [vc;v]) ->
+	| Pred({p_info = [Mess(n,_)]} as p, [_; vc; v]) ->
 	    print_string "The message ";
 	    WithLinks.term v;
 	    print_string " that may be sent on channel ";
