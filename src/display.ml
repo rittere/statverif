@@ -1739,7 +1739,7 @@ let display_step_low n =
     end
 
 let display_attacker_fact = function
-    Pred({p_info = [Attacker(n,_)]}, [v]) ->
+    Pred({p_info = [Attacker(n,_)]}, [_; v]) ->
       WithLinks.term v;
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))
@@ -1774,11 +1774,11 @@ let display_tbl_fact = function
   | _ -> Parsing_helper.internal_error "Unexpected table fact"
 
 let display_input_fact = function
-    Pred({p_info = [InputP(n)]}, [v]) ->
+    Pred({p_info = [InputP(n)]}, [_; v]) ->
       WithLinks.term v;
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))
-  | Pred({p_info = [InputPBin(n)]}, [v;v']) ->
+  | Pred({p_info = [InputPBin(n)]}, [_; v; _; v']) ->
       WithLinks.term v;
       print_string " (resp. ";
       WithLinks.term v';
@@ -1788,11 +1788,11 @@ let display_input_fact = function
   | _ -> Parsing_helper.internal_error "Unexpected input fact"
 
 let display_output_fact = function
-    Pred({p_info = [OutputP(n)]}, [v]) ->
+    Pred({p_info = [OutputP(n)]}, [_; v]) ->
       WithLinks.term v;
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))
-  | Pred({p_info = [OutputPBin(n)]}, [v;v']) ->
+  | Pred({p_info = [OutputPBin(n)]}, [_; v; _; v']) ->
       WithLinks.term v;
       print_string " (resp. ";
       WithLinks.term v';

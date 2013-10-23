@@ -1710,12 +1710,26 @@ let transl p =
 	  let v1 = Terms.new_var Param.def_var_name t in
 	  let v2 = Terms.new_var Param.def_var_name t in
 	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight;
+	  (* nounif attacker2(*vs1,vm1,*vs2,vm2)       *)*)
+	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight;
 	  (* nounif mess2(*vs,vc,vm,*vs2,vc2,vm2)   *)*)
 	  let mess_i = Param.get_pred (MessBin(i,t)) in
 	  let [vc1;vm1;vc2;vm2] = List.map (Terms.new_var Param.def_var_name)
 	    [Param.channel_type; t; Param.channel_type; t] in
-	  Selfun.add_no_unif (mess_i, [new_state_format(); FAny vc1; FVar vm1;
-	                               new_state_format(); FAny vc2; FVar vm2]) Selfun.never_select_weight
+	  Selfun.add_no_unif (mess_i, [new_state_format(); FVar vc1; FVar vm1;
+	                               new_state_format(); FVar vc2; FVar vm2]) Selfun.never_select_weight;
+	  (* nounif output2(*vs1,*vc1,*vs2,*vc2) *)*)
+	  let [vc1;vc2] = List.map (Terms.new_var Param.def_var_name)
+	    [Param.channel_type; Param.channel_type] in
+	  Selfun.add_no_unif (Param.get_pred (OutputPBin(i)),
+	    [new_state_format(); FVar vc1; new_state_format(); FVar vc2])
+	    Selfun.never_select_weight;
+	  (* nounif input2(*vs1,*vc1,*vs2,*vc2) *)*)
+	  let [vc1;vc2] = List.map (Terms.new_var Param.def_var_name)
+	    [Param.channel_type; Param.channel_type] in
+	  Selfun.add_no_unif (Param.get_pred (InputPBin(i)),
+	    [new_state_format(); FVar vc1; new_state_format(); FVar vc2])
+	    Selfun.never_select_weight
 	end;
 	
       if i > 0 then

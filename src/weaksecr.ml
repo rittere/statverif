@@ -29,41 +29,45 @@ open Types
 open Terms
 
 let detect_atteq = function
-    ([Pred(p1, [Var v1; Var v2]); Pred(p2, [Var v3; Var v4])],
+    ([Pred(p1, [s1; Var v1; s2; Var v2]); Pred(p2, [s3; Var v3; s4; Var v4])],
      (Pred(p4, [])), _, [[Neq(Var v5, Var v6)]]) 
       when p1.p_prop land Param.pred_ELIMVAR != 0
       && p2.p_prop land Param.pred_ELIMVAR != 0
       && p4 == Param.bad_pred
+      && equal_terms s1 s3 && equal_terms s2 s4
       && v1 == v3
       && ((v2 == v5 && v4 == v6) || (v2 == v6 && v4 == v5)) -> true
   | _ -> false
 
 let detect_atteq2 = function
-    ([Pred(p1, [Var v1; Var v2]); Pred(p2, [Var v3; Var v4])],
+    ([Pred(p1, [s1; Var v1; s2; Var v2]); Pred(p2, [s3; Var v3; s4; Var v4])],
      (Pred(p4, [])), _, [[Neq(Var v5, Var v6)]]) 
       when p1.p_prop land Param.pred_ELIMVAR != 0
       && p2.p_prop land Param.pred_ELIMVAR != 0
       && p4 == Param.bad_pred
+      && equal_terms s1 s3 && equal_terms s2 s4
       && v2 == v4
       && ((v1 == v5 && v3 == v6) || (v1 == v6 && v3 == v5)) -> true
   | _ -> false
 
 let detect_atteq3 = function
-    ([Pred(p1, [Var v1]); Pred(p2, [Var v3; Var v4])],
+    ([Pred(p1, [s1; Var v1]); Pred(p2, [s3; Var v3; s4; Var v4])],
      (Pred(p4, [])), _, [[Neq(Var v5, Var v6)]]) 
       when p1.p_prop land Param.pred_ATTACKER != 0
       && p2.p_prop land Param.pred_ELIMVAR != 0
       && p4 == Param.bad_pred
+      && (equal_terms s1 s3 || equal_terms s1 s4) (* XXX: Correct? (Skip this test?) *)
       && v1 == v3
       && ((v3 == v5 && v4 == v6) || (v3 == v6 && v4 == v5)) -> true
   | _ -> false
 
 let detect_atteq4 = function
-    ([Pred(p1, [Var v1]); Pred(p2, [Var v3; Var v4])],
+    ([Pred(p1, [s1; Var v1]); Pred(p2, [s3; Var v3; s4; Var v4])],
      (Pred(p4, [])), _, [[Neq(Var v5, Var v6)]]) 
       when p1.p_prop land Param.pred_ATTACKER != 0
       && p2.p_prop land Param.pred_ELIMVAR != 0
       && p4 == Param.bad_pred
+      && (equal_terms s1 s3 || equal_terms s1 s4) (* XXX: Correct? (Skip this test?) *)
       && v1 == v4
       && ((v3 == v5 && v4 == v6) || (v3 == v6 && v4 == v5)) -> true
   | _ -> false
@@ -80,6 +84,7 @@ let elim_att_guess_xx next_stage repeat_next_stage (hyp, concl, hist, constra) =
   let rec f n = function
       [] -> []
     | (Pred({ p_info = [AttackerGuess _]}, [Var v1; Var v2])) :: l when v1 == v2 ->
+	assert false; (* Not updated for states. *)
 	redo_all_optim := true;
 	hist' := Resolution(List.assq (if !Param.ignore_types then Param.any_type else v1.btype) (!attrulenum), n, !hist'); 
 	(Pred(Param.get_pred (Attacker(!Param.max_used_phase, v1.btype)), [Var v1])) :: (f (n+1) l)
@@ -98,6 +103,7 @@ let rec follow_link v =
   | _ -> Parsing_helper.internal_error "unexpected link in follow_link (weaksecr)"
 
 let simplify next_stage repeat_next_stage ((hyp, concl, hist, constra) as r) = 
+  (* XXX: Is this correct wrt. states? Must all states be equal? *)
   if (not (!Param.weaksecret_mode)) || (detect_atteq r) || (detect_atteq2 r) ||
      (detect_atteq3 r) || (detect_atteq4 r) (* || (not (is_bad concl)) *)
   then
@@ -106,20 +112,20 @@ let simplify next_stage repeat_next_stage ((hyp, concl, hist, constra) as r) =
     let redo_all_optim = ref false in
     let rec find_att x = function
 	[] -> false
-      |	(Pred(p', [Var v])) :: _ when p'.p_prop land Param.pred_ATTACKER != 0
+      |	(Pred(p', [_; Var v])) :: _ when p'.p_prop land Param.pred_ATTACKER != 0
 				 && v == x -> true
       |	_ :: l -> find_att x l
     in
     let rec find_right x y = function
 	[] -> None
-      |	(Pred(p', [Var v1; Var v2])) :: _ 
+      |	(Pred(p', [_; Var v1; _; Var v2])) :: _
 	when p'.p_prop land Param.pred_ELIMVAR != 0 && v1 == x && v2 != y ->
 	  Some v2
       |	_ :: l -> find_right x y l
     in
     let rec find_left x y = function
 	[] -> None
-      |	(Pred(p', [Var v1; Var v2])) :: _ 
+      |	(Pred(p', [_; Var v1; _; Var v2])) :: _
 	when p'.p_prop land Param.pred_ELIMVAR != 0 && v2 == x && v2 != y ->
 	  Some v1
       |	_ :: l -> find_left x y l
@@ -149,7 +155,7 @@ let simplify next_stage repeat_next_stage ((hyp, concl, hist, constra) as r) =
       |	(h::r) ->
 	  begin
 	  match h with
-	    Pred(p, [Var v1; Var v2]) when p.p_prop land Param.pred_ELIMVAR != 0 -> 
+	    Pred(p, [_; Var v1; _; Var v2]) when p.p_prop land Param.pred_ELIMVAR != 0 ->
 	      begin
 		if find_att v1 hyp then
 		  link v1 v2
