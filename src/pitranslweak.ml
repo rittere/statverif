@@ -246,6 +246,10 @@ let new_state_format () =
   FFunApp(Param.state_fun(),
     List.map (fun ({f_type=_,t} as cell,_) ->
       FAny(Terms.new_var cell.f_name t)) !Param.cells)
+let new_state_formatv () =
+  FFunApp(Param.state_fun(),
+    List.map (fun ({f_type=_,t} as cell,_) ->
+      FVar(Terms.new_var cell.f_name t)) !Param.cells)
 
 (* Creation of fact of attacker', mess' and table. *)
 
@@ -1251,8 +1255,8 @@ let rec transl_process cur_state process =
               [Param.channel_type; t; Param.channel_type; t] in
             output_rule { cur_state2 with
                 hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags;
-                hypothesis = (mess_fact cur_state2.cur_cells cur_state.cur_phase vc vm vc' vm')::cur_state2.hypothesis
-              } (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm')
+                hypothesis = (att_fact cur_state2.cur_cells cur_state.cur_phase vm vm')::cur_state2.hypothesis
+              } (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm')
           ) (all_types())
         ) cur_state1 terms_left terms_right;
 
@@ -1308,7 +1312,7 @@ let rec transl_process cur_state process =
                  ) binders) @ cur_state3.name_params;
                name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
                name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning;
-               hypothesis = (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+               hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm') :: cur_state3.hypothesis;
                hyp_tags = (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
              } proc;
 
@@ -1317,7 +1321,7 @@ let rec transl_process cur_state process =
                  constra = (List.map2 (fun gen_pat_r x_right ->
                      [Neq(gen_pat_r, x_right)]) gen_pats_r x_right)
                    @ cur_state3.constra;
-                 hypothesis = (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+                 hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm') :: cur_state3.hypothesis;
                  hyp_tags = TestUnifTag2(occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
                } (Pred(Param.bad_pred, []));
 
@@ -1326,7 +1330,7 @@ let rec transl_process cur_state process =
                  constra = (List.map2 (fun gen_pat_l x_left ->
                      [Neq(gen_pat_l, x_left)]) gen_pats_l x_left)
                    @ cur_state3.constra;
-                 hypothesis = (mess_fact cur_state3.cur_cells cur_state.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
+                 hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm') :: cur_state3.hypothesis;
                  hyp_tags = TestUnifTag2(occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
                } (Pred(Param.bad_pred, []))
          ) cur_state2 terms_pat_left terms_pat_right;
@@ -1711,13 +1715,15 @@ let transl p =
 	  let v2 = Terms.new_var Param.def_var_name t in
 	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight;
 	  (* nounif attacker2(*vs1,vm1,*vs2,vm2)       *)*)
-	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight;
+	  Selfun.add_no_unif (att_i, [new_state_formatv(); FAny v1; new_state_formatv(); FAny v2]) Selfun.never_select_weight;
 	  (* nounif mess2(*vs,vc,vm,*vs2,vc2,vm2)   *)*)
 	  let mess_i = Param.get_pred (MessBin(i,t)) in
 	  let [vc1;vm1;vc2;vm2] = List.map (Terms.new_var Param.def_var_name)
 	    [Param.channel_type; t; Param.channel_type; t] in
 	  Selfun.add_no_unif (mess_i, [new_state_format(); FVar vc1; FVar vm1;
 	                               new_state_format(); FVar vc2; FVar vm2]) Selfun.never_select_weight;
+	  Selfun.add_no_unif (mess_i, [new_state_formatv(); FAny vc1; FAny vm1;
+	                               new_state_formatv(); FAny vc2; FAny vm2]) Selfun.never_select_weight;
 	  (* nounif output2(*vs1,*vc1,*vs2,*vc2) *)*)
 	  let [vc1;vc2] = List.map (Terms.new_var Param.def_var_name)
 	    [Param.channel_type; Param.channel_type] in
