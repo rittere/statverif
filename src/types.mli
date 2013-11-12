@@ -44,10 +44,12 @@ type typet = { tname : string }
 type info = 
     Attacker of int * typet
   | Mess of int * typet
+  | Seq of int
   | InputP of int 
   | OutputP of int
   | AttackerBin of int * typet
   | MessBin of int * typet
+  | SeqBin of int
   | InputPBin of int
   | OutputPBin of int
   | AttackerGuess of typet
@@ -212,6 +214,7 @@ type hypspec =
   | GetTag of occurrence
   | GetTagElse of occurrence
   | OpenTag of occurrence
+  | SequenceTag
   | AssignTag of occurrence * funsymb list
   | ReadAsTag of occurrence * funsymb list
 
@@ -227,6 +230,9 @@ type label =
   | Rs of predicate * predicate
   | Ri of predicate * predicate
   | Ro of predicate * predicate
+  | Rseq0 of predicate
+  | Rseq1 of predicate
+  | Rinherit of predicate * predicate
   | Rread
   | Rwrite of predicate
   | Rfail of predicate

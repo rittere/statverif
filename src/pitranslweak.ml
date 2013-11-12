@@ -28,7 +28,11 @@
 open Parsing_helper
 open Types
 open Pitypes
-open Funmap
+
+module FunMap = struct
+    include Funmap.FunMap
+    let for_all f m = Funmap.FunMap.fold (fun k v x -> x && (f k v)) m true
+end
 
 (*********************************************
           Function For Phases
@@ -168,9 +172,12 @@ let add_rule hyp concl constra tags =
            Preliminary functions
 **********************************************)   
 
-type cell_state = bool (* locked? *)
-                * term (* last known value (left) *)
-                * term (* last known value (right) *)
+type cell_state = 
+  { locked      : bool;
+    valid       : bool;
+    left_value  : term;
+    right_value : term
+  }
     
 type transl_state = 
   { hypothesis : fact list; (* Current hypotheses of the rule *)
@@ -179,13 +186,12 @@ type transl_state =
     name_params : term list; (* List of parameters of names *)
     name_params_types : typet list;
     name_params_meaning : string list; 
-    repl_count : int; (* Counter for replication *)
+    repl_count  : int; (* Counter for replication *)
       
-    input_pred : predicate;
+    input_pred  : predicate;
     output_pred : predicate;
-    cur_phase : int; (* Current phase *)
-    cur_cells : cell_state FunMap.t; (* Current cell states *)
-      
+    cur_phase   : int; (* Current phase *)
+    cur_cells   : cell_state FunMap.t; (* Current cell states *)
     hyp_tags : hypspec list
   }
       
@@ -208,14 +214,14 @@ let get_type_from_pattern = function
 
 (* State manipulation. *)
 
-(* Create fresh variables for all unlocked cells in the given state. *)
-let freshen_cells ts =
-  {ts with
-    cur_cells = FunMap.mapi (fun ({f_name=s; f_type=(_,t)},_) -> function
-      | (true, left, right) ->
-        (true, left, right)
-      | (false, _, _) ->
-        (false, Var(Terms.new_var s t), Var(Terms.new_var s t))) ts.cur_cells}
+(* Invalidate unlocked cells. *)
+let invalidate_cells ts =
+  { ts with cur_cells = FunMap.map
+    (fun cell ->
+      if cell.locked then cell
+      else {cell with valid = false})
+    ts.cur_cells
+  }
 
 (* Return term for left/right state. *)
 let x_state getx cell_states =
@@ -223,24 +229,52 @@ let x_state getx cell_states =
     List.fold_right (fun (r, _) l ->
       (getx (FunMap.find (r, "") cell_states))::l)
       !Param.cells [])
-let left_state = x_state (fun (_, t, _) -> t)
-let right_state = x_state (fun (_, _, t) -> t)
+let left_state = x_state (fun cell -> cell.left_value)
+let right_state = x_state (fun cell -> cell.right_value)
+
+(* Create fresh variables for invalidated cells. *)
+let update_cells ts =
+  if FunMap.for_all (fun _ cell -> cell.valid) ts.cur_cells then ts else
+  let old_cells = ts.cur_cells in
+  let new_cells = FunMap.mapi (fun ({f_name=s; f_type=(_,t)},_) cell ->
+    if cell.valid then cell else
+    { cell with
+      valid = true;
+      left_value = Var(Terms.new_var s t);
+      right_value = Var(Terms.new_var s t) }
+  ) old_cells in
+  { ts with
+    cur_cells = new_cells;
+    hypothesis = (Pred(Param.get_pred (SeqBin(ts.cur_phase)),
+                       [left_state old_cells; left_state new_cells;
+                        right_state old_cells; right_state new_cells]))
+                 :: ts.hypothesis;
+    hyp_tags = SequenceTag :: ts.hyp_tags }
 
 (* Return initial cell states. *)
 let initial_state () =
   List.fold_left (fun result (cell, init) ->
     let left = Terms.auto_cleanup (fun () -> Terms.copy_term2 init) in
     let right = Terms.auto_cleanup (fun () -> Terms.copy_term2 init) in
-    FunMap.add (cell, "") (false, left, right) result
+    FunMap.add (cell, "")
+      { locked = false;
+        valid = true;
+        left_value = left;
+        right_value = right }
+      result
   ) FunMap.empty !Param.cells
 
 (* Return map of new variables, one for each cell * side. *)
 let new_state () =
   List.fold_left (fun result ({f_type=_,t} as cell,_) ->
+    let xl = Terms.new_var cell.f_name t in
+    let xr = Terms.new_var cell.f_name t in
     FunMap.add (cell, "")
-      (false, Var (Terms.new_var cell.f_name t),
-              Var (Terms.new_var cell.f_name t))
-      result) FunMap.empty !Param.cells
+      { locked = false;
+        valid = true;
+        left_value = Var xl;
+        right_value = Var xr }
+    result) FunMap.empty !Param.cells
 
 let new_state_format () =
   FFunApp(Param.state_fun(),
@@ -544,6 +578,7 @@ let rec transl_process cur_state process =
   match process with
   | Nil -> ()
   | Par(proc1,proc2) -> 
+      let cur_state = invalidate_cells cur_state in
       transl_process cur_state proc1; 
       transl_process cur_state proc2
   | Repl(proc,occ) ->
@@ -551,7 +586,7 @@ let rec transl_process cur_state process =
       let var = Terms.new_var "@sid" Param.sid_type in
       let cur_state' = 
         {
-          cur_state with
+          (invalidate_cells cur_state) with
           repl_count = cur_state.repl_count + 1;
           name_params = (Var var)::cur_state.name_params;
           name_params_types = Param.sid_type ::cur_state.name_params_types;
@@ -821,9 +856,9 @@ let rec transl_process cur_state process =
 
   | Input(tc,pat,proc,occ) -> 
       begin 
+        let cur_state = update_cells (invalidate_cells cur_state) in
 	match tc with
         | FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker ->
-            let cur_state = freshen_cells cur_state in
             transl_pat (fun cur_state1 term_pattern binders ->
               transl_term (fun cur_state2 term_pat_left term_pat_right ->
                 (* Generate the basic pattern variables *)
@@ -884,7 +919,6 @@ let rec transl_process cur_state process =
             ) cur_state pat 
             
         | _ ->
-          let cur_state = freshen_cells cur_state in
           transl_term_incl_destructor (fun cur_state1 channel_left channel_right ->
             (* Case both channel succeed *)
             transl_both_side_succeed (fun cur_state2 ->
@@ -977,6 +1011,7 @@ let rec transl_process cur_state process =
      
   | Output(term_ch, term, proc, occ) ->
       begin
+        let cur_state = update_cells cur_state in
         match term_ch with
           | FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker -> 
               transl_term (fun cur_state1 term_left term_right ->
@@ -1215,20 +1250,17 @@ let rec transl_process cur_state process =
                       output_pred = Param.get_pred (OutputPBin(n));
                       cur_phase = n } proc
 
- | Lock(cells, proc, _) ->
-     let cur_state = freshen_cells cur_state in
+ | Lock(cells, proc, occ)
+ | Unlock(cells, proc, occ) ->
+     let new_locked = match process with Lock _ -> true | _ -> false in
+     let cur_state = invalidate_cells cur_state in
      transl_process { cur_state with cur_cells =
        List.fold_left (fun cur_cells s ->
-         let (false, vs, vs') = FunMap.find (s, "") cur_cells in
-         FunMap.add (s, "") (true, vs, vs') cur_cells) cur_state.cur_cells cells
-     } proc
-
- | Unlock(cells, proc, _) ->
-     let cur_state = freshen_cells cur_state in
-     transl_process { cur_state with cur_cells =
-       List.fold_left (fun cur_cells s ->
-         let (true, vs, vs') = FunMap.find (s, "") cur_cells in
-         FunMap.add (s, "") (false, vs, vs') cur_cells) cur_state.cur_cells cells
+         FunMap.add (s, "")
+           { (FunMap.find (s, "") cur_cells) with
+             locked = new_locked }
+           cur_cells
+       ) cur_state.cur_cells cells
      } proc
 
  | Open(cells, proc, occ) ->
@@ -1238,26 +1270,36 @@ let rec transl_process cur_state process =
      transl_process cur_state proc
 
  | Assign(items, proc, occ) ->
+      let cur_state = update_cells (invalidate_cells cur_state) in
       transl_term_list (fun cur_state1 terms_left terms_right ->
         (* Case both sides succeed. *)
         transl_both_side_succeed (fun cur_state2 ->
+          let updated_cells = List.fold_left2
+            (fun cells (s, _) (term_left, term_right) ->
+              FunMap.add (s, "")
+                { (FunMap.find (s, "") cells) with
+                  left_value = term_left;
+                  right_value = term_right;
+                  valid = true }
+              cells
+            ) cur_state2.cur_cells items (List.combine terms_left terms_right)
+          in
+          output_rule { cur_state2 with
+            hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags
+          } (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
+                  [left_state cur_state2.cur_cells; left_state updated_cells;
+                   right_state cur_state2.cur_cells; right_state updated_cells]));
+          (* TODO: Always output sequence hypothesis here? *)
           let cur_state3 = { cur_state2 with
-              cur_cells = List.fold_left2 (fun cur_cells (s, _) (term_left, term_right) ->
-                let (locked, _, _) = FunMap.find (s, "") cur_cells in
-                FunMap.add (s, "") (locked, term_left, term_right) cur_cells
-              ) cur_state2.cur_cells items (List.combine terms_left terms_right)
-            } in
+            cur_cells = updated_cells;
+            hypothesis = (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
+                               [left_state cur_state2.cur_cells; left_state updated_cells;
+                                right_state cur_state2.cur_cells; right_state updated_cells]))
+                       :: cur_state2.hypothesis; (* TODO: Discard old hypotheses? *)
+            hyp_tags = SequenceTag :: cur_state2.hyp_tags
+          } in
 
-          transl_process cur_state3 proc;
-
-          List.iter (fun t ->
-            let [vc; vm; vc'; vm'] = List.map Terms.new_var_def
-              [Param.channel_type; t; Param.channel_type; t] in
-            output_rule { cur_state2 with
-                hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags;
-                hypothesis = (att_fact cur_state2.cur_cells cur_state.cur_phase vm vm')::cur_state2.hypothesis
-              } (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm')
-          ) (all_types())
+          transl_process cur_state3 proc
         ) cur_state1 terms_left terms_right;
 
         (* Case left side succeeds and right side fails. *)
@@ -1276,7 +1318,7 @@ let rec transl_process cur_state process =
       ) cur_state (List.map snd items)
 
  | ReadAs(items, proc, occ) ->
-     let cur_state = freshen_cells cur_state in
+     let cur_state = update_cells (invalidate_cells cur_state) in
      transl_pat_list (fun cur_state1 terms_pattern binders ->
        transl_term_list (fun cur_state2 terms_pat_left terms_pat_right ->
          let x_right = List.map (fun term_pat_right ->
@@ -1290,18 +1332,12 @@ let rec transl_process cur_state process =
          ) in
 
          List.iter2 (fun (cell, _) term_pat_left ->
-           Terms.unify term_pat_left (let _,x,_ = FunMap.find (cell,"") cur_state2.cur_cells in x)
+           Terms.unify term_pat_left (FunMap.find (cell,"") cur_state2.cur_cells).left_value
          ) items terms_pat_left;
          List.iter2 (fun (cell, _) term_pat_right ->
-           Terms.unify term_pat_right (let _,_,x = FunMap.find (cell,"") cur_state2.cur_cells in x)
+           Terms.unify term_pat_right (FunMap.find (cell,"") cur_state2.cur_cells).right_value
          ) items terms_pat_right;
 
-         (* Use "channel" type to test state reachability, since we assume a channel is
-            always available anyway, for attacker knowledge inheritance to work. *)
-         let some_type = if !Param.ignore_types then Param.any_type else Param.channel_type in
-         (* XXX: Do we need to create these for every clause/etc.? *)
-         let [vc; vm; vc'; vm'] = List.map Terms.new_var_def
-             [Param.channel_type; some_type; Param.channel_type; some_type] in
          transl_both_side_succeed (fun cur_state3 ->
            (* Pattern satisfied in both sides. *)
            transl_process { cur_state3 with
@@ -1311,9 +1347,7 @@ let rec transl_process cur_state process =
                     | _ -> internal_error "unexpected link in translate_term (7)"
                  ) binders) @ cur_state3.name_params;
                name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
-               name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning;
-               hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm') :: cur_state3.hypothesis;
-               hyp_tags = (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+               name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning
              } proc;
 
              (* Pattern satisfied only on left side. *)
@@ -1321,8 +1355,7 @@ let rec transl_process cur_state process =
                  constra = (List.map2 (fun gen_pat_r x_right ->
                      [Neq(gen_pat_r, x_right)]) gen_pats_r x_right)
                    @ cur_state3.constra;
-                 hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm') :: cur_state3.hypothesis;
-                 hyp_tags = TestUnifTag2(occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+                 hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
                } (Pred(Param.bad_pred, []));
 
              (* Pattern satisfied only on right side. *)
@@ -1330,24 +1363,21 @@ let rec transl_process cur_state process =
                  constra = (List.map2 (fun gen_pat_l x_left ->
                      [Neq(gen_pat_l, x_left)]) gen_pats_l x_left)
                    @ cur_state3.constra;
-                 hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase vm vm') :: cur_state3.hypothesis;
-                 hyp_tags = TestUnifTag2(occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+                 hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
                } (Pred(Param.bad_pred, []))
          ) cur_state2 terms_pat_left terms_pat_right;
 
          (* Case left side succeeds and right side fails. *)
          transl_one_side_fails (fun cur_state3 ->
            output_rule { cur_state3 with
-               hypothesis = (mess_fact cur_state3.cur_cells cur_state3.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
-               hyp_tags = (TestUnifTag2 occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+               hyp_tags = (TestUnifTag2 occ) :: cur_state3.hyp_tags
              } (Pred(Param.bad_pred, []))
          ) cur_state2 terms_pat_right terms_pat_left;
 
          (* Case right side succeeds and left side fails. *)
          transl_one_side_fails (fun cur_state3 ->
            output_rule { cur_state3 with
-               hypothesis = (mess_fact cur_state3.cur_cells cur_state3.cur_phase vc vm vc' vm') :: cur_state3.hypothesis;
-               hyp_tags = (TestUnifTag2 occ) :: (ReadAsTag(occ, List.map fst items)) :: cur_state3.hyp_tags
+               hyp_tags = (TestUnifTag2 occ) :: cur_state3.hyp_tags
              } (Pred(Param.bad_pred, []))
          ) cur_state2 terms_pat_left terms_pat_right;
        ) cur_state1 terms_pattern
@@ -1433,6 +1463,7 @@ let transl_attacker phase =
   List.iter (fun t ->
     let att_pred = Param.get_pred (AttackerBin(phase,t)) in
     let mess_pred = Param.get_pred (MessBin(phase,t)) in
+    let seq_pred = Param.get_pred (SeqBin(phase)) in
 
     (* The attacker has any message sent on a channel he has (Rule Rl)*)
     let vs = new_state () in
@@ -1469,6 +1500,28 @@ let transl_attacker phase =
             [] (Rwrite(mess_pred))) !Param.cells;*)
 
       end;
+
+    (* State sequencing. *)
+    let vs1 = new_state () in
+    (* TODO: Move these outside the iteration over all types! *)
+    add_rule [] (Pred(seq_pred,
+        [left_state vs1; left_state vs1; right_state vs1; right_state vs1]))
+      [] (Rseq0 seq_pred);
+    let vs1 = new_state () in
+    let vs2 = new_state () in
+    let vs3 = new_state () in
+    add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
+              Pred(seq_pred, [left_state vs2; left_state vs3; right_state vs2; right_state vs3])]
+      (Pred(seq_pred, [left_state vs1; left_state vs3; right_state vs1; right_state vs3]))
+      [] (Rseq1 seq_pred);
+    let vs1 = new_state () in
+    let vs2 = new_state () in
+    let v1 = Terms.new_var_def t in
+    let v2 = Terms.new_var_def t in
+    add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
+              Pred(att_pred, [left_state vs1; v1; right_state vs1; v2])]
+      (Pred(att_pred, [left_state vs2; v1; right_state vs2; v2])) [] (Rinherit(seq_pred, att_pred));
+
 
     (* Clauses for equality *)
     let v = Terms.new_var_def t in
@@ -1711,20 +1764,22 @@ let transl p =
 	end
       else
 	begin
+	  (*
+
 	  (* Phase coded by binary predicates *)
 	  let v1 = Terms.new_var Param.def_var_name t in
 	  let v2 = Terms.new_var Param.def_var_name t in
 	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight;
 	  (* nounif attacker2(*vs1,vm1,*vs2,vm2)       *)*)
-	  Selfun.add_no_unif (att_i, [new_state_formatv(); FAny v1; new_state_formatv(); FAny v2]) Selfun.never_select_weight;
+	  (*Selfun.add_no_unif (att_i, [new_state_formatv(); FAny v1; new_state_formatv(); FAny v2]) Selfun.never_select_weight;*)
 	  (* nounif mess2(*vs,vc,vm,*vs2,vc2,vm2)   *)*)
 	  let mess_i = Param.get_pred (MessBin(i,t)) in
 	  let [vc1;vm1;vc2;vm2] = List.map (Terms.new_var Param.def_var_name)
 	    [Param.channel_type; t; Param.channel_type; t] in
 	  Selfun.add_no_unif (mess_i, [new_state_format(); FVar vc1; FVar vm1;
 	                               new_state_format(); FVar vc2; FVar vm2]) Selfun.never_select_weight;
-	  Selfun.add_no_unif (mess_i, [new_state_formatv(); FAny vc1; FAny vm1;
-	                               new_state_formatv(); FAny vc2; FAny vm2]) Selfun.never_select_weight;
+	  (*Selfun.add_no_unif (mess_i, [new_state_formatv(); FAny vc1; FAny vm1;
+	                               new_state_formatv(); FAny vc2; FAny vm2]) Selfun.never_select_weight;*)
 	  (* nounif output2(*vs1,*vc1,*vs2,*vc2) *)*)
 	  let [vc1;vc2] = List.map (Terms.new_var Param.def_var_name)
 	    [Param.channel_type; Param.channel_type] in
@@ -1737,6 +1792,8 @@ let transl p =
 	  Selfun.add_no_unif (Param.get_pred (InputPBin(i)),
 	    [new_state_format(); FVar vc1; new_state_format(); FVar vc2])
 	    Selfun.never_select_weight
+
+	  *)()
 	end;
 	
       if i > 0 then

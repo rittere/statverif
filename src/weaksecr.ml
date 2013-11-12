@@ -84,10 +84,10 @@ let elim_att_guess_xx next_stage repeat_next_stage (hyp, concl, hist, constra) =
   let rec f n = function
       [] -> []
     | (Pred({ p_info = [AttackerGuess _]}, [Var v1; Var v2])) :: l when v1 == v2 ->
-	assert false; (* Not updated for states. *)
-	redo_all_optim := true;
+	assert false (* Not updated for states. *)
+	(*redo_all_optim := true;
 	hist' := Resolution(List.assq (if !Param.ignore_types then Param.any_type else v1.btype) (!attrulenum), n, !hist'); 
-	(Pred(Param.get_pred (Attacker(!Param.max_used_phase, v1.btype)), [Var v1])) :: (f (n+1) l)
+	(Pred(Param.get_pred (Attacker(!Param.max_used_phase, v1.btype)), [Var v1])) :: (f (n+1) l)*)
     | fact :: l -> fact :: (f (n+1) l)
   in
   let r' = (f 0 hyp, concl, !hist', constra) in
