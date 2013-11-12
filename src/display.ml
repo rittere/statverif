@@ -938,7 +938,8 @@ let rec display_hyp hyp tag =
       display_hyp h t;
       begin
         match m with
-        | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _]) ->
+        | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _])
+        | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
             let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
             print_string ("the " ^ plural (List.length cells) "state " "states ");
             display_term_list t1;
@@ -1955,7 +1956,8 @@ let rec display_hyp hyp hl tag =
       display_hyp h hl t;
       begin
         match m with
-        | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _]) ->
+        | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _])
+        | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
             let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
             print_string (plural (List.length cells) "The state " "The states ");
             WithLinks.term_list t1;

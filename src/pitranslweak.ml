@@ -1467,6 +1467,7 @@ let transl_attacker phase =
                     Pred(mess_pred, [left_state vs; vc1; vm1; right_state vs; vc2; vm2])]
             (Pred(mess_pred, [left_state vs'; vc1; vm1; right_state vs'; vc2; vm2]))
             [] (Rwrite(mess_pred))) !Param.cells;*)
+
       end;
 
     (* Clauses for equality *)
