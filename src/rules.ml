@@ -317,7 +317,7 @@ let occur_count_constra v l =
 	inequalities.
 ***********************************************************************)
 
-let elim_any_x ((hypl', concl, histl', constra) as r) =
+let elim_any_x (hypl', concl, histl', constra) =
   let (hypl'', _, histl'') = List.fold_right (fun hyp1 (hypl, nl, histl) ->
      match hyp1 with
        Pred(chann, l) ->
@@ -443,7 +443,7 @@ let reorder hyp =
 
 (* 3. The final function for subsumption test *)
 
-let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r2) =
+let implies (hyp1, concl1, _, constr1) (hyp2, concl2, _, constr2) =
   if List.length hyp1 > List.length hyp2 then false else
   (* let t0 = Unix.times() in *)
   try 
