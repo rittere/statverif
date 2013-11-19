@@ -49,6 +49,24 @@ let change_type_attacker p t =
 	p
   | _ -> Parsing_helper.internal_error "Unexpected predicate in change_type_attacker"
 
+(* Returns f, n
+   n - the number of non-state parameters this predicate has
+   f - a function that adds state variables to a parameter list *)
+let vars_for_predicate p =
+  if p.p_prop land Param.pred_STATEFUL <> 0 then begin
+    let state_fun = Param.state_fun () in
+    let state = FunApp(state_fun, Terms.var_gen (fst (state_fun.f_type))) in
+    (fun x -> state :: x), List.length p.p_type - 1
+  end else if p.p_prop land Param.pred_STATEFUL_2 <> 0 then begin
+    let state_fun = Param.state_fun () in
+    let state_left = FunApp(state_fun, Terms.var_gen (fst (state_fun.f_type))) in
+    let state_right = FunApp(state_fun, Terms.var_gen (fst (state_fun.f_type))) in
+    (fun x -> let xl, xr = Misc.bisect x in [state_left] @ xl @ [state_right] @ xr),
+      List.length p.p_type - 2
+  end else begin
+    (fun x -> x), List.length p.p_type
+  end
+
 let get_rule_hist descr =
   try
     Hashtbl.find rule_hash descr
@@ -71,10 +89,11 @@ let get_rule_hist descr =
 	    else
 	      (FunApp(f, Terms.var_gen (fst f.f_type))) :: (gen_vars (n-1))
 	  in
-	  let concl = gen_vars (List.length p.p_type) in
+	  let state, n = vars_for_predicate p in
+	  let concl = gen_vars n in
 	  let hypl = reorganize_fun_app f concl in
-	  (List.map (fun h -> Pred((change_type_attacker p (Terms.get_term_type (List.hd h))), h)) hypl, 
-	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), concl), [],
+	  (List.map (fun h -> Pred((change_type_attacker p (Terms.get_term_type (List.hd h))), state h)) hypl, 
+	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), state concl), [],
 	   Apply(f,p))
       | RApplyProj(f,nproj,p) ->
 	  let rec gen_vars n =
@@ -83,10 +102,11 @@ let get_rule_hist descr =
 	    else
 	      (FunApp(f, Terms.var_gen (fst f.f_type))) :: (gen_vars (n-1))
 	  in
-	  let hyp = gen_vars (List.length p.p_type) in
+	  let state, n = vars_for_predicate p in
+	  let hyp = gen_vars n in
 	  let concl = List.nth (reorganize_fun_app f hyp) nproj in
-	  ([Pred((change_type_attacker p (Terms.get_term_type (List.hd hyp))),hyp)], 
-	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), concl), [],
+	  ([Pred((change_type_attacker p (Terms.get_term_type (List.hd hyp))), state hyp)], 
+	   Pred((change_type_attacker p (Terms.get_term_type (List.hd concl))), state concl), [],
 	   Apply(Terms.projection_fun(f,nproj+1), p))
       |	_ -> 
 	  internal_error "unsupported get_rule_hist"
