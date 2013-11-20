@@ -86,6 +86,6 @@ clean:
 .PHONY: depend
 depend:
 	$(OCAMLDEP) $(PATHFLAGS) $(proverif_SOURCES) $(proveriftotex_SOURCES) \
-	    | sed -r 's/^([^\.:]+)\.cmx:/\1\.cmx \1\.cmi:/' >.dependencies
+	    | sed -r 's/^([^\.:]+)\.cmx:(.*)\1\.cmi/\1\.cmx \1\.cmi:\2/' >.dependencies
 
 -include .dependencies
