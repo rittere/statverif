@@ -25,6 +25,9 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
+
+val split_state : Types.predicate -> Types.term list -> Types.term list * Types.term list 
+
 val add_not : Types.fact -> unit
 val add_elimtrue : int * Types.fact -> unit
 val add_equiv : Types.fact list * Types.fact * int -> unit

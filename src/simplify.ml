@@ -348,6 +348,18 @@ let rec verify_process free_var proc =
       verify_term new_free_var t;
       verify_process new_free_var p;
       verify_process new_free_var q
+
+  | Lock(cells, p, _)
+  | Unlock(cells, p, _) -> verify_process free_var p
+  | Assign(cells, p, _) ->
+      List.iter (fun (_,t) -> verify_term free_var t) cells;
+      verify_process free_var p
+  | ReadAs(cells, p, _) ->
+      let new_free_var =
+        List.fold_left (fun new_free_var (_,pat) ->
+            (verify_pattern free_var pat) @ new_free_var)
+          free_var cells in
+      verify_process new_free_var p
    
 let rec merge_processes process_1 process_2 = 
   let process_list = match process_1, process_2 with 
@@ -1177,6 +1189,54 @@ let rec simplify_process process free_var =
 		(Get(pat_x, term_substituted,p1,p2,occ))::acc2
 	      ) acc1 simpl_list_2
 	    ) [] simpl_list_1
+      end
+  | Lock(cells, proc, occ) ->
+      begin
+        List.map (fun p -> Lock(cells, p, occ))
+          (simplify_process proc free_var)
+      end
+  | Unlock(cells, proc, occ) ->
+      begin
+        List.map (fun p -> Unlock(cells, p, occ))
+          (simplify_process proc free_var)
+      end
+  | Assign(cells, proc, occ) ->
+      begin
+        List.map (fun p -> Assign(cells, p, occ))
+          (simplify_process proc free_var)
+      end
+  | ReadAs(cells, proc, occ) ->
+      begin
+        let free_var' = ref free_var in
+        if List.for_all
+          (fun (_,pat) -> match pat with
+            | PatVar x -> free_var' := x :: !free_var'; true
+            | _ -> false)
+          cells
+        then begin
+          List.map (fun p -> ReadAs(cells, p, occ))
+            (simplify_process proc !free_var')
+        end else begin
+          assert (!Terms.current_bound_vars == []);
+          let pats_x, new_proc = List.fold_left
+            (fun (pats_x, new_proc) (s, pat) ->
+              let pat_x, test_success = one_var_pattern_from_pattern pat in
+              match test_success with
+                | None -> (pat_x::pats_x, new_proc)
+                | Some t ->
+                  let x = Terms.new_var Param.def_var_name Param.bool_type in
+                  (pat_x::pats_x,
+                    Let(PatVar x, FunApp(Terms.is_true_fun, [t]),
+                        new_proc, Nil, new_occurrence())))
+            ([], proc) cells in
+          let proc_substituted = follow_process new_proc in
+          Terms.cleanup ();
+          List.map (fun p ->
+              ReadAs(List.map2
+                  (fun (s,_) pat_x -> (s,pat_x)) cells pats_x, p, occ))
+            (simplify_process proc_substituted
+              ((List.map (fun (PatVar z) -> z) pats_x) @ free_var))
+        end
       end
   in
   

@@ -1058,11 +1058,11 @@ let rec init_rule state tree =
 		  begin
 		    let (p,c) = 
 		      match tree.thefact with
-			Pred(p,l) -> (p,rev_name_subst_bi l)
+			Pred(p,l) -> (p,rev_name_subst_bi (snd (Rules.split_state p l)))
 		      | _ -> Parsing_helper.internal_error "unexpected Apply clause"
 		    in
 		    let h = List.map (function 
-			{ thefact = Pred(_,l) } -> rev_name_subst_bi l
+			{ thefact = Pred(p',l) } -> rev_name_subst_bi (snd (Rules.split_state p' l))
 		      |	_ -> Parsing_helper.internal_error "unexpected Apply clause") sons
 		    in
 	            {state1 with prepared_attacker_rule = (p, decompose_list h, decompose_term c)::state1.prepared_attacker_rule}
@@ -1071,7 +1071,9 @@ let rec init_rule state tree =
                   begin
 	            match tree.thefact with
                       Pred(p, l) ->
-                        { state1 with prepared_attacker_rule = (p, [], [rev_name_subst_bi l])::state1.prepared_attacker_rule }
+                        { state1 with prepared_attacker_rule =
+                            (p, [], [rev_name_subst_bi (snd (Rules.split_state p l))])
+                              :: state1.prepared_attacker_rule }
                     | _ -> Parsing_helper.internal_error "Rule Rn should conclude p(name)"
 	          end
 	      | _ -> state1
@@ -1621,7 +1623,10 @@ let analyze_tree tree =
 	| TestComm(pi,po), [{thefact = Pred(_,lin)}; {thefact = Pred(_,lout)}] ->
 	    CommTest(rev_name_subst_bi lin, rev_name_subst_bi lout, ref None)
 	| TestEq(p), [{thefact = Pred(_,l1)};{thefact = Pred(_,l2)}] ->
-	    NIEqTest(rev_name_subst_bi l1, rev_name_subst_bi l2)
+	    assert (p.p_prop land Param.pred_STATEFUL_2 <> 0);
+	    let _, l1_ns = Rules.split_state p l1 in
+	    let _, l2_ns = Rules.split_state p l2 in
+	    NIEqTest(rev_name_subst_bi l1_ns, rev_name_subst_bi l2_ns)
 	| _ -> Parsing_helper.internal_error "Unexpected clause concluding the derivation for choice"
       end
   | _ -> Parsing_helper.internal_error "Unexpected derivation for choice"
@@ -1970,7 +1975,7 @@ let rec simplify_tree first next_f tree =
 	      check_coherent factId' (concl, l1, name_params, sons)
 	| LetTag occ | TestTag occ | TestUnifTag2 occ | GetTagElse occ ->
 	    check_coherent factId' (concl, l1, name_params, sons)
-	| InputTag _ | ReadAsTag _ | GetTag _ -> 
+	| InputTag _ | ReadAsTag _ | GetTag _ | SequenceTag -> 
 	    let f = (List.hd sons).thefact in
 	    let fact_id = HashFactId.build factId' in
 	    begin

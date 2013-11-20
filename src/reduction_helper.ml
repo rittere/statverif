@@ -388,6 +388,11 @@ let rec copy_process = function
   | Get(pat, t, p, q, occ) -> let pat' = copy_pat pat in Get(pat', copy_term2 t, copy_process p, copy_process q, occ)
   | Phase(n,p,occ) -> Phase(n, copy_process p,occ)
   | LetFilter(bl, f, p, q, occ) -> let bl' = List.map copy_binder bl in LetFilter(bl', copy_fact2 f, copy_process p, copy_process q, occ)
+  | Lock(cells, p, occ) -> Lock(cells, copy_process p, occ)
+  | Unlock(cells, p, occ) -> Unlock(cells, copy_process p, occ)
+  | Open(cells, p, occ) -> Open(cells, copy_process p, occ)
+  | ReadAs(cells, p, occ) -> let cells' = List.map (fun (s,pat) -> (s,copy_pat pat)) cells in ReadAs(cells', copy_process p, occ)
+  | Assign(cells, p, occ) -> let cells' = List.map (fun (s,t) -> (s,copy_term2 t)) cells in Assign(cells', copy_process p, occ)
 
 
 (* Close all terms after term_evaluation. Indeed, new variables may
