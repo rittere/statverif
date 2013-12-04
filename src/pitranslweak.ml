@@ -444,7 +444,7 @@ let transl_term_incl_destructor next_f cur_state occ term =
               Translate Patterns
 **********************************************)
       
-let rec transl_pat next_f cur_state pattern = 
+let rec transl_pat next_f cur_state pattern =
   match pattern with
   | PatVar b ->
       let x_left = Var (Terms.copy_var b)
@@ -563,6 +563,12 @@ let generate_pattern_with_uni_var binders_list term_pat_left term_pat_right =
 let all_types () =
   if !Param.ignore_types then [Param.any_type]
   else !Param.all_types
+
+let unify_cells cur_state side =
+  List.iter2 (fun (cell, _) term ->
+      Terms.unify term
+        (side (FunMap.find (cell, "") cur_state.cur_cells))
+    )
 
 let rec transl_process cur_state process = 
 
@@ -1321,50 +1327,51 @@ let rec transl_process cur_state process =
      let cur_state = update_cells (invalidate_cells cur_state) in
      transl_pat_list (fun cur_state1 terms_pattern binders ->
        transl_term_list (fun cur_state2 terms_pat_left terms_pat_right ->
-         let x_right = List.map (fun term_pat_right ->
-           Terms.new_var_def (Terms.get_term_type term_pat_right)) terms_pat_right
-         and x_left = List.map (fun term_pat_left ->
-           Terms.new_var_def (Terms.get_term_type term_pat_left)) terms_pat_left in
          let gen_pats_l, gen_pats_r = List.split (
            List.map2 (fun term_pat_left term_pat_right ->
              generate_pattern_with_uni_var binders term_pat_left term_pat_right
            ) terms_pat_left terms_pat_right
          ) in
 
-         List.iter2 (fun (cell, _) term_pat_left ->
-           Terms.unify term_pat_left (FunMap.find (cell,"") cur_state2.cur_cells).left_value
-         ) items terms_pat_left;
-         List.iter2 (fun (cell, _) term_pat_right ->
-           Terms.unify term_pat_right (FunMap.find (cell,"") cur_state2.cur_cells).right_value
-         ) items terms_pat_right;
-
          transl_both_side_succeed (fun cur_state3 ->
            (* Pattern satisfied in both sides. *)
-           transl_process { cur_state3 with
-               name_params = (List.map
-                 (fun b -> match b.link with
-                    | TLink t -> t
-                    | _ -> internal_error "unexpected link in translate_term (7)"
-                 ) binders) @ cur_state3.name_params;
-               name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
-               name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning
-             } proc;
+           begin try Terms.auto_cleanup (fun () ->
+             unify_cells cur_state2 (fun x -> x.left_value) items terms_pat_left;
+             unify_cells cur_state2 (fun x -> x.right_value) items terms_pat_right;
+             transl_process { cur_state3 with
+                 name_params = (List.map
+                   (fun b -> match b.link with
+                      | TLink t -> t
+                      | _ -> internal_error "unexpected link in translate_term (7)"
+                   ) binders) @ cur_state3.name_params;
+                 name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
+                 name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning
+               } proc;
+           ) with Terms.Unify -> () end;
 
-             (* Pattern satisfied only on left side. *)
+           (* Pattern satisfied only on left side. *)
+           begin try Terms.auto_cleanup (fun () ->
+             unify_cells cur_state2 (fun x -> x.left_value) items terms_pat_left;
              output_rule { cur_state3 with
-                 constra = (List.map2 (fun gen_pat_r x_right ->
-                     [Neq(gen_pat_r, x_right)]) gen_pats_r x_right)
-                   @ cur_state3.constra;
-                 hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
-               } (Pred(Param.bad_pred, []));
-
-             (* Pattern satisfied only on right side. *)
-             output_rule { cur_state3 with
-                 constra = (List.map2 (fun gen_pat_l x_left ->
-                     [Neq(gen_pat_l, x_left)]) gen_pats_l x_left)
+                 constra = (List.map2 (fun (cell, _) gen_pat_r ->
+                       [Neq((FunMap.find (cell, "") cur_state3.cur_cells).right_value, gen_pat_r)]
+                     ) items gen_pats_r)
                    @ cur_state3.constra;
                  hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
                } (Pred(Param.bad_pred, []))
+           ) with Terms.Unify -> () end;
+
+           (* Pattern satisfied only on right side. *)
+           begin try Terms.auto_cleanup (fun () ->
+             unify_cells cur_state2 (fun x -> x.right_value) items terms_pat_right;
+             output_rule { cur_state3 with
+               constra = (List.map2 (fun (cell, _) gen_pat_l ->
+                     [Neq((FunMap.find (cell, "") cur_state3.cur_cells).left_value, gen_pat_l)]
+                   ) items gen_pats_l)
+                 @ cur_state3.constra;
+               hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
+             } (Pred(Param.bad_pred, []))
+           ) with Terms.Unify -> () end;
          ) cur_state2 terms_pat_left terms_pat_right;
 
          (* Case left side succeeds and right side fails. *)
