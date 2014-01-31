@@ -106,6 +106,7 @@ val verbose_eq : bool ref
 val verbose_destr : bool ref
 val verbose_term : bool ref
 val abbreviate_clauses : bool ref
+val unselectable_state : bool ref
 
 val reconstruct_derivation : bool ref
 val simplify_derivation : bool ref

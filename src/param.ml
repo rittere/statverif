@@ -83,6 +83,7 @@ let verbose_eq = ref true
 let verbose_destr = ref false
 let verbose_term = ref true
 let abbreviate_clauses = ref true
+let unselectable_state = ref false
 
 let reconstruct_derivation = ref true
 let simplify_derivation = ref true
@@ -145,6 +146,7 @@ let common_parameters p ext v =
   | "verboseEq", _ -> boolean_param verbose_eq p ext v
   | "verboseTerm", _ -> boolean_param verbose_term p ext v
   | "abbreviateClauses", _ -> boolean_param abbreviate_clauses p ext v
+  | "unselectableState", _ -> boolean_param unselectable_state p ext v
   | "maxDepth", S ("none",_) -> max_depth := -1
   | "maxDepth", I s -> max_depth := s
   | "maxHyp", I s -> max_hyp := s

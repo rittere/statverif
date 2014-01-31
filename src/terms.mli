@@ -268,3 +268,5 @@ exception False_inequality
 
 val generate_destructor_with_side_cond : term list list -> 
   term list -> term -> Parsing_helper.extent -> rewrite_rules
+
+val split_state : Types.predicate -> Types.term list -> Types.term list * Types.term list 

@@ -848,6 +848,17 @@ let rec copy_constra3 c = List.map (function
   | Neq(t1,t2) -> Neq(copy_term3 t1, copy_term3 t2)
 	)c
 
+(* Split predicate arguments into state and non-state parts. *)
+let split_state pred args =
+    if (pred.p_prop land Param.pred_STATEFUL) <> 0 then begin
+        match args with state::rest -> ([state], rest)
+    end else if (pred.p_prop land Param.pred_STATEFUL_2) <> 0 then begin
+        match Misc.bisect args with l_s::l_ns, r_s::r_ns ->
+          ([l_s; r_s], (l_ns @ r_ns))
+    end else begin
+        [], args
+    end
+
 (* Do not select Out facts, blocking facts, or pred_TUPLE(vars) *)
 
 let is_var = function
@@ -863,7 +874,8 @@ let is_unselectable = function
       (p.p_prop land Param.pred_BLOCKING != 0) ||
       (p.p_prop land Param.pred_TUPLE != 0 && 
        p.p_prop land Param.pred_TUPLE_SELECT = 0 &&
-       List.for_all is_var pl) ||
+       List.for_all is_var
+         (if (!Param.unselectable_state) then snd (split_state p pl) else pl)) ||
       (List.exists (function f' ->
 	try 
 	  auto_cleanup (fun () ->

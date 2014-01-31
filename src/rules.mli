@@ -26,8 +26,6 @@
 
 *)
 
-val split_state : Types.predicate -> Types.term list -> Types.term list * Types.term list 
-
 val add_not : Types.fact -> unit
 val add_elimtrue : int * Types.fact -> unit
 val add_equiv : Types.fact list * Types.fact * int -> unit

@@ -1058,11 +1058,11 @@ let rec init_rule state tree =
 		  begin
 		    let (p,c) = 
 		      match tree.thefact with
-			Pred(p,l) -> (p,rev_name_subst_bi (snd (Rules.split_state p l)))
+			Pred(p,l) -> (p,rev_name_subst_bi (snd (split_state p l)))
 		      | _ -> Parsing_helper.internal_error "unexpected Apply clause"
 		    in
 		    let h = List.map (function 
-			{ thefact = Pred(p',l) } -> rev_name_subst_bi (snd (Rules.split_state p' l))
+			{ thefact = Pred(p',l) } -> rev_name_subst_bi (snd (split_state p' l))
 		      |	_ -> Parsing_helper.internal_error "unexpected Apply clause") sons
 		    in
 	            {state1 with prepared_attacker_rule = (p, decompose_list h, decompose_term c)::state1.prepared_attacker_rule}
@@ -1072,7 +1072,7 @@ let rec init_rule state tree =
 	            match tree.thefact with
                       Pred(p, l) ->
                         { state1 with prepared_attacker_rule =
-                            (p, [], [rev_name_subst_bi (snd (Rules.split_state p l))])
+                            (p, [], [rev_name_subst_bi (snd (split_state p l))])
                               :: state1.prepared_attacker_rule }
                     | _ -> Parsing_helper.internal_error "Rule Rn should conclude p(name)"
 	          end
@@ -1624,8 +1624,8 @@ let analyze_tree tree =
 	    CommTest(rev_name_subst_bi lin, rev_name_subst_bi lout, ref None)
 	| TestEq(p), [{thefact = Pred(_,l1)};{thefact = Pred(_,l2)}] ->
 	    assert (p.p_prop land Param.pred_STATEFUL_2 <> 0);
-	    let _, l1_ns = Rules.split_state p l1 in
-	    let _, l2_ns = Rules.split_state p l2 in
+	    let _, l1_ns = split_state p l1 in
+	    let _, l2_ns = split_state p l2 in
 	    NIEqTest(rev_name_subst_bi l1_ns, rev_name_subst_bi l2_ns)
 	| _ -> Parsing_helper.internal_error "Unexpected clause concluding the derivation for choice"
       end
