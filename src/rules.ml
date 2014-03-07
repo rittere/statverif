@@ -209,11 +209,16 @@ let rec is_name_proj n s =
 
 let is_exempt_from_dectuple (_,_,h,_) =
   match h with
-    Rule (_,Apply(f,p),_,_,_) -> 
+    Rule (_,Apply(f,p),_,_,_) -> begin
+      Printf.printf "is_exempt applied to " ;
+      Display.Text.display_function_name f;
+      let cond = if f.f_cat = Tuple then "true" else "false" in 
+      Printf.printf ", f_cat = %s\n" cond;
       (* rules that apply constructors ... *)
       (f.f_cat = Tuple) || 
       (* or their projections *)
       (is_name_proj 0 f.f_name)
+    end
   | Rule (_,LblEquiv,_,_,_) -> true
   | _ -> false
 
@@ -242,6 +247,9 @@ let rec decompose_hyp_rec accu hypl =
 		  let l0_s, l0_ns = split_state chann l0 in
 		  match l0_ns with
 		    (FunApp(f,_) :: _) when f.f_cat = Tuple ->
+		      let _ =  Printf.printf "Really applying decompse_hyp_rec to hypothesis " in
+		      let _ = Display.Text.display_fact hyp1 in
+		      let _ = Printf.printf "\n" in
 		      let l_ns = reorganize_fun_app f l0_ns in
 		      let l = List.map (combine_state chann l0_s) l_ns in
 		      let (Rule(_, _, hyp, _, _)) as hist_dec = History.get_rule_hist (RApplyFunc(f,chann)) in
@@ -267,13 +275,19 @@ let rec decompose_hyp_rec accu hypl =
       ) hypl accu
 
 let decompose_hyp_tuples ((hypl, concl, hist, constra) as rule) =
-  if is_exempt_from_dectuple rule then
+  if is_exempt_from_dectuple rule then begin
+    Printf.printf "decompose_hyp_tuples not applied to rule ";
+   Display.Text.display_rule rule;
     rule
-  else
+  end
+  else begin
+    Printf.printf "decompose_hyp_tuples applied to rule ";
+   Display.Text.display_rule rule;
    let (hypl', nl', histl') =  
      decompose_hyp_rec ([], (List.length hypl)-1, hist) hypl
    in
    (hypl', concl, histl',constra)
+end
 
 
 (**********************************************************************
@@ -443,7 +457,7 @@ let reorder hyp =
 
 (* 3. The final function for subsumption test *)
 
-let implies (hyp1, concl1, _, constr1) (hyp2, concl2, _, constr2) =
+let implies (hyp1, concl1, _, constr1) ((hyp2, concl2, _, constr2) as r) =
   if List.length hyp1 > List.length hyp2 then false else
   (* let t0 = Unix.times() in *)
   try 
@@ -467,6 +481,8 @@ let implies (hyp1, concl1, _, constr1) (hyp2, concl2, _, constr2) =
 	 print_string " seconds.";
 	 Display.Text.newline()
        end; *)
+      Printf.printf "Superfluous rule found: ";
+      Display.Text.display_rule r;
       true
 	)
   with NoMatch -> 
@@ -563,6 +579,8 @@ let rule_base_sel = ref ([] : (reduction * int) list)
 
 let add_rule rule = 
   (* Check that the rule is not already in the rule base or in the queue *)
+  Printf.printf "Add-rule entered for rule\n";
+  Display.Text.display_rule rule;
   let test_impl = fun r -> implies r rule in
   if (List.exists test_impl (!rule_base_ns)) ||
      (List.exists (function (r,_) -> implies r rule) (!rule_base_sel)) ||
@@ -575,7 +593,8 @@ let add_rule rule =
 	   (function (r,_) -> not (implies rule r)) (!rule_base_sel);
       Queue.filter rule_queue test_impl;
       check_rule rule;
-      Queue.add rule_queue rule
+      Queue.add rule_queue rule;
+      Printf.printf "Added rule to rule queue:\n";
     end
 
     
@@ -584,31 +603,33 @@ let add_rule rule =
 
 (* 1. Simplify the constraints *)
 
-let simplify_rule_constra next_stage (hyp, concl, hist, constraint_list) =
+ let simplify_rule_constra next_stage (hyp, concl, hist, constraint_list) =
   try
     let constraint_list' = TermsEq.simplify_constra_list (concl::hyp) constraint_list in
     next_stage (hyp, concl, hist, constraint_list')
-  with TermsEq.FalseConstraint -> ()
+  with TermsEq.FalseConstraint -> () 
 
-  (** Debug mode  
+  (** Debug mode   *)
 let simplify_rule_constra next_stage (hyp, concl, hist,constra) =
   if constra <> [] then
     begin
-      Printf.printf "Before simplification";
+      Printf.printf "Before simplification\n";
       Display.Text.display_rule (hyp, concl, hist,constra)
     end;
   simplify_rule_constra (fun rule ->
     if constra <> [] then
       begin
-  	Printf.printf "After simplfication";
+  	Printf.printf "After simplfication\n";
   	Display.Text.display_rule rule
       end;
-    next_stage rule) (hyp, concl, hist,constra) *)
+    next_stage rule) (hyp, concl, hist,constra) 
 
 (* 2. eliminate rules that have in hypothesis a "not" fact
       (secrecy assumption) *)
 
 let elim_not next_stage ((hyp', _, _,_) as r) =
+(*  Printf.printf "elim_not called for rule with %s not_set\n" (if !not_set = [] then "empty" else "non-empty");
+  Display.Text.display_rule r;  *)
   if (List.exists (fun h -> List.exists (matchafact h) (!not_set)) hyp') then
     ()
   else
@@ -661,13 +682,19 @@ let list_iter_i f l =
   list_iter_i 0 l
 
 let decompose_concl_tuples next_stage ((hyp', concl, hist', constra) as r) =
-  if is_exempt_from_dectuple r then
+  Printf.printf "decompose_concl_tuples entered for rule \n";
+  Display.Text.display_rule r;
+  if is_exempt_from_dectuple r then begin
+    Printf.printf "decompose_concl_tupes not applied\n";
     next_stage r
+  end
   else
     let put_clause first_fact hist =
       assert (!current_bound_vars == []);
       let r = (List.map copy_fact hyp', copy_fact first_fact, hist, List.map copy_constra constra) in
       cleanup();
+      Printf.printf "decompose_concl_tuples continuing with rule \n";
+      Display.Text.display_rule r;
       next_stage r
     in
     let rec tuple_dec hist concl =
@@ -675,23 +702,35 @@ let decompose_concl_tuples next_stage ((hyp', concl, hist', constra) as r) =
 	Pred(chann, l0) ->
 	  let rec try_equiv_set = function
 	      [] ->
+		Printf.printf "empty set of equivalences considered\n";
 		if chann.p_prop land Param.pred_TUPLE != 0 then
 		  let l0_s, l0_ns = split_state chann l0 in
+		  Printf.printf "The length of l0_s is %d\n" (List.length  l0_s);
+		  Printf.printf "The length of l0_ns is %d\n" (List.length  l0_ns);
 		  match l0_ns with
 		    FunApp(f,_) :: _ when f.f_cat = Tuple ->
 		      let l_ns = reorganize_fun_app f l0_ns in	    
+		      Printf.printf "The length of l_ns is %d\n" (List.length  l_ns);
 		      let l = List.map (combine_state chann l0_s) l_ns in
+		      Printf.printf "The length of l is %d\n" (List.length  l);
+
 		      list_iter_i (fun n first ->
+			Printf.printf "decompose: Iteration %d with %s\n" n (if first = [] then "empty" else "non-empty");
 			let (Rule(_,_,_,Pred(p',_), _)) as hist_dec = History.get_rule_hist (RApplyProj(f, n, chann)) in
 			let concl' = Pred(p', first) in
+			Printf.printf "New conclusion is ";
+			Display.Text.display_fact concl;
 			let hist'' = Resolution(hist, 0, hist_dec) in
 			try 
 			  tuple_dec hist'' concl'
 			with Not_found -> put_clause concl' hist'') l
 		  | _ -> raise Not_found
-		else
+		else begin
+		  Printf.printf "No tupling found\n";
 		  raise Not_found
+		end
 	    | (hypeq, concleq, neq)::l ->
+		Printf.printf "non-empty set of equivalences considered\n";
 		try
 		  let hypeq' = 
 		    Terms.auto_cleanup (fun () ->
@@ -699,14 +738,18 @@ let decompose_concl_tuples next_stage ((hyp', concl, hist', constra) as r) =
 		      List.map copy_fact3 hypeq)
 		  in
 		  list_iter_i (fun n concl' ->
+		    Printf.printf "decompose: Iteration %d with conclusion \n" n ;
+		    Display.Text.display_fact concl';
 		    let hist_dec = Rule(neq + n + 1, LblEquiv, [concleq], List.nth hypeq n, []) in
 		    let hist'' = Resolution(hist, 0, hist_dec) in
 		    try 
 		      tuple_dec hist'' concl'
 		    with Not_found -> put_clause concl' hist''
 			) hypeq'
-		with NoMatch ->
+		with NoMatch -> begin
+		  Printf.printf "Equivalence did not match\n";
 		  try_equiv_set l
+		end
 	  in
 	  try_equiv_set (!equiv_set)
       | _ -> raise Not_found
@@ -1093,6 +1136,8 @@ let compos next_stage (hyp1, concl1, hist1,constra1) ((hyp2, concl2, hist2,const
     let concl' = copy_fact2 concl2 in
     let hist' = Resolution(hist1, sel_index, hist2) in
     let constra' = ((List.map copy_constra2 constra1) @ (List.map copy_constra2 constra2)) in
+    print_string "Result of composition is\n";
+    Display.Text.display_rule (hyp', concl', hist', constra');
     cleanup();
   (*  incr resol_step; *)
     next_stage (hyp', concl', hist', constra')
@@ -1178,21 +1223,32 @@ let rec complete_rules () =
    match Queue.get rule_queue with
      None -> !rule_base_ns
    | Some rule -> 
+       print_string "COMPOSING ";
+       Display.Text.display_rule rule;
        let sel_index = selection_fun rule in
        if sel_index == -1 then
 	 begin
 	   if not (redundant_glob rule) then
 	     begin
 	       rule_base_ns := rule :: (!rule_base_ns);
-	       List.iter (compos normal_rule rule) (!rule_base_sel)
+	       List.iter (fun (rule2,n) -> print_string "WITH "; Display.Text.display_rule rule2; compos normal_rule rule (rule2,n)) (!rule_base_sel);
+(* 	       List.iter (compos normal_rule rule) (!rule_base_sel) *)
+	       print_endline "";
 	     end
 	 end
        else
 	 begin
 	   let rule_sel = (rule, sel_index) in
 	   rule_base_sel := rule_sel :: (!rule_base_sel);
-	   List.iter (fun rule2 -> compos normal_rule rule2 rule_sel) (!rule_base_ns)
+	   List.iter (fun rule2 -> print_string "BACKWARDS WITH "; Display.Text.display_rule rule2; compos normal_rule rule2 rule_sel) (!rule_base_ns);
+(* 	   List.iter (fun rule2 -> compos normal_rule rule2 rule_sel) (!rule_base_ns) *)
+	   print_endline "";
 	 end;
+
+       Printf.printf "#rule_base_ns = %d, rule_base_sel = %d, #rules in queue = %d\n" 
+	 (List.length !rule_base_ns)
+	 (List.length !rule_base_sel)
+         (Queue.length rule_queue);
 
        (* display the rule *)
        if !Param.verbose_rules then
@@ -1200,7 +1256,7 @@ let rec complete_rules () =
        else
 	 begin
 	   incr rule_count;
-	   if (!rule_count) mod 200 = 0 then
+	   if (!rule_count) mod 200 = 0 then 
 	     begin
 	       print_string ((string_of_int (!rule_count)) ^ 
 			     " rules inserted. The rule base contains " ^
@@ -1349,6 +1405,8 @@ let completion rulelist =
   (* Complete the rule base *)
   List.iter normal_rule rulelist;
   Selfun.guess_no_unif rule_queue;
+  print_string "Rule base after normalisation\n";
+  Queue.iter rule_queue (fun rule -> Display.Text.display_rule rule);
   
   if hasEquationsToRecord() then
   begin

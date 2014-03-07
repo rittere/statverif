@@ -800,7 +800,23 @@ let rec display_format = function
                print_string ")"
 	     end
      end
- | FVar v -> display_idcl CVar (varname v)
+ | FVar v -> begin
+     display_idcl CVar (varname v);
+(*
+     match v.link with
+       VLink b -> begin
+	 Printf.printf "V{";
+         display_idcl CVar (varname b)	;
+	 Printf.printf "}"
+       end
+     |  TLink t -> begin
+	 Printf.printf "T{";
+	 display_term t;
+	 Printf.printf "}"
+     end
+     | NoLink -> Printf.printf "NL"
+     | _ -> () *)
+ end 
  | FAny v -> display_idcl CVar ("*" ^ (varname v))
 
 and display_format_list l = display_list display_format "," l

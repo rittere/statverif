@@ -102,7 +102,9 @@ let rec format_equal t1 t2 =
        begin
 	 (v1.unfailing == v2.unfailing) &&
 	 (match v2.link with
-	   NoLink -> Terms.link v2 (VLink v1); true
+	   NoLink -> 
+(* 	     Printf.printf "Constructing vlink in v%d to v%d\n" v2.vname v1.vname; *)
+	       Terms.link v2 (VLink v1); true
 	 | VLink v1' -> v1 == v1'
 	 | _ -> Parsing_helper.internal_error "unexpected link in format_equal")
        end
@@ -255,37 +257,48 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
         if (!Param.verbose_term) && (((wold < 0) && (nold >= 0)) (* || (wold < -1) *) ) then
 	  begin
 	    print_string "Termination warning: ";
-	    Display.Text.display_rule rule;
-	    print_string ("Selecting " ^ (string_of_int nold));
-	    Display.Text.newline()
 	  end;
+	print_string ("Selecting " ^ (string_of_int nold));
+	Display.Text.newline();
         nold
-    | (f::l) when is_unselectable f ->
+    | (f::l) when is_unselectable f -> begin
 	  (* Guarantee that p(x) is never selected when we decompose data
 	     constructors on p. This is important for the soundness of 
 	     the decomposition of data constructors. *)
+	Printf.printf "hypothesis unselectable\n";
+	Display.Text.display_fact f;
+	Display.Text.display_rule rule;
         sel (nold, wold) (n+1) l
+    end
     | (Pred(p,lp) as h::l) -> 
 	let wnew =
 	  if matchafactstrict concl h then match_concl_weight else 
 	  let wtmp = find_same_format (p,lp) (!no_unif_set) in
+(* 	  let _ = Printf.printf "wtmp = %d\n" wtmp in  *)
 	  if wtmp < 0 then wtmp else
 	  if !Param.select_fun == Param.TermMaxsize then fact_size h else 0
 	in
+(* 	let _ = Printf.printf "wnew = %d\n" wnew in  *)
         if wnew > wold 
 	then sel (n,wnew) (n+1) l 
         else sel (nold, wold) (n+1) l
     | _ -> Parsing_helper.internal_error "Selfun(3): added to avoid warning for non-exhaustive pattern-matching"
   in 
   let wconcl = 
-    if is_unselectable concl then
+    if is_unselectable concl then begin
       (* The conclusion is never selected if an hypothesis can be *)
+(*      Printf.printf "Conclusion unselectable\n"; 
+      Printf.printf "The rule has %d hypotheses\n" (List.length hyp); 
+      Display.Text.display_rule rule; *)
       never_select_weight
+    end
     else
       (* The conclusion can be selected if we don't find better in
 	 the hypothesis *)
       if List.exists (fun h -> matchafactstrict h concl) hyp then match_concl_weight else -1
   in
+   Printf.printf "selection_fun_weight applied to rule\n";
+  Display.Text.display_rule rule; 
   sel (-1, wconcl) 0 hyp
 
 (* Avoid creating cycles when instantiating in inst_constra:
