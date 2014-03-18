@@ -164,6 +164,10 @@ let initialyse_env_and_fun_decl () =
   Hashtbl.add fun_decls "||" Terms.or_fun;
   Terms.record_id "||" dummy_ext;
   global_env := StringMap.add "||" (EFun Terms.or_fun) (!global_env);
+
+  Hashtbl.add fun_decls "cells" Param.state_fun;
+  Terms.record_id "cells" dummy_ext;
+  global_env := StringMap.add "cells" (EFun Param.state_fun) (!global_env);
   
   List.iter (fun t -> 
     Terms.record_id t.tname dummy_ext;
@@ -794,8 +798,7 @@ let add_cell (s,ext) opt_t init =
   in
   let r = Terms.create_name s ([],cell_type) (*private =>*)true in
   global_env := StringMap.add s (ECell r) (!global_env);
-  cells := !cells @ [r, init']
-
+  Param.add_cell r init'
 
 (* Check non-interference terms *)
 
@@ -2848,6 +2851,21 @@ let check_gfact_format env ((s, ext), tl, n) =
 	    (mess_n, [t1';t2'])
 	| _ -> 
 	    input_error "arity of predicate mess should be 2" ext
+      end
+  | "seq2" ->
+      begin
+        match tl with
+          [oldl;newl;oldr;newr] ->
+            if n > !Param.max_used_phase then
+              input_warning "nounif declaration for phase greater than used" ext;
+            let (oldl', ty_oldl) = check_gformat env oldl in
+            let (newl', ty_newl) = check_gformat env newl in
+            let (oldr', ty_oldr) = check_gformat env oldr in
+            let (newr', ty_newr) = check_gformat env newr in
+            if not (List.for_all ((=) Param.state_type) [ty_oldl; ty_newl; ty_oldr; ty_newr]) then
+              input_error ("Arguments of seq2 should all be of type state") ext;
+            let seq2_n = Param.get_pred (SeqBin(if n = -1 then (!Param.max_used_phase) else n)) in
+            (seq2_n, [oldl'; newl'; oldr'; newr'])
       end
   | s ->
       if n != -1 then

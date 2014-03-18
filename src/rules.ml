@@ -46,17 +46,6 @@ let elimtrue_set = ref ([]: (int * fact) list)
 let add_elimtrue f =
   elimtrue_set := f :: (!elimtrue_set)
 
-(* Split predicate arguments into state and non-state parts. *)
-let split_state pred args =
-    if (pred.p_prop land Param.pred_STATEFUL) <> 0 then begin
-        match args with state::rest -> ([state], rest)
-    end else if (pred.p_prop land Param.pred_STATEFUL_2) <> 0 then begin
-        match Misc.bisect args with l_s::l_ns, r_s::r_ns ->
-          ([l_s; r_s], (l_ns @ r_ns))
-    end else begin
-        [], args
-    end
-
 (* ... and recombine them. *)
 let combine_state pred state_args other_args =
     if (pred.p_prop land Param.pred_STATEFUL) <> 0 then begin

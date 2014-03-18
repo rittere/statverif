@@ -83,6 +83,7 @@ let verbose_eq = ref true
 let verbose_destr = ref false
 let verbose_term = ref true
 let abbreviate_clauses = ref true
+let unselectable_state = ref false
 
 let reconstruct_derivation = ref true
 let simplify_derivation = ref true
@@ -145,6 +146,7 @@ let common_parameters p ext v =
   | "verboseEq", _ -> boolean_param verbose_eq p ext v
   | "verboseTerm", _ -> boolean_param verbose_term p ext v
   | "abbreviateClauses", _ -> boolean_param abbreviate_clauses p ext v
+  | "unselectableState", _ -> boolean_param unselectable_state p ext v
   | "maxDepth", S ("none",_) -> max_depth := -1
   | "maxDepth", I s -> max_depth := s
   | "maxHyp", I s -> max_hyp := s
@@ -203,19 +205,21 @@ let rec tl_to_string sep = function
   | (a::l) -> a.tname ^ sep ^ (tl_to_string sep l)
 
 let cells = ref []
-let state_fun_p = ref None
-let state_fun () =
-  match !state_fun_p with
-    | Some f -> f
-    | None ->
-      let f = {
-        f_name = "cells";
-        f_type = List.map (fun ({f_type=(_,t)},_) -> t) !cells, state_type;
-        f_cat = Tuple;
-        f_initial_cat = Tuple;
-        f_private = true;
-        f_options = 0 }
-      in state_fun_p := Some f; f
+
+let state_fun = {
+         f_name = "cells";
+         f_type = [], state_type;
+          f_cat = Tuple;
+  f_initial_cat = Tuple;
+      f_private = true;
+      f_options = 0
+}
+
+let add_cell r init =
+  cells := !cells @ [r, init];
+  state_fun.f_type <-
+    match state_fun.f_type with t,t' ->
+      (t @ [snd r.f_type]), t'
 
 let build_pred = function
     Attacker(i,t) -> 
