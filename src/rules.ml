@@ -210,10 +210,6 @@ let rec is_name_proj n s =
 let is_exempt_from_dectuple (_,_,h,_) =
   match h with
     Rule (_,Apply(f,p),_,_,_) -> begin
-      Printf.printf "is_exempt applied to " ;
-      Display.Text.display_function_name f;
-      let cond = if f.f_cat = Tuple then "true" else "false" in 
-      Printf.printf ", f_cat = %s\n" cond;
       (* rules that apply constructors ... *)
       (f.f_cat = Tuple) || 
       (* or their projections *)
@@ -247,9 +243,6 @@ let rec decompose_hyp_rec accu hypl =
 		  let l0_s, l0_ns = split_state chann l0 in
 		  match l0_ns with
 		    (FunApp(f,_) :: _) when f.f_cat = Tuple ->
-		      let _ =  Printf.printf "Really applying decompse_hyp_rec to hypothesis " in
-		      let _ = Display.Text.display_fact hyp1 in
-		      let _ = Printf.printf "\n" in
 		      let l_ns = reorganize_fun_app f l0_ns in
 		      let l = List.map (combine_state chann l0_s) l_ns in
 		      let (Rule(_, _, hyp, _, _)) as hist_dec = History.get_rule_hist (RApplyFunc(f,chann)) in
@@ -275,19 +268,14 @@ let rec decompose_hyp_rec accu hypl =
       ) hypl accu
 
 let decompose_hyp_tuples ((hypl, concl, hist, constra) as rule) =
-  if is_exempt_from_dectuple rule then begin
-    Printf.printf "decompose_hyp_tuples not applied to rule ";
-   Display.Text.display_rule rule;
+  if is_exempt_from_dectuple rule then 
     rule
-  end
-  else begin
-    Printf.printf "decompose_hyp_tuples applied to rule ";
-   Display.Text.display_rule rule;
+  else 
    let (hypl', nl', histl') =  
      decompose_hyp_rec ([], (List.length hypl)-1, hist) hypl
    in
    (hypl', concl, histl',constra)
-end
+
 
 
 (**********************************************************************
@@ -611,18 +599,8 @@ let add_rule rule =
 
   (** Debug mode   *)
 let simplify_rule_constra next_stage (hyp, concl, hist,constra) =
-  if constra <> [] then
-    begin
-      Printf.printf "Before simplification\n";
-      Display.Text.display_rule (hyp, concl, hist,constra)
-    end;
-  simplify_rule_constra (fun rule ->
-    if constra <> [] then
-      begin
-  	Printf.printf "After simplfication\n";
-  	Display.Text.display_rule rule
-      end;
-    next_stage rule) (hyp, concl, hist,constra) 
+  simplify_rule_constra (fun rule ->  next_stage rule) 
+    (hyp, concl, hist,constra) 
 
 (* 2. eliminate rules that have in hypothesis a "not" fact
       (secrecy assumption) *)
@@ -682,19 +660,13 @@ let list_iter_i f l =
   list_iter_i 0 l
 
 let decompose_concl_tuples next_stage ((hyp', concl, hist', constra) as r) =
-  Printf.printf "decompose_concl_tuples entered for rule \n";
-  Display.Text.display_rule r;
-  if is_exempt_from_dectuple r then begin
-    Printf.printf "decompose_concl_tupes not applied\n";
+  if is_exempt_from_dectuple r then 
     next_stage r
-  end
   else
     let put_clause first_fact hist =
       assert (!current_bound_vars == []);
       let r = (List.map copy_fact hyp', copy_fact first_fact, hist, List.map copy_constra constra) in
       cleanup();
-      Printf.printf "decompose_concl_tuples continuing with rule \n";
-      Display.Text.display_rule r;
       next_stage r
     in
     let rec tuple_dec hist concl =
@@ -702,35 +674,24 @@ let decompose_concl_tuples next_stage ((hyp', concl, hist', constra) as r) =
 	Pred(chann, l0) ->
 	  let rec try_equiv_set = function
 	      [] ->
-		Printf.printf "empty set of equivalences considered\n";
 		if chann.p_prop land Param.pred_TUPLE != 0 then
 		  let l0_s, l0_ns = split_state chann l0 in
-		  Printf.printf "The length of l0_s is %d\n" (List.length  l0_s);
-		  Printf.printf "The length of l0_ns is %d\n" (List.length  l0_ns);
 		  match l0_ns with
 		    FunApp(f,_) :: _ when f.f_cat = Tuple ->
 		      let l_ns = reorganize_fun_app f l0_ns in	    
-		      Printf.printf "The length of l_ns is %d\n" (List.length  l_ns);
 		      let l = List.map (combine_state chann l0_s) l_ns in
-		      Printf.printf "The length of l is %d\n" (List.length  l);
-
 		      list_iter_i (fun n first ->
-			Printf.printf "decompose: Iteration %d with %s\n" n (if first = [] then "empty" else "non-empty");
 			let (Rule(_,_,_,Pred(p',_), _)) as hist_dec = History.get_rule_hist (RApplyProj(f, n, chann)) in
 			let concl' = Pred(p', first) in
-			Printf.printf "New conclusion is ";
-			Display.Text.display_fact concl;
 			let hist'' = Resolution(hist, 0, hist_dec) in
 			try 
 			  tuple_dec hist'' concl'
 			with Not_found -> put_clause concl' hist'') l
 		  | _ -> raise Not_found
 		else begin
-		  Printf.printf "No tupling found\n";
 		  raise Not_found
 		end
 	    | (hypeq, concleq, neq)::l ->
-		Printf.printf "non-empty set of equivalences considered\n";
 		try
 		  let hypeq' = 
 		    Terms.auto_cleanup (fun () ->
@@ -738,18 +699,14 @@ let decompose_concl_tuples next_stage ((hyp', concl, hist', constra) as r) =
 		      List.map copy_fact3 hypeq)
 		  in
 		  list_iter_i (fun n concl' ->
-		    Printf.printf "decompose: Iteration %d with conclusion \n" n ;
-		    Display.Text.display_fact concl';
 		    let hist_dec = Rule(neq + n + 1, LblEquiv, [concleq], List.nth hypeq n, []) in
 		    let hist'' = Resolution(hist, 0, hist_dec) in
 		    try 
 		      tuple_dec hist'' concl'
 		    with Not_found -> put_clause concl' hist''
 			) hypeq'
-		with NoMatch -> begin
-		  Printf.printf "Equivalence did not match\n";
+		with NoMatch -> 
 		  try_equiv_set l
-		end
 	  in
 	  try_equiv_set (!equiv_set)
       | _ -> raise Not_found
