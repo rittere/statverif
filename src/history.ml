@@ -54,11 +54,11 @@ let change_type_attacker p t =
    f - a function that adds state variables to a parameter list *)
 let vars_for_predicate p =
   if p.p_prop land Param.pred_STATEFUL <> 0 then begin
-    let state_fun = Param.state_fun () in
+    let state_fun = Param.state_fun in
     let state = FunApp(state_fun, Terms.var_gen (fst (state_fun.f_type))) in
     (fun x -> state :: x), List.length p.p_type - 1
   end else if p.p_prop land Param.pred_STATEFUL_2 <> 0 then begin
-    let state_fun = Param.state_fun () in
+    let state_fun = Param.state_fun in
     let state_left = FunApp(state_fun, Terms.var_gen (fst (state_fun.f_type))) in
     let state_right = FunApp(state_fun, Terms.var_gen (fst (state_fun.f_type))) in
     (fun x -> let xl, xr = Misc.bisect x in [state_left] @ xl @ [state_right] @ xr),

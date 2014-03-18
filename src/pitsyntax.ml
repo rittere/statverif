@@ -164,6 +164,10 @@ let initialyse_env_and_fun_decl () =
   Hashtbl.add fun_decls "||" Terms.or_fun;
   Terms.record_id "||" dummy_ext;
   global_env := StringMap.add "||" (EFun Terms.or_fun) (!global_env);
+
+  Hashtbl.add fun_decls "cells" Param.state_fun;
+  Terms.record_id "cells" dummy_ext;
+  global_env := StringMap.add "cells" (EFun Param.state_fun) (!global_env);
   
   List.iter (fun t -> 
     Terms.record_id t.tname dummy_ext;
@@ -794,8 +798,7 @@ let add_cell (s,ext) opt_t init =
   in
   let r = Terms.create_name s ([],cell_type) (*private =>*)true in
   global_env := StringMap.add s (ECell r) (!global_env);
-  cells := !cells @ [r, init']
-
+  Param.add_cell r init'
 
 (* Check non-interference terms *)
 

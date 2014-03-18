@@ -225,7 +225,7 @@ let invalidate_cells ts =
 
 (* Return term for left/right state. *)
 let x_state getx cell_states =
-  FunApp(Param.state_fun(),
+  FunApp(Param.state_fun,
     List.fold_right (fun (r, _) l ->
       (getx (FunMap.find (r, "") cell_states))::l)
       !Param.cells [])
@@ -277,11 +277,11 @@ let new_state () =
     result) FunMap.empty !Param.cells
 
 let new_state_format () =
-  FFunApp(Param.state_fun(),
+  FFunApp(Param.state_fun,
     List.map (fun ({f_type=_,t} as cell,_) ->
       FAny(Terms.new_var cell.f_name t)) !Param.cells)
 let new_state_formatv () =
-  FFunApp(Param.state_fun(),
+  FFunApp(Param.state_fun,
     List.map (fun ({f_type=_,t} as cell,_) ->
       FVar(Terms.new_var cell.f_name t)) !Param.cells)
 

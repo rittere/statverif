@@ -205,19 +205,21 @@ let rec tl_to_string sep = function
   | (a::l) -> a.tname ^ sep ^ (tl_to_string sep l)
 
 let cells = ref []
-let state_fun_p = ref None
-let state_fun () =
-  match !state_fun_p with
-    | Some f -> f
-    | None ->
-      let f = {
-        f_name = "cells";
-        f_type = List.map (fun ({f_type=(_,t)},_) -> t) !cells, state_type;
-        f_cat = Tuple;
-        f_initial_cat = Tuple;
-        f_private = true;
-        f_options = 0 }
-      in state_fun_p := Some f; f
+
+let state_fun = {
+         f_name = "cells";
+         f_type = [], state_type;
+          f_cat = Tuple;
+  f_initial_cat = Tuple;
+      f_private = true;
+      f_options = 0
+}
+
+let add_cell r init =
+  cells := !cells @ [r, init];
+  state_fun.f_type <-
+    match state_fun.f_type with t,t' ->
+      (t @ [snd r.f_type]), t'
 
 let build_pred = function
     Attacker(i,t) -> 
