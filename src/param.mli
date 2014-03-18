@@ -203,6 +203,7 @@ val fun_decls : (string,Types.funsymb) Hashtbl.t
 val pred_env : (string,Types.predicate) Hashtbl.t
 val freenames : Types.funsymb list ref
 val cells : (Types.funsymb * Types.term) list ref
+val state_type: Types.typet
 val state_fun : Types.funsymb
 val add_cell : Types.funsymb -> Types.term -> unit
 val max_used_phase : int ref

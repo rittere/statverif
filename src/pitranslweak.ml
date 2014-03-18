@@ -1958,6 +1958,10 @@ let transl p =
 	      convertformat_to_2 t2)
 	  in
 	  Selfun.add_no_unif (mess2_i,[t1';t2';t1'';t2'']) n
+    | ({ p_info = [SeqBin(i)] } as pred, tl) ->
+        if i < !min_choice_phase then
+          Parsing_helper.user_error "seq2 cannot be used in phases before \"choice\" is used.\n";
+        Selfun.add_no_unif (pred, List.map convertformat_to_1 tl) n
     | _ -> Parsing_helper.user_error "The only allowed facts in \"nounif\" declarations are attacker: and mess: predicates (for process equivalences, user-defined predicates are forbidden).\n"
 	  ) (if !Param.typed_frontend then Pitsyntax.get_nounif() else Pisyntax.get_nounif());
 
