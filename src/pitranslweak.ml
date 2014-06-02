@@ -253,9 +253,16 @@ let update_cells ts =
 
 (* Return initial cell states. *)
 let initial_state () =
-  List.fold_left (fun result (cell, init) ->
-    let left = Terms.auto_cleanup (fun () -> Terms.copy_term2 init) in
-    let right = Terms.auto_cleanup (fun () -> Terms.copy_term2 init) in
+  List.fold_left (fun result ({f_type=_,t} as cell, opt_init) ->
+    let left, right =
+      match opt_init with
+        | Some init ->
+          (Terms.auto_cleanup (fun () -> Terms.copy_term2 init),
+           Terms.auto_cleanup (fun () -> Terms.copy_term2 init))
+        | None ->
+          (Var (Terms.new_var cell.f_name t),
+           Var (Terms.new_var cell.f_name t))
+    in
     FunMap.add (cell, "")
       { locked = false;
         valid = true;

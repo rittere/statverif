@@ -224,10 +224,16 @@ lib:
         { (TDefine($2, $4, $7)) :: $9 }
 |       EXPAND IDENT LPAREN typeidseq RPAREN DOT lib
         { (TExpand($2, $4)) :: $7 }
-|       CELL neidentseq opttype ASSIGN term DOT lib
-        { (List.map (fun x -> TCell(x, $3, $5)) $2) @ $7 }
+|       CELL neidentseq opttype optinit DOT lib
+        { (List.map (fun x -> TCell(x, $3, $4)) $2) @ $6 }
 | 
         { [] }
+
+optinit:
+|       /* empty */
+        { None }
+|       ASSIGN term
+        { Some $2 }
 
 all: 
 |       lib PROCESS tprocess EOF
