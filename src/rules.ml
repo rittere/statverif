@@ -1177,7 +1177,7 @@ let rec complete_rules () =
 	   if not (redundant_glob rule) then
 	     begin
 	       rule_base_ns := rule :: (!rule_base_ns);
-	       List.iter (fun (rule2,n) -> print_string "WITH "; Display.Text.display_rule rule2; compos normal_rule rule (rule2,n)) (!rule_base_sel);
+	       List.iter (fun (rule2,n) -> print_string "WITH "; Printf.printf "(%d) " n; Display.Text.display_rule rule2; compos normal_rule rule (rule2,n)) (!rule_base_sel);
 (* 	       List.iter (compos normal_rule rule) (!rule_base_sel) *)
 	       print_endline "";
 	     end
