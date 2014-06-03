@@ -777,28 +777,34 @@ let add_free_name (s,ext) t options =
 
 let cells = Param.cells
 
-let add_cell (s,ext) opt_t init =
+let add_cell (s,ext) opt_t opt_init =
   let opt_ty = match opt_t with
     | Some t -> Some (get_type t)
     | None -> None
   in
   if StringMap.mem s (!global_env) then
     input_error ("identifier " ^ s ^ " already declared (as a free name, a cell, a function, a predicate or a type)") ext;
-  let init', init_type = check_eq_term f_eq_tuple_name false false !global_env init in
-  let cell_type = match opt_ty with
-    | Some ty ->
-      begin
-        if init_type != ty then
-          input_error ("term is of type " ^ init_type.tname
-            ^ " but should have type " ^ ty.tname) (snd init);
-        ty
-      end
-    | None ->
-      init_type (* Type of cell becomes type of its initial value. *)
+  let opt_init = match opt_init with
+    | Some init ->
+      let init', ty = check_eq_term f_eq_tuple_name false false !global_env init in
+      Some (init', ty, snd init)
+    | None -> None
+  in
+  let cell_type = match opt_ty, opt_init with
+    | None, None ->
+      input_error ("type or initial value of cell must be specified") ext
+    | Some ty, None -> ty (* No initial value - use declared type. *)
+    | None, Some (_, init_ty, _) -> init_ty (* No declared type - infer type from initial value. *)
+    | Some ty, Some (_, init_ty, ext) ->
+      if ty != init_ty then begin
+        input_error ("term is of type " ^ init_ty.tname
+          ^ " but should have type " ^ ty.tname) ext
+      end;
+      ty
   in
   let r = Terms.create_name s ([],cell_type) (*private =>*)true in
   global_env := StringMap.add s (ECell r) (!global_env);
-  Param.add_cell r init'
+  Param.add_cell r (match opt_init with None -> None | Some (init, _, _) -> Some init)
 
 (* Check non-interference terms *)
 
@@ -2027,8 +2033,13 @@ let rename_decl = function
   | TNot(env, t) -> TNot(rename_env env, rename_gterm t)
   | TElimtrue(env, f) -> TElimtrue(rename_may_fail_env env, rename_term f)
   | TFree(i,ty, opt) -> TFree(rename_ie i, rename_ie ty, opt)
-  | TCell(i,Some ty,init) -> TCell(rename_ie i, Some (rename_ie ty), rename_term init)
-  | TCell(i,None,init) -> TCell(rename_ie i, None, rename_term init)
+  | TCell(i,ty,init) -> TCell(rename_ie i,
+                              (match ty with
+                                | Some ty -> Some (rename_ie ty)
+                                | None -> None),
+                              (match init with
+                                | Some init -> Some (rename_term init)
+                                | None -> None))
   | TClauses l -> TClauses (List.map (fun (env, cl) -> (rename_may_fail_env env, rename_clause cl)) l)
   | TDefine((s1,ext1),argl,def) ->
       input_error "macro definitions are not allowed inside macro definitions" ext1
@@ -2094,8 +2105,8 @@ let rec check_one = function
       not_list := (env, no) :: (!not_list)
   | TFree (name,ty,i) -> 
       add_free_name name ty i
-  | TCell (name,opt_ty,init) ->
-      add_cell name opt_ty init
+  | TCell (name,opt_ty,opt_init) ->
+      add_cell name opt_ty opt_init
   | TClauses c ->
       List.iter check_clause c
   | TLetFun ((s,ext), args, p) -> 

@@ -215,8 +215,8 @@ let state_fun = {
       f_options = 0
 }
 
-let add_cell r init =
-  cells := !cells @ [r, init];
+let add_cell r opt_init =
+  cells := !cells @ [r, opt_init];
   state_fun.f_type <-
     match state_fun.f_type with t,t' ->
       (t @ [snd r.f_type]), t'

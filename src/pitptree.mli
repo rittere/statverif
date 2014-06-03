@@ -154,6 +154,6 @@ type tdecl =
   | TDefine of ident * ident list * tdecl list
   | TExpand of ident * ident list
   | TLetFun of ident * envdecl * pterm_e
-  | TCell of ident * ident option(*type*) * term_e(*initial value*)
+  | TCell of ident * ident option(*type*) * term_e option(*initial value*)
 
 
