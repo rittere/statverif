@@ -245,9 +245,9 @@ let update_cells ts =
   ) old_cells in
   { ts with
     cur_cells = new_cells;
-    hypothesis = (Pred(Param.get_pred (SeqBin(ts.cur_phase)),
-                       [left_state old_cells; left_state new_cells;
-                        right_state old_cells; right_state new_cells]))
+    hypothesis = (Pred(Param.get_pred (ReachBin(ts.cur_phase)),
+                       [left_state new_cells;
+                        right_state new_cells]))
                  :: ts.hypothesis;
     hyp_tags = SequenceTag :: ts.hyp_tags }
 
@@ -260,8 +260,8 @@ let initial_state () =
           (Terms.auto_cleanup (fun () -> Terms.copy_term2 init),
            Terms.auto_cleanup (fun () -> Terms.copy_term2 init))
         | None ->
-          (Var (Terms.new_var cell.f_name t),
-           Var (Terms.new_var cell.f_name t))
+	    let newvar = Var (Terms.new_var cell.f_name t)  in
+	    (newvar, newvar)
     in
     FunMap.add (cell, "")
       { locked = false;
@@ -581,12 +581,10 @@ let rec transl_process cur_state process =
 
   (* DEBUG mode *)
 
-  (*
   Printf.printf "\n\n**********************\n\n";
   Display.Text.display_process_occ "" process;
   display_transl_state cur_state;
   flush_all ();
-  *)
 
   match process with
   | Nil -> ()
@@ -1297,21 +1295,28 @@ let rec transl_process cur_state process =
                cells
              ) cur_state2.cur_cells items (List.combine terms_left terms_right)
            in
+	   (* new state is reachable *)
            output_rule { cur_state2 with
              hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags
-           } (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
-                   [left_state cur_state2.cur_cells; left_state updated_cells;
-                    right_state cur_state2.cur_cells; right_state updated_cells]));
+           } (Pred(Param.get_pred (ReachBin(cur_state2.cur_phase)),
+                   [left_state updated_cells; right_state updated_cells]));
+	   (* attacker knowledge is preserved *)
+	   List.iter 
+	     (fun t ->
+	       let vc_left = Terms.new_var_def t
+               and vc_right = Terms.new_var_def t in 
+	       output_rule 
+		 { cur_state2 with
+		    hypothesis = (att_fact cur_state2.cur_cells cur_state2.cur_phase vc_left vc_right) :: cur_state2.hypothesis;
+		   hyp_tags = (KnowledgeProgressTag(occ))::cur_state2.hyp_tags
+		 } 
+		 (att_fact updated_cells cur_state2.cur_phase vc_left vc_right))
+	     (all_types());
+	   
            (* TODO: Always output sequence hypothesis here? *)
            let cur_state3 = { cur_state2 with
              cur_cells = updated_cells;
-             hypothesis = (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
-                                [left_state cur_state2.cur_cells; left_state updated_cells;
-                                 right_state cur_state2.cur_cells; right_state updated_cells]))
-                        :: cur_state2.hypothesis; (* TODO: Discard old hypotheses? *)
-             hyp_tags = SequenceTag :: cur_state2.hyp_tags
            } in
-
            transl_process cur_state3 proc
          ) cur_state1 terms_left terms_right;
 
@@ -1477,7 +1482,11 @@ let transl_attacker phase =
   List.iter (fun t ->
     let att_pred = Param.get_pred (AttackerBin(phase,t)) in
     let mess_pred = Param.get_pred (MessBin(phase,t)) in
-    let seq_pred = Param.get_pred (SeqBin(phase)) in
+    let reach_pred = Param.get_pred (ReachBin(phase)) in
+
+    (* The initial state is reachable *)
+    let init_state = initial_state() in 
+    add_rule [] (Pred (reach_pred, [left_state init_state; right_state init_state])) [] (RinitState att_pred);
 
     (* The attacker has any message sent on a channel he has (Rule Rl)*)
     let vs = new_state () in
@@ -1514,28 +1523,6 @@ let transl_attacker phase =
             [] (Rwrite(mess_pred))) !Param.cells;*)
 
       end;
-
-    (* State sequencing. *)
-    let vs1 = new_state () in
-    (* TODO: Move these outside the iteration over all types! *)
-    add_rule [] (Pred(seq_pred,
-        [left_state vs1; left_state vs1; right_state vs1; right_state vs1]))
-      [] (Rseq0 seq_pred);
-    let vs1 = new_state () in
-    let vs2 = new_state () in
-    let vs3 = new_state () in
-    add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
-              Pred(seq_pred, [left_state vs2; left_state vs3; right_state vs2; right_state vs3])]
-      (Pred(seq_pred, [left_state vs1; left_state vs3; right_state vs1; right_state vs3]))
-      [] (Rseq1 seq_pred);
-    let vs1 = new_state () in
-    let vs2 = new_state () in
-    let v1 = Terms.new_var_def t in
-    let v2 = Terms.new_var_def t in
-    add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
-              Pred(att_pred, [left_state vs1; v1; right_state vs1; v2])]
-      (Pred(att_pred, [left_state vs2; v1; right_state vs2; v2])) [] (Rinherit(seq_pred, att_pred));
-
 
     (* Clauses for equality *)
     let v = Terms.new_var_def t in
@@ -1965,9 +1952,9 @@ let transl p =
 	      convertformat_to_2 t2)
 	  in
 	  Selfun.add_no_unif (mess2_i,[t1';t2';t1'';t2'']) n
-    | ({ p_info = [SeqBin(i)] } as pred, tl) ->
+    | ({ p_info = [ReachBin(i)] } as pred, tl) ->
         if i < !min_choice_phase then
-          Parsing_helper.user_error "seq2 cannot be used in phases before \"choice\" is used.\n";
+          Parsing_helper.user_error "reach2 cannot be used in phases before \"choice\" is used.\n";
         Selfun.add_no_unif (pred, List.map convertformat_to_1 tl) n
     | _ -> Parsing_helper.user_error "The only allowed facts in \"nounif\" declarations are attacker: and mess: predicates (for process equivalences, user-defined predicates are forbidden).\n"
 	  ) (if !Param.typed_frontend then Pitsyntax.get_nounif() else Pisyntax.get_nounif());

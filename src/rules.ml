@@ -521,7 +521,7 @@ let check_fact_fail = function
 	      List.iter check_top_fail l
 	| [PolymPred _] (* user-defined *) | [] (* user-defined + plus a few others *)
 	| [Equal _] (* equal; used in user-defined clauses *)
-	| [Mess _ | InputP _ | OutputP _ | MessBin _ | InputPBin _ | Seq _ | SeqBin _
+	| [Mess _ | InputP _ | OutputP _ | MessBin _ | InputPBin _ | Seq _ | ReachBin _
 	   | OutputPBin _ | Table _ | TableBin _ | Compromise _ ] ->
 	    List.iter check_no_fail l
 	| _ -> Parsing_helper.internal_error "Terms.check_rule: unexpected predicate info"

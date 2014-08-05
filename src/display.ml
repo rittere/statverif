@@ -430,8 +430,8 @@ let display_item_list f l =
 let display_phase p =
   match p.p_info with
     [Attacker (n,_)] | [AttackerBin (n,_)] | [Mess (n,_)] | [MessBin (n,_)] 
-  | [InputP n] | [InputPBin n] | [OutputP n] | [OutputPBin n] | [Table n] 
-  | [TableBin n] | [Seq n] | [SeqBin n] -> 
+  | [InputP n] | [InputPBin n] | [OutputP n] | [OutputPBin n] | [ReachBin n] | [Table n] 
+  | [TableBin n] | [Seq n]  -> 
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))
   | [AttackerGuess _] -> print_string " in off-line phase"
@@ -669,7 +669,7 @@ let concl upper concl tag =
   | AssignTag(occ, cells) :: _ ->
       begin
         match concl with
-        | Pred({p_info = [SeqBin(n)]} as p, [_; FunApp(_,vs1); _; FunApp(_,vs2)]) ->
+        | Pred({p_info = [ReachBin(n)]} as p, [FunApp(_,vs1); FunApp(_,vs2)]) ->
             print_string ((if upper then "The " else "the ")
               ^ plural (List.length cells) "cell " "cells "
               ^ String.concat "," (List.map (fun s -> s.f_name) cells)
@@ -684,6 +684,12 @@ let concl upper concl tag =
       end;
       print_string " at assignment ";
       Lang.display_occ occ
+  | KnowledgeProgressTag(occ) :: _ -> begin
+      print_string ((if upper then "The " else "the attacker knowledge for cells")
+		    ^ " is preserved.");
+      print_string " at assignment ";
+      Lang.display_occ occ
+  end
   | TestUnifTag occ :: _ | TestUnifTag2 occ :: _ ->
       begin
 	print_string (if upper then "The attacker can make a distinguishing test at " else "the attacker can make a distinguishing test at ");
@@ -891,7 +897,7 @@ let rec display_hyp hyp tag =
     (_::h, TestUnifTag _ :: t) | (h, TestUnifTag2 _ :: t) | (h, TestTag _ :: t) 
   | (h, LetTag _ :: t) | (h, InputPTag _ :: t) | (h, OutputPTag _ :: t) 
   | (h, OutputTag _ :: t) | (h, InsertTag _ :: t) | (h, LetFilterTag _ :: t)
-  | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t)->
+  | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t) | (_::h, KnowledgeProgressTag _ :: t )->
       display_hyp h t
   | (h, ReplTag _ :: t) ->
       if !Param.non_interference then
@@ -950,7 +956,7 @@ let rec display_hyp hyp tag =
       end;
       print_string ",";
       newline()
-  | ((Pred({p_info = [SeqBin(n)]}, _))::h, SequenceTag::t) ->
+  | ((Pred({p_info = [ReachBin(n)]}, _))::h, SequenceTag::t) ->
       display_hyp h t
   | (m::h, (ReadAsTag(occ, cells)) :: t) ->
       display_hyp h t;
@@ -1016,14 +1022,16 @@ let rec display_hyp hyp tag =
   | (h, GetTagElse occ :: t) ->
       display_hyp h t
   | ([],[]) -> ()
-  | _ -> Parsing_helper.internal_error "Unexpected hypothesis"
+  | h::hs, [] -> Parsing_helper.internal_error "Too many hypotheses"
+  | [], t::ts -> Parsing_helper.internal_error "Too many tags"
+  | _ -> begin Printf.printf "Unexpected hypothesis foudn\n"; Parsing_helper.internal_error "Unexpected hypothesis" end
 
 let rec empty_hyp hyp tags =
   match hyp, tags with
     (_::h, TestUnifTag _ :: t) | (h, TestUnifTag2 _ :: t) | (h, TestTag _ :: t) 
   | (h, LetTag _ :: t) | (h, InputPTag _ :: t) | (h, OutputPTag _ :: t) 
   | (h, OutputTag _ :: t) | (h, LetFilterTag _ :: t) | (h, InsertTag _ :: t) 
-  | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t) -> empty_hyp h t
+  | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t) | (_::h, KnowledgeProgressTag _ :: t) -> empty_hyp h t
   | (h, ReplTag _ :: t) ->
       if !Param.non_interference then
 	if !Param.key_compromise == 1 then
@@ -1094,16 +1102,8 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string "(The attacker can output on all channels it has";
 	      display_phase p;
 	      print_string ".)"
-	  | Rseq0(p) ->
-	      print_string "(A state is reachable from itself";
-	      display_phase p;
-	      print_string ".)"
-	  | Rseq1(p) ->
-	      print_string "(State reachability is transitive";
-	      display_phase p;
-	      print_string ".)"
-	  | Rinherit(p,p') ->
-	      print_string "(Knowledge is communicated from one state to the next";
+	  | RinitState(p) ->
+	      print_string "(The initial state is reachable";
 	      display_phase p;
 	      print_string ".)"
 	  | Rread ->
@@ -1883,6 +1883,7 @@ let display_hyp_spec = function
   | GetTagElse o ->  print_string "gte"; print_string (string_of_int o)
   | OpenTag o -> print_string "oe"; print_string (string_of_int o)
   | AssignTag (o,_) -> print_string ":="; print_string (string_of_int o)
+  | KnowledgeProgressTag o -> print_string ":="; print_string (string_of_int o)
   | ReadAsTag (o,_) -> print_string "ra"; print_string (string_of_int o)
   | SequenceTag -> print_string "seq"
 
@@ -1900,7 +1901,7 @@ let rec display_hyp hyp hl tag =
   | (h, hl, LetTag _ :: t) | (h, hl, InputPTag _ :: t) 
   | (h, hl, OutputPTag _ :: t) | (h, hl, BeginEvent _ :: t)
   | (h, hl, OutputTag _ :: t) | (h, hl, InsertTag _ :: t)
-  | (h, hl, AssignTag _ :: t) ->
+  | (h, hl, AssignTag _ :: t) |  (_::h, hl, KnowledgeProgressTag _ :: t) ->
       display_hyp h hl t
   | (h, hl, ReplTag _ :: t) ->
       if !Param.non_interference then
@@ -1983,7 +1984,7 @@ let rec display_hyp hyp hl tag =
       end;
       print_string ".";
       newline()
-  | ((Pred({p_info = [SeqBin(n)]}, _))::h, s::hl, SequenceTag::t) ->
+  | ((Pred({p_info = [ReachBin(n)]}, _))::h, s::hl, SequenceTag::t) ->
       display_hyp h hl t
   | (m::h,s::hl,(ReadAsTag(occ,cells)) :: t) ->
       display_hyp h hl t;
@@ -2185,11 +2186,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_attacker_hyp hyp_num_list hl;
       print_string "So the attacker may trigger an output on this channel.";
       newline()
-  | Rseq0(p) ->
-      display_attacker_hyp hyp_num_list hl
-  | Rseq1(p) ->
-      display_attacker_hyp hyp_num_list hl
-  | Rinherit(p,p') ->
+  | RinitState(p) -> 
       display_attacker_hyp hyp_num_list hl
   | Rfail(p) ->
       display_attacker_hyp hyp_num_list hl;
@@ -2371,7 +2368,7 @@ let explain_history_tree tree =
 	(!count)
     | FRule(n, descr, constra, hl) -> 
 	match descr with
-	  Elem _ | TestUnif | Rseq0 _ | Rseq1 _ | Rinherit _ -> 
+	  Elem _ | TestUnif | RinitState _ -> 
 	    (* Do not display clauses that conclude member, testunif *)
 	    seen_list := (-1, tree.thefact) :: (!seen_list);
 	    -1

@@ -258,11 +258,11 @@ let build_pred = function
 	p_type = [state_type; channel_type; t; state_type; channel_type; t];
 	p_prop = pred_STATEFUL_2;
 	p_info = [MessBin(i,t)] }
-  | SeqBin(i) ->
-      { p_name = "seq2" ^ (get_suffix i);
-        p_type = [state_type; state_type; state_type; state_type];
+  | ReachBin(i) ->
+      { p_name = "reach2" ^ (get_suffix i);
+        p_type = [state_type; state_type];
         p_prop = pred_STATEFUL_2;
-        p_info = [SeqBin(i)] }
+        p_info = [ReachBin(i)] }
   | InputPBin(i) ->
       { p_name = "input2" ^ (get_suffix i); 
 	p_type = [state_type; channel_type; state_type; channel_type];
