@@ -430,7 +430,7 @@ let display_item_list f l =
 let display_phase p =
   match p.p_info with
     [Attacker (n,_)] | [AttackerBin (n,_)] | [Mess (n,_)] | [MessBin (n,_)] 
-  | [InputP n] | [InputPBin n] | [OutputP n] | [OutputPBin n] | [ReachBin n] | [Table n] 
+  | [InputP n] | [InputPBin n] | [OutputP n] | [OutputPBin n] | [ReachBin n] | [SeqBin n] |[Table n] 
   | [TableBin n] | [Seq n]  -> 
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))
@@ -669,7 +669,7 @@ let concl upper concl tag =
   | AssignTag(occ, cells) :: _ ->
       begin
         match concl with
-        | Pred({p_info = [ReachBin(n)]} as p, [FunApp(_,vs1); FunApp(_,vs2)]) ->
+	| Pred({p_info = [SeqBin(n)]} as p, [_; FunApp(_,vs1); _; FunApp(_,vs2)]) ->
             print_string ((if upper then "The " else "the ")
               ^ plural (List.length cells) "cell " "cells "
               ^ String.concat "," (List.map (fun s -> s.f_name) cells)
@@ -892,12 +892,13 @@ clauses H -> input:... and H -> output:... for non_interference currently
 have no tag for describing their conclusion
 *)
 
+
 let rec display_hyp hyp tag =
   match (hyp, tag) with
     (_::h, TestUnifTag _ :: t) | (h, TestUnifTag2 _ :: t) | (h, TestTag _ :: t) 
   | (h, LetTag _ :: t) | (h, InputPTag _ :: t) | (h, OutputPTag _ :: t) 
   | (h, OutputTag _ :: t) | (h, InsertTag _ :: t) | (h, LetFilterTag _ :: t)
-  | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t) | (_::h, KnowledgeProgressTag _ :: t )->
+  | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t) | (_::h, KnowledgeProgressTag _ :: t )-> 
       display_hyp h t
   | (h, ReplTag _ :: t) ->
       if !Param.non_interference then
@@ -909,8 +910,9 @@ let rec display_hyp hyp tag =
 	  match h with
 	    _::h' -> display_hyp h' t
 	  | _ -> Parsing_helper.internal_error "At least one hypothesis should be added for a replication for non_interference"
-      else
+      else begin
 	display_hyp h t
+      end
   | (m::h,InputTag occ :: t) ->
       display_hyp h t;
       begin
@@ -956,7 +958,7 @@ let rec display_hyp hyp tag =
       end;
       print_string ",";
       newline()
-  | ((Pred({p_info = [ReachBin(n)]}, _))::h, SequenceTag::t) ->
+  | ((Pred({p_info = [ReachBin(n)]}, _))::h, t)  | ((Pred({p_info = [SeqBin(n)]}, _))::h, t) ->
       display_hyp h t
   | (m::h, (ReadAsTag(occ, cells)) :: t) ->
       display_hyp h t;
@@ -1104,6 +1106,14 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string ".)"
 	  | RinitState(p) ->
 	      print_string "(The initial state is reachable";
+	      display_phase p;
+	      print_string ".)"
+	  | Rseq1(p) ->
+	      print_string "(State reachability is transitive";
+	      display_phase p;
+	      print_string ".)"
+	  | Rinherit(p,p') ->
+	      print_string "(Knowledge is communicated from one state to the next";
 	      display_phase p;
 	      print_string ".)"
 	  | Rread ->
@@ -1984,7 +1994,7 @@ let rec display_hyp hyp hl tag =
       end;
       print_string ".";
       newline()
-  | ((Pred({p_info = [ReachBin(n)]}, _))::h, s::hl, SequenceTag::t) ->
+  | ((Pred({p_info = [ReachBin(n)]}, _))::h, s::hl, t) | ((Pred({p_info = [SeqBin(n)]}, _))::h, s::hl, t)->
       display_hyp h hl t
   | (m::h,s::hl,(ReadAsTag(occ,cells)) :: t) ->
       display_hyp h hl t;

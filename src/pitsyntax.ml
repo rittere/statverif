@@ -2876,6 +2876,21 @@ let check_gfact_format env ((s, ext), tl, n) =
             let reach2_n = Param.get_pred (ReachBin(if n = -1 then (!Param.max_used_phase) else n)) in
             (reach2_n, [newl'; newr'])
       end
+  | "seq2" ->
+      begin
+        match tl with
+          [oldl;newl;oldr;newr] ->
+            if n > !Param.max_used_phase then
+              input_warning "nounif declaration for phase greater than used" ext;
+            let (oldl', ty_oldl) = check_gformat env oldl in
+            let (newl', ty_newl) = check_gformat env newl in
+            let (oldr', ty_oldr) = check_gformat env oldr in
+            let (newr', ty_newr) = check_gformat env newr in
+            if not (List.for_all ((=) Param.state_type) [ty_oldl; ty_newl; ty_oldr; ty_newr]) then
+              input_error ("Arguments of seq2 should all be of type state") ext;
+            let seq2_n = Param.get_pred (SeqBin(if n = -1 then (!Param.max_used_phase) else n)) in
+            (seq2_n, [oldl'; newl'; oldr'; newr'])
+      end
   | s ->
       if n != -1 then
 	input_error "declared predicates do not depend on phases, so no phase should be specified in such facts in queries" ext;

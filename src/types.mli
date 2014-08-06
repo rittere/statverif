@@ -50,6 +50,7 @@ type info =
   | AttackerBin of int * typet
   | MessBin of int * typet
   | ReachBin of int
+  | SeqBin of int
   | InputPBin of int
   | OutputPBin of int
   | AttackerGuess of typet
@@ -232,6 +233,8 @@ type label =
   | Ri of predicate * predicate
   | Ro of predicate * predicate
   | RinitState of predicate
+  | Rseq1 of predicate
+  | Rinherit of predicate * predicate
   | Rread
   | Rwrite of predicate
   | Rfail of predicate
