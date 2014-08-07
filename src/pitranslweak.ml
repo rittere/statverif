@@ -602,10 +602,10 @@ let rec transl_process cur_state process =
 
   (* DEBUG mode *)
 
-  Printf.printf "\n\n**********************\n\n";
+(*   Printf.printf "\n\n**********************\n\n";
   Display.Text.display_process_occ "" process;
   display_transl_state cur_state;
-  flush_all ();
+  flush_all (); *)
 
   match process with
   | Nil -> ()
@@ -1507,6 +1507,14 @@ let transl_attacker phase =
               Pred(seq_pred, [left_state vs2; left_state vs3; right_state vs2; right_state vs3])]
       (Pred(seq_pred, [left_state vs1; left_state vs3; right_state vs1; right_state vs3]))
       [] (Rseq1 seq_pred);
+
+        let vs1 = new_state () in
+    let vs2 = new_state () in
+    add_rule [Pred (reach_pred, [left_state vs1; right_state vs1]); 
+              Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2])]
+      (Pred (reach_pred, [left_state vs2; right_state vs2]))
+      [] (Rseq2 (reach_pred, seq_pred));
+
     let vs1 = new_state () in
     let vs2 = new_state () in
     let v1 = Terms.new_var_def t in

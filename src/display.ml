@@ -872,6 +872,9 @@ let display_rule_nonewline (hyp, concl, hist, constra) =
 let display_rule r =
   display_rule_nonewline r;
   newline()
+
+
+
 (* 
    TestUnifTag(occ): given only as first tag for clauses H /\ testunif(...) -> bad (for non_interference)
    TestUnifTag2(occ): given only as first tag for clauses H /\ M<>M' -> bad (for pitranslweak)
@@ -892,13 +895,41 @@ clauses H -> input:... and H -> output:... for non_interference currently
 have no tag for describing their conclusion
 *)
 
+let display_hyp_spec = function
+    ReplTag (o,_) -> print_string "!"; print_string (string_of_int o)
+  | InputTag o -> print_string "i"; print_string (string_of_int o)
+  | BeginEvent o -> print_string "b"; print_string (string_of_int o)
+  | BeginFact -> print_string "bf"
+  | LetFilterTag o -> print_string "s"; print_string (string_of_int o)
+  | LetFilterFact -> print_string "sf"
+  | OutputTag o -> print_string "o"; print_string (string_of_int o)
+  | TestTag o -> print_string "t"; print_string (string_of_int o)
+  | LetTag o -> print_string "l"; print_string (string_of_int o)
+  | TestUnifTag o -> print_string "u"; print_string (string_of_int o)
+  | TestUnifTag2 o -> print_string "ud"; print_string (string_of_int o)
+  | InputPTag o -> print_string "ip"; print_string (string_of_int o)
+  | OutputPTag o -> print_string "op"; print_string (string_of_int o)
+  | InsertTag o ->  print_string "it"; print_string (string_of_int o)
+  | GetTag o ->  print_string "gt"; print_string (string_of_int o)
+  | GetTagElse o ->  print_string "gte"; print_string (string_of_int o)
+  | OpenTag o -> print_string "oe"; print_string (string_of_int o)
+  | AssignTag (o,_) -> print_string ":="; print_string (string_of_int o)
+  | KnowledgeProgressTag o -> print_string ":="; print_string (string_of_int o)
+  | ReadAsTag (o,_) -> print_string "ra"; print_string (string_of_int o)
+  | SequenceTag -> print_string "seq"
 
 let rec display_hyp hyp tag =
+(*   Printf.printf "Entered display_hyp with tags:\n";
+  display_list display_hyp_spec " " tag;
+  Printf.printf "\n";
+  Printf.printf "Have %d hypotheses \n" (List.length hyp); *)
   match (hyp, tag) with
     (_::h, TestUnifTag _ :: t) | (h, TestUnifTag2 _ :: t) | (h, TestTag _ :: t) 
   | (h, LetTag _ :: t) | (h, InputPTag _ :: t) | (h, OutputPTag _ :: t) 
   | (h, OutputTag _ :: t) | (h, InsertTag _ :: t) | (h, LetFilterTag _ :: t)
   | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t) | (_::h, KnowledgeProgressTag _ :: t )-> 
+      display_hyp h t
+  | ((Pred({p_info = [ReachBin(n)]}, _))::h, t)  | ((Pred({p_info = [SeqBin(n)]}, _))::h, t) ->
       display_hyp h t
   | (h, ReplTag _ :: t) ->
       if !Param.non_interference then
@@ -958,8 +989,6 @@ let rec display_hyp hyp tag =
       end;
       print_string ",";
       newline()
-  | ((Pred({p_info = [ReachBin(n)]}, _))::h, t)  | ((Pred({p_info = [SeqBin(n)]}, _))::h, t) ->
-      display_hyp h t
   | (m::h, (ReadAsTag(occ, cells)) :: t) ->
       display_hyp h t;
       begin
@@ -1110,6 +1139,10 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string ".)"
 	  | Rseq1(p) ->
 	      print_string "(State reachability is transitive";
+	      display_phase p;
+	      print_string ".)"
+	  | Rseq2(p,p') ->
+	      print_string "(Sequencing preserves reachability";
 	      display_phase p;
 	      print_string ".)"
 	  | Rinherit(p,p') ->
@@ -1873,29 +1906,6 @@ let display_hyp_basic nl hl =
     WithLinks.fact h.thefact;
     print_string ".";
     newline()) nl hl
-
-let display_hyp_spec = function
-    ReplTag (o,_) -> print_string "!"; print_string (string_of_int o)
-  | InputTag o -> print_string "i"; print_string (string_of_int o)
-  | BeginEvent o -> print_string "b"; print_string (string_of_int o)
-  | BeginFact -> print_string "bf"
-  | LetFilterTag o -> print_string "s"; print_string (string_of_int o)
-  | LetFilterFact -> print_string "sf"
-  | OutputTag o -> print_string "o"; print_string (string_of_int o)
-  | TestTag o -> print_string "t"; print_string (string_of_int o)
-  | LetTag o -> print_string "l"; print_string (string_of_int o)
-  | TestUnifTag o -> print_string "u"; print_string (string_of_int o)
-  | TestUnifTag2 o -> print_string "ud"; print_string (string_of_int o)
-  | InputPTag o -> print_string "ip"; print_string (string_of_int o)
-  | OutputPTag o -> print_string "op"; print_string (string_of_int o)
-  | InsertTag o ->  print_string "it"; print_string (string_of_int o)
-  | GetTag o ->  print_string "gt"; print_string (string_of_int o)
-  | GetTagElse o ->  print_string "gte"; print_string (string_of_int o)
-  | OpenTag o -> print_string "oe"; print_string (string_of_int o)
-  | AssignTag (o,_) -> print_string ":="; print_string (string_of_int o)
-  | KnowledgeProgressTag o -> print_string ":="; print_string (string_of_int o)
-  | ReadAsTag (o,_) -> print_string "ra"; print_string (string_of_int o)
-  | SequenceTag -> print_string "seq"
 
 let rec display_hyp hyp hl tag =
   match (hyp, hl, tag) with

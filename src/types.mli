@@ -234,6 +234,7 @@ type label =
   | Ro of predicate * predicate
   | RinitState of predicate
   | Rseq1 of predicate
+  | Rseq2 of predicate * predicate
   | Rinherit of predicate * predicate
   | Rread
   | Rwrite of predicate
