@@ -1137,6 +1137,10 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string "(The initial state is reachable";
 	      display_phase p;
 	      print_string ".)"
+	  | Rseq0(p) ->
+	      print_string "(A state is reachable from itself";
+	      display_phase p;
+	      print_string ".)"
 	  | Rseq1(p) ->
 	      print_string "(State reachability is transitive";
 	      display_phase p;
@@ -2207,6 +2211,14 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       print_string "So the attacker may trigger an output on this channel.";
       newline()
   | RinitState(p) -> 
+      display_attacker_hyp hyp_num_list hl
+  | Rseq0(p) ->
+      display_attacker_hyp hyp_num_list hl
+  | Rseq1(p) ->
+      display_attacker_hyp hyp_num_list hl
+  | Rseq2(p, p') ->
+      display_attacker_hyp hyp_num_list hl
+  | Rinherit(p,p') ->
       display_attacker_hyp hyp_num_list hl
   | Rfail(p) ->
       display_attacker_hyp hyp_num_list hl;

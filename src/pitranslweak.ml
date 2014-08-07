@@ -1501,6 +1501,12 @@ let transl_attacker phase =
       (* State sequencing. *)
     (* TODO: Move these outside the iteration over all types! *)
     let vs1 = new_state () in
+    (* TODO: Move these outside the iteration over all types! *)
+    add_rule [] (Pred(seq_pred,
+        [left_state vs1; left_state vs1; right_state vs1; right_state vs1]))
+      [] (Rseq0 seq_pred);
+
+    let vs1 = new_state () in
     let vs2 = new_state () in
     let vs3 = new_state () in
     add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);

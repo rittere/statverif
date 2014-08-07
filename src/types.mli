@@ -233,6 +233,7 @@ type label =
   | Ri of predicate * predicate
   | Ro of predicate * predicate
   | RinitState of predicate
+  | Rseq0 of predicate
   | Rseq1 of predicate
   | Rseq2 of predicate * predicate
   | Rinherit of predicate * predicate
