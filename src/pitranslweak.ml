@@ -1506,13 +1506,13 @@ let transl_attacker phase =
         [left_state vs1; left_state vs1; right_state vs1; right_state vs1]))
       [] (Rseq0 seq_pred);
 
-    let vs1 = new_state () in
+(*    let vs1 = new_state () in
     let vs2 = new_state () in
     let vs3 = new_state () in
     add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
               Pred(seq_pred, [left_state vs2; left_state vs3; right_state vs2; right_state vs3])]
       (Pred(seq_pred, [left_state vs1; left_state vs3; right_state vs1; right_state vs3]))
-      [] (Rseq1 seq_pred);
+      [] (Rseq1 seq_pred); *)
 
         let vs1 = new_state () in
     let vs2 = new_state () in
@@ -1527,7 +1527,7 @@ let transl_attacker phase =
     let v2 = Terms.new_var_def t in
     add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
               Pred(att_pred, [left_state vs1; v1; right_state vs1; v2])]
-      (Pred(att_pred, [left_state vs2; v1; right_state vs2; v2])) [] (Rinherit(seq_pred, att_pred));
+      (Pred(att_pred, [left_state vs2; v1; right_state vs2; v2])) [] (Rinherit(seq_pred, att_pred)); 
 
     (* The attacker has any message sent on a channel he has (Rule Rl)*)
     let vs = new_state () in
