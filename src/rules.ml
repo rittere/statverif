@@ -996,9 +996,22 @@ let simp_eq_rule next_stage repeat_next_stage ((hyp, concl, hist, constra) as ru
 (* Combines the previous simplication functions, then add the
    simplified rule to the rule base *)
 
+(* Check whether rule is superfluous (taken from add-rule *)
+let is_superfluous rule = 
+    let test_impl = fun r -> implies r rule in
+   (List.exists test_impl (!rule_base_ns)) ||
+     (List.exists (function (r,_) -> implies r rule) (!rule_base_sel)) ||
+     (Queue.exists rule_queue test_impl) 
+
 let simplify_rule_constra_normal next_stage r =
-  assert (!Terms.current_bound_vars == []);
-  simplify_rule_constra next_stage r
+   if is_superfluous r then  begin
+    Printf.printf "Eliminated rule \n";
+    Display.Text.display_rule r
+  end
+  else begin 
+    assert (!Terms.current_bound_vars == []);
+    simplify_rule_constra next_stage r
+  end
 
 let rec normal_rule r = 
   assert (!Terms.current_bound_vars == []);
