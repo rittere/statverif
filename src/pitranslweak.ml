@@ -162,8 +162,15 @@ let add_rule hyp concl constra tags =
       try
         let constra' = TermsEq.simplify_constra_list (concl::hyp) constra in
       	let rule = (hyp, concl, Rule (!nrule, tags, hyp, concl, constra'), constra') in
-      	red_rules := rule :: !red_rules;
-      	incr nrule;
+	match tags with 
+	  RinitState _ -> 
+	    Rules.current_states  := (Some rule)::!Rules.current_states
+	| ProcessRule ((AssignTag _)::_, _) ->
+	    Rules.assignment_rules := (Some rule)::!Rules.assignment_rules
+	| _ -> begin
+      	    red_rules := rule :: !red_rules;
+      	    incr nrule
+	end
       with
       	TermsEq.FalseConstraint -> ()
     end
@@ -597,15 +604,14 @@ let unify_cells cur_state side =
         (side (FunMap.find (cell, "") cur_state.cur_cells))
     )
 
-
 let rec transl_process cur_state process =
 
   (* DEBUG mode *)
 
-(*   Printf.printf "\n\n**********************\n\n";
+(*     Printf.printf "\n\n**********************\n\n";
   Display.Text.display_process_occ "" process;
   display_transl_state cur_state;
-  flush_all (); *)
+  flush_all ();   *)
 
   match process with
   | Nil -> ()
@@ -1473,6 +1479,7 @@ let rules_Rf_for_red phase f_symb red_rules =
       	      ) red_rules
       	    ) red_rules
 
+
 let transl_attacker phase =
 
   (* The attacker can apply all functions, including tuples *)
@@ -1495,15 +1502,14 @@ let transl_attacker phase =
     let seq_pred = Param.get_pred (SeqBin(phase)) in
 
     (* The initial state is reachable *)
+    (* now done via special rule *)
     let init_state = initial_state() in 
-    add_rule [] (Pred (reach_pred, [left_state init_state; right_state init_state])) [] (RinitState att_pred);
+    add_rule [] (Pred (reach_pred, [left_state init_state; right_state init_state]) ) [] (RinitState att_pred);
 
       (* State sequencing. *)
     (* TODO: Move these outside the iteration over all types! *)
-    let vs1 = new_state () in
-    (* TODO: Move these outside the iteration over all types! *)
     add_rule [] (Pred(seq_pred,
-        [left_state vs1; left_state vs1; right_state vs1; right_state vs1]))
+        [left_state init_state; left_state init_state; right_state init_state; right_state init_state]))
       [] (Rseq0 seq_pred);
 
 (*    let vs1 = new_state () in
@@ -1514,7 +1520,7 @@ let transl_attacker phase =
       (Pred(seq_pred, [left_state vs1; left_state vs3; right_state vs1; right_state vs3]))
       [] (Rseq1 seq_pred); *)
 
-        let vs1 = new_state () in
+    let vs1 = new_state () in
     let vs2 = new_state () in
     add_rule [Pred (reach_pred, [left_state vs1; right_state vs1]); 
               Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2])]
