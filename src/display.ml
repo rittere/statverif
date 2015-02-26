@@ -1643,7 +1643,7 @@ let display_proc show_occ align proc =
         display_occ occ;
         display_list (fun (cell,_) -> display_idcl CName cell.f_name) "," pairs;
         print_string " := ";
-        display_term_list (List.map snd pairs);
+        display_term_list2 (List.map snd pairs);
         print_string ";";
         newline();
         display_process align p
