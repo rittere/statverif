@@ -548,6 +548,9 @@ let rule_queue = Queue.new_queue()
 
 let rule_count = ref 0
 
+
+let current_states = ref ([] : reduction option list)
+let assignment_rules = ref ([] : reduction option list)
 let rule_base_ns = ref ([] : reduction list)
 let rule_base_sel = ref ([] : (reduction * int) list)
 
@@ -556,7 +559,7 @@ let rule_base_sel = ref ([] : (reduction * int) list)
 
 let add_rule rule = 
   (* Check that the rule is not already in the rule base or in the queue *)
-  Printf.printf "Add-rule entered for rule\n";
+  Printf.printf "Add-rule entered for rule:\n";
   Display.Text.display_rule rule;
   let test_impl = fun r -> implies r rule in
   if (List.exists test_impl (!rule_base_ns)) ||
@@ -571,7 +574,7 @@ let add_rule rule =
       Queue.filter rule_queue test_impl;
       check_rule rule;
       Queue.add rule_queue rule;
-      Printf.printf "Added rule to rule queue:\n";
+      Printf.printf "Added rule to rule queue.\n";
     end
 
     
@@ -1179,8 +1182,9 @@ let redundant_res res_list =
 (* Saturates the rule base, by repeatedly applying the composition [compos] *)
 
 let rec complete_rules () =
-   match Queue.get rule_queue with
-     None -> !rule_base_ns
+  let rec compl_rules rule = 
+   match rule with
+     None -> ()
    | Some rule -> 
        print_string "COMPOSING ";
        Display.Text.display_rule rule;
@@ -1227,8 +1231,11 @@ let rec complete_rules () =
 	       Display.Text.newline()
 	     end
 	 end;
-       
-       complete_rules()
+       compl_rules (Queue.get rule_queue) in
+  List.iter compl_rules (!current_states);
+  List.iter compl_rules (!assignment_rules);
+  !rule_base_ns
+    
 
 
 (* Search algo *)

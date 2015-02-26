@@ -35,6 +35,9 @@ val display_debug : bool ref
 val implies : Types.reduction -> Types.reduction -> bool
 val reorder : Types.fact list -> Types.fact list
 
+val current_states : (Types.reduction option list) ref
+val assignment_rules : (Types.reduction option list) ref
+
 val completion : Types.reduction list -> unit
 val query_goal_std : Types.fact -> Types.reduction list
 
