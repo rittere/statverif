@@ -70,6 +70,10 @@ ifneq ($(strip $(ACCIDENT)),)
 	junk := $(error Source files in CLEANFILES! $(ACCIDENT))
 endif
 
+
+install: proverif
+	install proverif /usr/local/bin/statverif
+
 clean:
 	$(RM) $(CLEANFILES)
 
