@@ -164,9 +164,9 @@ let add_rule hyp concl constra tags =
       	let rule = (hyp, concl, Rule (!nrule, tags, hyp, concl, constra'), constra') in
 	match tags with 
 	  RinitState _ -> 
-	    Rules.current_states  := (Some rule)::!Rules.current_states
+	    Rules.current_states  := rule::!Rules.current_states
 	| ProcessRule ((AssignTag _)::_, _) ->
-	    Rules.assignment_rules := (Some rule)::!Rules.assignment_rules
+	    Rules.assignment_rules :=  rule::!Rules.assignment_rules
 	| _ -> begin
       	    red_rules := rule :: !red_rules;
       	    incr nrule

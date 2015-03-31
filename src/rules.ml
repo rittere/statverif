@@ -549,15 +549,15 @@ let rule_queue = Queue.new_queue()
 let rule_count = ref 0
 
 
-let current_states = ref ([] : reduction option list)
-let assignment_rules = ref ([] : reduction option list)
+let current_states = ref ([] : reduction list)
+let assignment_rules = ref ([] : reduction list)
 let rule_base_ns = ref ([] : reduction list)
 let rule_base_sel = ref ([] : (reduction * int) list)
 
 (* [add_rule] adds the rule in the rule base.
    It also eliminates subsumed rules. *)
 
-let add_rule rule = 
+let add_rule ?(insertAtBeginning=false) rule = 
   (* Check that the rule is not already in the rule base or in the queue *)
   Printf.printf "Add-rule entered for rule:\n";
   Display.Text.display_rule rule;
@@ -573,7 +573,10 @@ let add_rule rule =
 	   (function (r,_) -> not (implies rule r)) (!rule_base_sel);
       Queue.filter rule_queue test_impl;
       check_rule rule;
-      Queue.add rule_queue rule;
+      if insertAtBeginning then
+	  Queue.addBeginning rule_queue rule
+      else
+	Queue.add rule_queue rule;
       Printf.printf "Added rule to rule queue.\n";
     end
 
@@ -1016,13 +1019,13 @@ let simplify_rule_constra_normal next_stage r =
     simplify_rule_constra next_stage r
   end
 
-let rec normal_rule r = 
+let rec normal_rule ?(insertAtBeginning=false) r = 
   assert (!Terms.current_bound_vars == []);
   decompose_hyp_tuples2 (simp_eq_rule 
     (elim_not (Weaksecr.simplify (Noninterf.simplify 
     (decompose_concl_tuples (elim_taut (elim_any_x2 
     (simplify_rule_constra_normal (elem_simplif (elem_simplif2
-    (elim_redundant_hyp (fun r -> add_rule (limit_depth_rule r)) normal_rule) 
+    (elim_redundant_hyp (fun r -> add_rule ~insertAtBeginning:insertAtBeginning (limit_depth_rule r)) normal_rule) 
        normal_rule) normal_rule) ))))
        normal_rule) normal_rule)) normal_rule) r
   
@@ -1181,9 +1184,10 @@ let redundant_res res_list =
 
 (* Saturates the rule base, by repeatedly applying the composition [compos] *)
 
-let rec complete_rules () =
-  let rec compl_rules rule = 
-   match rule with
+  let complete_rules () = 
+    let rec compl_rules () = 
+      let rule = Queue.get rule_queue in
+	match rule with
      None -> ()
    | Some rule -> 
        print_string "COMPOSING ";
@@ -1231,9 +1235,11 @@ let rec complete_rules () =
 	       Display.Text.newline()
 	     end
 	 end;
-       compl_rules (Queue.get rule_queue) in
-  List.iter compl_rules (!current_states);
-  List.iter compl_rules (!assignment_rules);
+       compl_rules () in 
+      List.iter (normal_rule ~insertAtBeginning:true)(!current_states);
+      compl_rules ();
+  List.iter (normal_rule ~insertAtBeginning:true)(!assignment_rules);
+      compl_rules ();
   !rule_base_ns
     
 

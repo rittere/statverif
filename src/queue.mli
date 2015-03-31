@@ -31,6 +31,8 @@ val new_queue : unit -> 'a q
 
 val add : 'a q -> 'a -> unit
 
+val addBeginning : 'a q -> 'a -> unit
+
 val get : 'a q -> 'a option
 
 val length : 'a q -> int

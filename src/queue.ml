@@ -43,6 +43,12 @@ let add queue r =
   | Some q -> q.next <- Some { next = None; elem = r };
               queue.qend <- q.next
 
+let addBeginning queue r =
+  match queue.qstart with
+    None -> let qelem = { next = None; elem = r } in
+            queue.qstart <- Some qelem; queue.qend <- Some qelem
+  | Some q -> queue.qstart <- Some { next = queue.qstart; elem = r }
+
 let get queue =
   match queue.qstart with
     None -> None
