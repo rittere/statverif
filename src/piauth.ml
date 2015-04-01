@@ -1127,7 +1127,8 @@ and check_query restwork non_nested rec_call display_query (Before(e, hypll) as 
   let f = event_to_end_fact e in
   let clauses = Rules.query_goal_std f in
       (* Remove clauses subsumed modulo equational theory *)
-      (* print_string ((string_of_int (List.length clauses)) ^ " clauses before subsumption modulo eq.\n"); *)
+       print_string ((string_of_int (List.length clauses)) ^ " clauses before subsumption modulo eq.\n"); 
+       List.iter Display.Text.display_rule clauses;
   let clauses = 
     if TermsEq.hasEquations() then
       remove_subsumed_mod_eq clauses
