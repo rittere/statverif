@@ -29,6 +29,11 @@ open Parsing_helper
 open Types
 open Pitypes
 
+module FunMap = struct
+    include Funmap.FunMap
+    let for_all f m = Funmap.FunMap.fold (fun k v x -> x && (f k v)) m true
+end
+
 (* For key compromise *)
 let session0 = { f_name = "session0"; 
 		 f_type = [], Param.sid_type;
@@ -82,6 +87,11 @@ let rec check_uniq_ev f = function
  | Get(_,_,p,q,_) -> (check_uniq_ev f p) || (check_uniq_ev f q)
  | Phase(n,p,_) ->
      check_uniq_ev f p
+ | Lock(_,p,_) -> check_uniq_ev f p
+ | Unlock(_,p,_) -> check_uniq_ev f p
+ | Open(_,p,_) -> check_uniq_ev f p
+ | ReadAs(_,p,_) -> check_uniq_ev f p
+ | Assign(_,p,_) -> check_uniq_ev f p
 
 (* Compute in accu the list of events that are injective, so that
    they must be executed at most once for each value of the session
@@ -108,6 +118,11 @@ let rec get_uniq_ev_proc accu = function
  | Get(_,_,p,q,_) -> get_uniq_ev_proc accu p; get_uniq_ev_proc accu q
  | Phase(n,p,_) ->
      get_uniq_ev_proc accu p
+ | Lock(_,p,_) -> get_uniq_ev_proc accu p
+ | Unlock(_,p,_) -> get_uniq_ev_proc accu p
+ | Open(_,p,_) -> get_uniq_ev_proc accu p
+ | ReadAs(_,p,_) -> get_uniq_ev_proc accu p
+ | Assign(_,p,_) -> get_uniq_ev_proc accu p
 
 (* Check that all injective events can be executed at most once
    for each value of the session identifiers *)
@@ -295,6 +310,11 @@ type name_param_info =
    term: to put as parameter of name function symbol
 *)
 
+type cell_state =
+  { locked      : bool;
+    valid       : bool;
+    value       : term
+  }
 
 type transl_state = 
     { hypothesis : fact list; (* Current hypotheses of the rule *)
@@ -320,16 +340,110 @@ type transl_state =
       current_session_id : binder option;  
       is_below_begin : bool; 
       cur_phase : int;
+      cur_cells : cell_state FunMap.t; (* Current cell states *)
       input_pred : predicate;
       output_pred : predicate;
       hyp_tags : hypspec list
     }
 
-let att_fact phase t =
-  Pred(Param.get_pred (Attacker(phase, Terms.get_term_type t)), [t])
+
+
+(* COPY PASTED STUFF *)
+
+(* Invalidate unlocked cells. *)
+let invalidate_cells ts =
+  { ts with cur_cells = FunMap.map
+    (fun cell ->
+      if cell.locked then cell
+      else {cell with valid = false})
+    ts.cur_cells
+  }
+
+(* END COPY PASTE *)
+
+
+(* State manipulation. *)
+
+(* Invalidate unlocked cells. *)
+let invalidate_cells ts =
+  { ts with cur_cells = FunMap.map
+    (fun cell ->
+      if cell.locked then cell
+      else {cell with valid = false})
+    ts.cur_cells
+  }
+
+(* Return term for left/right state. *)
+let x_state getx cell_states =
+  FunApp(Param.state_fun,
+    List.fold_right (fun (r, _) l ->
+      (getx (FunMap.find (r, "") cell_states))::l)
+      !Param.cells [])
+let get_state = x_state (fun cell -> cell.value)
+
+(* Create fresh variables for invalidated cells. *)
+let update_cells ts =
+  if FunMap.for_all (fun _ cell -> cell.valid) ts.cur_cells then ts else
+  let old_cells = ts.cur_cells in
+  let new_cells = FunMap.mapi (fun ({f_name=s; f_type=(_,t)},_) cell ->
+    if cell.valid then cell else
+    { cell with
+      valid = true;
+      value = Var(Terms.new_var s t) }
+  ) old_cells in
+  { ts with
+    cur_cells = new_cells;
+    hypothesis = (Pred(Param.get_pred (SeqBin(ts.cur_phase)),
+                       [get_state old_cells; get_state new_cells]))
+                 :: ts.hypothesis;
+    hyp_tags = SequenceTag :: ts.hyp_tags }
+
+(* Return initial cell states. *)
+let initial_state () =
+  List.fold_left (fun result ({f_type=_,t} as cell, opt_init) ->
+    let value =
+      match opt_init with
+        | Some init ->
+          Terms.auto_cleanup (fun () -> Terms.copy_term2 init)
+        | None ->
+          Var (Terms.new_var cell.f_name t)
+    in
+    FunMap.add (cell, "")
+      { locked = false;
+        valid = true;
+        value = value }
+      result
+  ) FunMap.empty !Param.cells
+
+(* Return map of new variables, one for each cell * side. *)
+let new_state () =
+  List.fold_left (fun result ({f_type=_,t} as cell,_) ->
+    let x = Terms.new_var cell.f_name t in
+    FunMap.add (cell, "")
+      { locked = false;
+        valid = true;
+        value = Var x }
+    result) FunMap.empty !Param.cells
+
+let new_state_format () =
+  FFunApp(Param.state_fun,
+    List.map (fun ({f_type=_,t} as cell,_) ->
+      FAny(Terms.new_var cell.f_name t)) !Param.cells)
+let new_state_formatv () =
+  FFunApp(Param.state_fun,
+    List.map (fun ({f_type=_,t} as cell,_) ->
+      FVar(Terms.new_var cell.f_name t)) !Param.cells)
+
+
+(* Creation of fact of attacker', mess' and table. *)
+
+let att_fact s phase t =
+  Pred(Param.get_pred (Attacker(phase, Terms.get_term_type t)),
+       [get_state s; t])
   
-let mess_fact phase tc tm =
-  Pred(Param.get_pred (Mess(phase, Terms.get_term_type tm)), [tc;tm])
+let mess_fact s phase tc tm =
+  Pred(Param.get_pred (Mess(phase, Terms.get_term_type tm)),
+       [get_state s; tc;tm])
   
 let table_fact phase t =
   Pred(Param.get_pred (Table(phase)), [t])
@@ -872,12 +986,17 @@ let transl_fact next_fun cur_state occ f =
 
 (* Translate process *)
 
-let rec transl_process cur_state = function
-   Nil -> ()
- | Par(p,q) -> transl_process cur_state p;
-               transl_process cur_state q
+let rec transl_process cur_state process =
+  match process with
+ |  Nil -> ()
+ | Par(p,q) -> 
+    let cur_state = invalidate_cells cur_state in
+    transl_process cur_state p;
+    transl_process cur_state q
  | (Repl (p,occ)) as p' -> 
      let cur_state = { cur_state with repl_count = cur_state.repl_count + 1 } in
+     (* Always invalidate cells *)
+     let cur_state = invalidate_cells cur_state in
      (* Always introduce session identifiers ! *)
      let cur_state = 
        if cur_state.is_below_begin then
@@ -897,14 +1016,14 @@ let rec transl_process cur_state = function
 	 begin
 	   if (!Param.key_compromise == 0) then
 	     transl_process { cur_state with 
-			      hypothesis = (att_fact cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
+			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
 			      current_session_id = Some v;
 			      name_params = Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
 			    } p
 	   else if (!Param.key_compromise == 1) then
 	     transl_process { cur_state with 
-			      hypothesis = (att_fact cur_state.cur_phase (Var v)) :: (att_fact cur_state.cur_phase (Var comp_session_var)) :: cur_state.hypothesis;
+			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: (att_fact cur_state.cur_cells cur_state.cur_phase (Var comp_session_var)) :: cur_state.hypothesis;
 			      current_session_id = Some v;
 			      name_params = Always("!comp", comp_session_var, Var comp_session_var) :: 
                                  Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
@@ -912,7 +1031,7 @@ let rec transl_process cur_state = function
 			    } p
 	   else 
 	     transl_process { cur_state with 
-			      hypothesis = (att_fact cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
+			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
 			      current_session_id = Some v;
 			      name_params = Always("!comp", v', compromised_session) :: 
                                  Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
@@ -1014,6 +1133,7 @@ let rec transl_process cur_state = function
        )) cur_state (OTest(occ)) t
  | Input(tc,pat,p,occ) ->
       begin
+	let cur_state = update_cells (invalidate_cells cur_state) in
         match tc with
           FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker ->
 	    let x = Reduction_helper.new_var_pat pat in
@@ -1021,7 +1141,7 @@ let rec transl_process cur_state = function
                 end_destructor_group (fun cur_state2 -> transl_process cur_state2 p) occ
 	            { cur_state1 with 
 		      last_step_unif = (pat1, x) :: cur_state1.last_step_unif;
-		      hypothesis = (att_fact cur_state1.cur_phase x) :: cur_state1.hypothesis;
+		      hypothesis = (att_fact cur_state1.cur_cells cur_state1.cur_phase x) :: cur_state1.hypothesis;
 		      hyp_tags = (InputTag(occ)) :: cur_state1.hyp_tags 
 		    }
               ) cur_state pat;
@@ -1042,7 +1162,7 @@ let rec transl_process cur_state = function
                     end_destructor_group (fun cur_state4 -> transl_process cur_state4 p) occ 
 		      { cur_state3 with 
                         last_step_unif = (pat2, x) :: cur_state3.last_step_unif;
-		        hypothesis = (mess_fact cur_state3.cur_phase pat1 x) :: cur_state3.hypothesis;
+		        hypothesis = (mess_fact cur_state3.cur_cells cur_state3.cur_phase pat1 x) :: cur_state3.hypothesis;
 		        hyp_tags = (InputTag(occ)) :: cur_state3.hyp_tags
 		      }
                   ) cur_state2 pat;
@@ -1073,7 +1193,7 @@ let rec transl_process cur_state = function
                 output_rule { cur_state2 with 
                               hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis;
                               hyp_tags = (OutputTag occ) :: cur_state2.hyp_tags
-			    } (att_fact cur_state.cur_phase pat1)
+			    } (att_fact cur_state.cur_cells cur_state.cur_phase pat1)
               ) occ cur_state1
             )) cur_state t
         | _ -> transl_term (no_fail (fun cur_state1 patc ->
@@ -1086,7 +1206,7 @@ let rec transl_process cur_state = function
                      output_rule { cur_state3 with 
 				   hypothesis = replace_begin_out cur_state3.name_params cur_state3.hyp_tags cur_state3.hypothesis;
                                    hyp_tags = (OutputTag occ) :: cur_state2.hyp_tags
-			         } (mess_fact cur_state.cur_phase patc pat1)
+			         } (mess_fact cur_state.cur_cells cur_state.cur_phase patc pat1)
                    ) occ cur_state2
                  )) cur_state1 t
 	       )) cur_state tc
@@ -1255,6 +1375,139 @@ let rec transl_process cur_state = function
                       cur_phase = n;
                       input_pred = Param.get_pred (InputP(n));
                       output_pred = Param.get_pred (OutputP(n)) } p
+
+  | Lock(cells, proc, occ)
+  | Unlock(cells, proc, occ) ->
+      let new_locked = match process with Lock _ -> true | _ -> false in
+      let cur_state = invalidate_cells cur_state in
+      transl_process { cur_state with cur_cells =
+        List.fold_left (fun cur_cells s ->
+          FunMap.add (s, "")
+            { (FunMap.find (s, "") cur_cells) with
+              locked = new_locked }
+            cur_cells
+        ) cur_state.cur_cells cells
+      } proc
+
+  | Open(cells, proc, occ) ->
+      List.iter (fun s ->
+        output_rule { cur_state with hyp_tags = (OpenTag occ) :: cur_state.hyp_tags }
+          (att_fact cur_state.cur_cells cur_state.cur_phase (FunApp(s,[])))) cells;
+      transl_process cur_state proc
+
+  | Assign(items, proc, occ) ->
+       let cur_state = update_cells (invalidate_cells cur_state) in
+       transl_term_list (fun cur_state1 terms ->
+         (* Case both sides succeed. *)
+         transl_both_side_succeed (fun cur_state2 ->
+           let updated_cells = List.fold_left2
+             (fun cells (s, _) (term) ->
+               FunMap.add (s, "")
+                 { (FunMap.find (s, "") cells) with
+                   value = term
+                   valid = true }
+               cells
+             ) cur_state2.cur_cells items terms
+           in
+           output_rule { cur_state2 with
+             hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags
+           } (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
+                   [left_state cur_state2.cur_cells; left_state updated_cells;
+                    right_state cur_state2.cur_cells; right_state updated_cells]));
+           (* TODO: Always output sequence hypothesis here? *)
+           let cur_state3 = { cur_state2 with
+             cur_cells = updated_cells;
+             hypothesis = (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
+                                [left_state cur_state2.cur_cells; left_state updated_cells;
+                                 right_state cur_state2.cur_cells; right_state updated_cells]))
+                        :: cur_state2.hypothesis; (* TODO: Discard old hypotheses? *)
+             hyp_tags = SequenceTag :: cur_state2.hyp_tags
+           } in
+
+           transl_process cur_state3 proc
+         ) cur_state1 terms_left terms_right;
+
+         (* Case left side succeeds and right side fails. *)
+         transl_one_side_fails (fun cur_state2 ->
+           output_rule {cur_state2 with
+               hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+             } (Pred(Param.bad_pred, []))
+         ) cur_state1 terms_right terms_left;
+
+         (* Case right side succeeds and left side fails. *)
+         transl_one_side_fails (fun cur_state2 ->
+           output_rule {cur_state2 with
+               hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
+             } (Pred(Param.bad_pred, []))
+         ) cur_state1 terms_left terms_right
+       ) cur_state (List.map snd items)
+
+  | ReadAs(items, proc, occ) ->
+      let cur_state = update_cells (invalidate_cells cur_state) in
+      transl_pat_list (fun cur_state1 terms_pattern binders ->
+        transl_term_list (fun cur_state2 terms_pat_left terms_pat_right ->
+          let gen_pats_l, gen_pats_r = List.split (
+            List.map2 (fun term_pat_left term_pat_right ->
+              generate_pattern_with_uni_var binders term_pat_left term_pat_right
+            ) terms_pat_left terms_pat_right
+          ) in
+
+          transl_both_side_succeed (fun cur_state3 ->
+            (* Pattern satisfied in both sides. *)
+            begin try Terms.auto_cleanup (fun () ->
+              unify_cells cur_state2 (fun x -> x.left_value) items terms_pat_left;
+              unify_cells cur_state2 (fun x -> x.right_value) items terms_pat_right;
+              transl_process { cur_state3 with
+                  name_params = (List.map
+                    (fun b -> match b.link with
+                       | TLink t -> t
+                       | _ -> internal_error "unexpected link in translate_term (7)"
+                    ) binders) @ cur_state3.name_params;
+                  name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
+                  name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning
+                } proc;
+            ) with Terms.Unify -> () end;
+
+            (* Pattern satisfied only on left side. *)
+            begin try Terms.auto_cleanup (fun () ->
+              unify_cells cur_state2 (fun x -> x.left_value) items terms_pat_left;
+              output_rule { cur_state3 with
+                  constra = (List.map2 (fun (cell, _) gen_pat_r ->
+                        [Neq((FunMap.find (cell, "") cur_state3.cur_cells).right_value, gen_pat_r)]
+                      ) items gen_pats_r)
+                    @ cur_state3.constra;
+                  hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
+                } (Pred(Param.bad_pred, []))
+            ) with Terms.Unify -> () end;
+
+            (* Pattern satisfied only on right side. *)
+            begin try Terms.auto_cleanup (fun () ->
+              unify_cells cur_state2 (fun x -> x.right_value) items terms_pat_right;
+              output_rule { cur_state3 with
+                constra = (List.map2 (fun (cell, _) gen_pat_l ->
+                      [Neq((FunMap.find (cell, "") cur_state3.cur_cells).left_value, gen_pat_l)]
+                    ) items gen_pats_l)
+                  @ cur_state3.constra;
+                hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
+              } (Pred(Param.bad_pred, []))
+            ) with Terms.Unify -> () end;
+          ) cur_state2 terms_pat_left terms_pat_right;
+
+          (* Case left side succeeds and right side fails. *)
+          transl_one_side_fails (fun cur_state3 ->
+            output_rule { cur_state3 with
+                hyp_tags = (TestUnifTag2 occ) :: cur_state3.hyp_tags
+              } (Pred(Param.bad_pred, []))
+          ) cur_state2 terms_pat_right terms_pat_left;
+
+          (* Case right side succeeds and left side fails. *)
+          transl_one_side_fails (fun cur_state3 ->
+            output_rule { cur_state3 with
+                hyp_tags = (TestUnifTag2 occ) :: cur_state3.hyp_tags
+              } (Pred(Param.bad_pred, []))
+          ) cur_state2 terms_pat_left terms_pat_right;
+        ) cur_state1 terms_pattern
+      ) cur_state (List.map snd items)
 
 (* [rules_for_red] does not need the rewrite rules f(...fail...) -> fail
    for categories Eq and Tuple in [red_rules]. Indeed, clauses
