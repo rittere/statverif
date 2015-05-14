@@ -913,7 +913,46 @@ and transl_pat_list put_var f cur_state = function
 	  f cur_state3 (term::term_list) 
 	    ) cur_state2 pl
 	  ) cur_state p
-      
+
+
+(*********************************************
+        Equation of success or failure
+**********************************************)
+
+exception Failure_Unify
+
+(* Unify term t with a message variable.
+   Raises Unify in case t is fail. *)
+
+let unify_var t =
+  let x = Terms.new_var_def (Terms.get_term_type t) in
+  Terms.unify t x
+
+(* Unify term t with fail *)
+
+let unify_fail t =
+  let fail = Terms.get_fail_term (Terms.get_term_type t) in
+  Terms.unify fail t
+
+let transl_both_side_succeed nextf cur_state list_  =
+  Terms.auto_cleanup (fun _ ->
+    try
+      List.iter unify_var list_;
+      nextf cur_state
+    with Terms.Unify -> ()
+  )
+
+let transl_both_side_fail nextf cur_state list_  =
+  List.iter (fun t ->
+    Terms.auto_cleanup (fun _ ->
+			try
+			  unify_fail t;
+			  nextf cur_state
+			with Terms.Unify -> ()
+		       )
+	    ) list_
+
+(* COPY PASTE ENDS *)      
 
 let rec transl_unif next_f cur_state accu = function
     [] -> next_f { cur_state with
@@ -1404,7 +1443,7 @@ let rec transl_process cur_state process =
              (fun cells (s, _) (term) ->
                FunMap.add (s, "")
                  { (FunMap.find (s, "") cells) with
-                   value = term
+                   value = term;
                    valid = true }
                cells
              ) cur_state2.cur_cells items terms
@@ -1412,44 +1451,35 @@ let rec transl_process cur_state process =
            output_rule { cur_state2 with
              hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags
            } (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
-                   [left_state cur_state2.cur_cells; left_state updated_cells;
-                    right_state cur_state2.cur_cells; right_state updated_cells]));
+                   [get_state cur_state2.cur_cells; get_state updated_cells]));
            (* TODO: Always output sequence hypothesis here? *)
            let cur_state3 = { cur_state2 with
              cur_cells = updated_cells;
              hypothesis = (Pred(Param.get_pred (SeqBin(cur_state2.cur_phase)),
-                                [left_state cur_state2.cur_cells; left_state updated_cells;
-                                 right_state cur_state2.cur_cells; right_state updated_cells]))
+                                [get_state cur_state2.cur_cells; get_state updated_cells]))
                         :: cur_state2.hypothesis; (* TODO: Discard old hypotheses? *)
              hyp_tags = SequenceTag :: cur_state2.hyp_tags
            } in
 
            transl_process cur_state3 proc
-         ) cur_state1 terms_left terms_right;
-
-         (* Case left side succeeds and right side fails. *)
-         transl_one_side_fails (fun cur_state2 ->
-           output_rule {cur_state2 with
-               hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
-             } (Pred(Param.bad_pred, []))
-         ) cur_state1 terms_right terms_left;
-
-         (* Case right side succeeds and left side fails. *)
-         transl_one_side_fails (fun cur_state2 ->
-           output_rule {cur_state2 with
-               hyp_tags = (TestUnifTag2 occ)::cur_state2.hyp_tags
-             } (Pred(Param.bad_pred, []))
-         ) cur_state1 terms_left terms_right
+         ) cur_state1 terms;
        ) cur_state (List.map snd items)
 
   | ReadAs(items, proc, occ) ->
       let cur_state = update_cells (invalidate_cells cur_state) in
-      transl_pat_list (fun cur_state1 terms_pattern binders ->
-        transl_term_list (fun cur_state2 terms_pat_left terms_pat_right ->
-          let gen_pats_l, gen_pats_r = List.split (
-            List.map2 (fun term_pat_left term_pat_right ->
+      transl_pat_list PutAlways (fun cur_state1 terms_pattern ->
+        end_destructor_group (fun cur_state2 ->
+	  
+)
+
+
+
+
+        transl_term_list (fun cur_state2 terms_pat ->
+          let gen_pats = List.split (
+            List.map (fun term_pat_left term_pat_right ->
               generate_pattern_with_uni_var binders term_pat_left term_pat_right
-            ) terms_pat_left terms_pat_right
+            ) terms_pat
           ) in
 
           transl_both_side_succeed (fun cur_state3 ->
