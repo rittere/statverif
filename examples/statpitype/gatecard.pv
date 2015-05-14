@@ -1,0 +1,61 @@
+
+type key.
+fun sign(bitstring, key): bitstring.
+
+channel ch.
+
+free K: key [private].
+free L: key [private].
+free zero: bitstring [private].
+
+event gate_open(bitstring).
+event gate_debit(bitstring).
+event card_permit(bitstring).
+event card_add(bitstring).
+
+query x:bitstring; inj-event(card_add(x)) ==> event(gate_debit(x)).
+
+cell s : bitstring := (zero, zero).
+
+let gate =
+  ( !
+    new n: bitstring;
+    out(ch, n);
+    in(ch, z : bitstring);
+    if z = sign(n, K) then (out(ch, ch);
+    event gate_open(n))
+  ) | ( !
+    in(ch, x_m : bitstring);
+    event gate_debit(x_m);
+    out(ch, sign(x_m, L))
+  ).
+
+let card =
+  ( !
+    lock s;
+    in(ch, y: bitstring);
+    read s as (s_1: bitstring, s_2: bitstring);
+    if s_2 <> zero then
+       event card_permit(s_2);
+       s := (s_1, zero);
+       out(ch, sign(y, K))
+    else if s_1 <> zero then
+       event card_permit(s_1);
+       s := (zero, zero);
+       out(ch, sign(y, K))
+  ) | ( !
+    lock s;
+    new m: bitstring;
+    out(ch, m);
+    in(ch, x_s: bitstring);
+    if x_s = sign(m, L) then
+    read s as (s_1: bitstring, s_2: bitstring);
+    if s_1 = zero then
+       event card_add(m);
+       s := (m, zero)
+    else if s_2 = zero then
+       event card_add(m);
+       s := (s_1, m)
+  ).
+
+process (gate | card)
