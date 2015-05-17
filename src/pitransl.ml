@@ -346,22 +346,6 @@ type transl_state =
       hyp_tags : hypspec list
     }
 
-
-
-(* COPY PASTED STUFF *)
-
-(* Invalidate unlocked cells. *)
-let invalidate_cells ts =
-  { ts with cur_cells = FunMap.map
-    (fun cell ->
-      if cell.locked then cell
-      else {cell with valid = false})
-    ts.cur_cells
-  }
-
-(* END COPY PASTE *)
-
-
 (* State manipulation. *)
 
 (* Invalidate unlocked cells. *)
@@ -1025,6 +1009,13 @@ let transl_fact next_fun cur_state occ f =
 
 (* Translate process *)
 
+
+let unify_cells cur_state side =
+  List.iter2 (fun (cell, _) term ->
+      Terms.unify term
+        (side (FunMap.find (cell, "") cur_state.cur_cells))
+    )
+
 let rec transl_process cur_state process =
   match process with
  |  Nil -> ()
@@ -1467,77 +1458,12 @@ let rec transl_process cur_state process =
 
   | ReadAs(items, proc, occ) ->
       let cur_state = update_cells (invalidate_cells cur_state) in
-      transl_pat_list PutAlways (fun cur_state1 terms_pattern ->
-        end_destructor_group (fun cur_state2 ->
-	  
-)
-
-
-
-
-        transl_term_list (fun cur_state2 terms_pat ->
-          let gen_pats = List.split (
-            List.map (fun term_pat_left term_pat_right ->
-              generate_pattern_with_uni_var binders term_pat_left term_pat_right
-            ) terms_pat
-          ) in
-
-          transl_both_side_succeed (fun cur_state3 ->
-            (* Pattern satisfied in both sides. *)
-            begin try Terms.auto_cleanup (fun () ->
-              unify_cells cur_state2 (fun x -> x.left_value) items terms_pat_left;
-              unify_cells cur_state2 (fun x -> x.right_value) items terms_pat_right;
-              transl_process { cur_state3 with
-                  name_params = (List.map
-                    (fun b -> match b.link with
-                       | TLink t -> t
-                       | _ -> internal_error "unexpected link in translate_term (7)"
-                    ) binders) @ cur_state3.name_params;
-                  name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
-                  name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning
-                } proc;
-            ) with Terms.Unify -> () end;
-
-            (* Pattern satisfied only on left side. *)
-            begin try Terms.auto_cleanup (fun () ->
-              unify_cells cur_state2 (fun x -> x.left_value) items terms_pat_left;
-              output_rule { cur_state3 with
-                  constra = (List.map2 (fun (cell, _) gen_pat_r ->
-                        [Neq((FunMap.find (cell, "") cur_state3.cur_cells).right_value, gen_pat_r)]
-                      ) items gen_pats_r)
-                    @ cur_state3.constra;
-                  hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
-                } (Pred(Param.bad_pred, []))
-            ) with Terms.Unify -> () end;
-
-            (* Pattern satisfied only on right side. *)
-            begin try Terms.auto_cleanup (fun () ->
-              unify_cells cur_state2 (fun x -> x.right_value) items terms_pat_right;
-              output_rule { cur_state3 with
-                constra = (List.map2 (fun (cell, _) gen_pat_l ->
-                      [Neq((FunMap.find (cell, "") cur_state3.cur_cells).left_value, gen_pat_l)]
-                    ) items gen_pats_l)
-                  @ cur_state3.constra;
-                hyp_tags = TestUnifTag2(occ) :: cur_state3.hyp_tags
-              } (Pred(Param.bad_pred, []))
-            ) with Terms.Unify -> () end;
-          ) cur_state2 terms_pat_left terms_pat_right;
-
-          (* Case left side succeeds and right side fails. *)
-          transl_one_side_fails (fun cur_state3 ->
-            output_rule { cur_state3 with
-                hyp_tags = (TestUnifTag2 occ) :: cur_state3.hyp_tags
-              } (Pred(Param.bad_pred, []))
-          ) cur_state2 terms_pat_right terms_pat_left;
-
-          (* Case right side succeeds and left side fails. *)
-          transl_one_side_fails (fun cur_state3 ->
-            output_rule { cur_state3 with
-                hyp_tags = (TestUnifTag2 occ) :: cur_state3.hyp_tags
-              } (Pred(Param.bad_pred, []))
-          ) cur_state2 terms_pat_left terms_pat_right;
-        ) cur_state1 terms_pattern
-      ) cur_state (List.map snd items)
+      transl_pat_list PutAlways (fun cur_state1 terms_pat ->
+        end_destructor_group (fun cur_state2 -> 
+          unify_cells cur_state2 (fun x -> x.value) items terms_pat;
+	  transl_process cur_state2 proc
+        ) occ cur_state1
+      ) cur_state (List.map snd items);;
 
 (* [rules_for_red] does not need the rewrite rules f(...fail...) -> fail
    for categories Eq and Tuple in [red_rules]. Indeed, clauses
@@ -1551,11 +1477,12 @@ let rec transl_process cur_state process =
     of the value of secrets. *)
 
 let rules_for_red phase f red_rules =
+  let state_var = new_state () in
   List.iter (fun red_rule -> 
     let res_pred = Param.get_pred (Attacker(phase, snd f.f_type)) in
     let (hyp, concl, side_c) = Terms.copy_red red_rule in
-    add_rule (List.map (att_fact phase) hyp)
-      (att_fact phase concl) 
+    add_rule (List.map (att_fact state_var phase) hyp)
+      (att_fact state_var phase concl) 
       (List.map (fun (t1,t2) -> [Neq(t1,t2)]) side_c) 
       (Apply(f, res_pred));
     if !Param.non_interference then
@@ -1578,13 +1505,14 @@ let rules_for_red phase f red_rules =
 	let vlist = List.map Terms.new_unfailing_var_def thyp in
 	add_rule 
           ((Pred(testunif_pred, [FunApp(tuple_fun, vlist); FunApp(tuple_fun, hyp')]))
-	   :: List.map (att_fact phase) vlist)
+	   :: List.map (att_fact state_var phase) vlist)
 	  (Pred(bad_pred, []))
 	  []
 	  (TestApply(f, res_pred))
       end) red_rules
 
 let transl_attacker phase =
+  let state_var = new_state () in
    (* The attacker can apply all functions *)
   Hashtbl.iter (Terms.clauses_for_function (rules_for_red phase)) Param.fun_decls;
   Hashtbl.iter (Terms.clauses_for_function (rules_for_red phase)) Terms.tuple_table;
@@ -1596,16 +1524,16 @@ let transl_attacker phase =
     (* The attacker has any message sent on a channel he has *)
     let v = Terms.new_var_def t in
     let vc = Terms.new_var_def Param.channel_type in
-    add_rule [Pred(mess_pred, [vc; v]); att_fact phase vc]
-          (Pred(att_pred, [v])) [] (Rl(att_pred,mess_pred));
+    add_rule [Pred(mess_pred, [get_state state_var; vc; v]); att_fact state_var phase vc]
+          (Pred(att_pred, [get_state state_var; v])) [] (Rl(att_pred,mess_pred));
 
     if (!Param.active_attacker) then
       begin
       (* The attacker can send any message he has on any channel he has *)
 	let v = Terms.new_var_def t in
 	let vc = Terms.new_var_def Param.channel_type in
-	add_rule [att_fact phase vc; Pred(att_pred, [v])]
-          (Pred(mess_pred, [vc; v])) [] (Rs(att_pred, mess_pred))
+	add_rule [att_fact state_var phase vc; Pred(att_pred, [get_state state_var; v])]
+          (Pred(mess_pred, [get_state state_var; vc; v])) [] (Rs(att_pred, mess_pred))
       end) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
 
   
@@ -1617,16 +1545,16 @@ let transl_attacker phase =
       
       (* The attacker can do communications *)
       let vc = Terms.new_var_def Param.channel_type in
-      add_rule [Pred(att_pred, [vc])] (Pred(input_pred, [vc])) [] (Ri(att_pred, input_pred));
+      add_rule [Pred(att_pred, [get_state state_var; vc])] (Pred(input_pred, [get_state state_var; vc])) [] (Ri(att_pred, input_pred));
       let vc = Terms.new_var_def Param.channel_type in
-      add_rule [Pred(att_pred, [vc])] (Pred(output_pred, [vc])) [] (Ro(att_pred, output_pred));
+      add_rule [Pred(att_pred, [get_state state_var; vc])] (Pred(output_pred, [get_state state_var; vc])) [] (Ro(att_pred, output_pred));
 
       (* Check communications do not reveal secrets *)
       let vc = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
-      add_rule [Pred(input_pred, [vc]); 
-		 Pred(output_pred, [vc2]);  
-		 Pred(testunif_pred, [vc;vc2])] 
+      add_rule [Pred(input_pred, [get_state state_var; vc]); 
+		 Pred(output_pred, [get_state state_var; vc2]);  
+		 Pred(testunif_pred, [get_state state_var; vc; vc2])] 
 	(Pred(bad_pred, [])) [] (TestComm(input_pred, output_pred))
 
     end
@@ -1677,6 +1605,7 @@ let rules_for_red_guess f red_rules =
 
 
 let weak_secret_clauses w =
+  let state_var = new_state () in
   add_rule [] (att_guess_fact (FunApp(w, [])) (FunApp(weaksecretcst (snd w.f_type), []))) [] WeakSecr;
 
   (* rules_for_function_guess for each function, including tuples *)
@@ -1693,7 +1622,7 @@ let weak_secret_clauses w =
        add_rule [Pred(att_guess, [fail; x])] (Pred(Param.bad_pred, [])) [] (Rfail(att_guess));
 
        let v = Terms.new_var_def t in
-       let hyp = [att_fact (!Param.max_used_phase) v] in
+       let hyp = [att_fact state_var (!Param.max_used_phase) v] in
        let concl = Pred(att_guess, [v; v]) in
        let r = (t, Rule(!nrule, PhaseChange, hyp, concl, [])) in
        add_rule hyp concl [] PhaseChange;
@@ -1734,6 +1663,8 @@ let comp_output_rule prev_input out_fact =
 let comp_fact t =
   Pred(Param.get_pred (Compromise(Terms.get_term_type t)), [t])
 
+let state_var = new_state ()
+
 let rec comp_transl_process = function
    Nil -> ()
  | Par(p,q) -> comp_transl_process p;
@@ -1761,7 +1692,7 @@ let rec comp_transl_process = function
 	     (comp_fact (FunApp(n, name_params)));
 	   if List.exists (fun x -> x == compromised_session) name_params then
 	     comp_output_rule prev_input 
-	       (att_fact 0 (FunApp(n, name_params)))
+	       (att_fact state_var 0 (FunApp(n, name_params)))
        | _ -> internal_error "name expected in comp_transl_process"
      end;
      comp_transl_process p
@@ -1800,6 +1731,7 @@ let comp_rules_for_function _ f =
 (* Global translation *)
 
 let transl p = 
+  let state_var = new_state () in
   Rules.reset ();
   Reduction_helper.main_process := p;
   Reduction_helper.terms_to_add_in_name_params := [];
@@ -1834,7 +1766,7 @@ let transl p =
     transl_attacker i;
     List.iter (fun t -> 
       (* The attacker has fail *)
-      add_rule [] (att_fact i (Terms.get_fail_term t)) [] Init;
+      add_rule [] (att_fact state_var i (Terms.get_fail_term t)) [] Init;
 
       let att_i = Param.get_pred (Attacker(i,t)) in
       let v = Terms.new_var Param.def_var_name t in
@@ -1860,7 +1792,7 @@ let transl p =
       The non-interference queries have their private flag set. *)
   List.iter (fun ch ->
     if not ch.f_private then
-      add_rule [] (att_fact 0 (FunApp(ch, []))) [] Init) (!Param.freenames);
+      add_rule [] (att_fact state_var 0 (FunApp(ch, []))) [] Init) (!Param.freenames);
 
   List.iter (fun t ->
     (* Clauses for equality *)
@@ -1872,10 +1804,10 @@ let transl p =
     let v = Terms.new_var_def Param.sid_type in
     let new_name_fun = Terms.new_name_fun t in
     if !Param.non_interference then
-      add_rule [att_fact 0 v] (att_fact 0 (FunApp(new_name_fun, [v])))
+      add_rule [att_fact state_var 0 v] (att_fact state_var 0 (FunApp(new_name_fun, [v])))
 	[] (Rn att_pred0)
     else
-      add_rule [] (att_fact 0 (FunApp(new_name_fun, [v])))
+      add_rule [] (att_fact state_var 0 (FunApp(new_name_fun, [v])))
 	[] (Rn att_pred0);
 
     if (!Param.non_interference) then
@@ -1911,7 +1843,7 @@ let transl p =
     { hypothesis = []; constra = []; unif = []; last_step_unif = [];
       last_step_constra = []; neg_success_conditions = ref None; 
       name_params = []; repl_count = 0; current_session_id = None;
-      is_below_begin = false; cur_phase = 0; 
+      is_below_begin = false; cur_cells = initial_state (); cur_phase = 0; 
       input_pred = Param.get_pred (InputP(0));
       output_pred = Param.get_pred (OutputP(0));
       hyp_tags = []; 
