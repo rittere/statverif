@@ -13,7 +13,7 @@ event gate_debit(bitstring).
 event card_permit(bitstring).
 event card_add(bitstring).
 
-query x:bitstring; inj-event(card_add(x)) ==> event(gate_debit(x)).
+query x:bitstring; event(gate_open(x)) ==> event(card_permit(x)).
 
 cell s : bitstring := (zero, zero).
 
