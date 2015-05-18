@@ -365,20 +365,45 @@ let x_state getx cell_states =
       !Param.cells [])
 let get_state = x_state (fun cell -> cell.value)
 
+(* Return map of new variables, one for each cell * side. *)
+let new_state () =
+  List.fold_left (fun result ({f_type=_,t} as cell,_) ->
+    let x = Terms.new_var cell.f_name t in
+    FunMap.add (cell, "")
+      { locked = false;
+        valid = true;
+        value = Var x }
+    result) FunMap.empty !Param.cells
+
+let new_state_format () =
+  FFunApp(Param.state_fun,
+    List.map (fun ({f_type=_,t} as cell,_) ->
+      FAny(Terms.new_var cell.f_name t)) !Param.cells)
+
+let new_state_formatv () =
+  FFunApp(Param.state_fun,
+    List.map (fun ({f_type=_,t} as cell,_) ->
+      FVar(Terms.new_var cell.f_name t)) !Param.cells)
+
 (* Create fresh variables for invalidated cells. *)
 let update_cells ts =
   if FunMap.for_all (fun _ cell -> cell.valid) ts.cur_cells then ts else
   let old_cells = ts.cur_cells in
+  let fresh_cells = new_state () in
   let new_cells = FunMap.mapi (fun ({f_name=s; f_type=(_,t)},_) cell ->
     if cell.valid then cell else
     { cell with
       valid = true;
       value = Var(Terms.new_var s t) }
   ) old_cells in
+  (* Since we don't have the transitive closure, we only require that
+     the new state is reachable, and so add an hypothesis of the form
+     seq(fresh_cells, new_cells) where fresh_cells contains only
+     variables, and the constraints are in new_cells *)
   { ts with
     cur_cells = new_cells;
     hypothesis = (Pred(Param.get_pred (Seq(ts.cur_phase)),
-                       [get_state old_cells; get_state new_cells]))
+                       [get_state fresh_cells; get_state new_cells]))
                  :: ts.hypothesis;
     hyp_tags = SequenceTag :: ts.hyp_tags }
 
@@ -398,25 +423,6 @@ let initial_state () =
         value = value }
       result
   ) FunMap.empty !Param.cells
-
-(* Return map of new variables, one for each cell * side. *)
-let new_state () =
-  List.fold_left (fun result ({f_type=_,t} as cell,_) ->
-    let x = Terms.new_var cell.f_name t in
-    FunMap.add (cell, "")
-      { locked = false;
-        valid = true;
-        value = Var x }
-    result) FunMap.empty !Param.cells
-
-let new_state_format () =
-  FFunApp(Param.state_fun,
-    List.map (fun ({f_type=_,t} as cell,_) ->
-      FAny(Terms.new_var cell.f_name t)) !Param.cells)
-let new_state_formatv () =
-  FFunApp(Param.state_fun,
-    List.map (fun ({f_type=_,t} as cell,_) ->
-      FVar(Terms.new_var cell.f_name t)) !Param.cells)
 
 
 (* Creation of fact of attacker', mess' and table. *)
@@ -1703,10 +1709,9 @@ let comp_output_rule prev_input out_fact =
 let comp_fact t =
   Pred(Param.get_pred (Compromise(Terms.get_term_type t)), [t])
 
-let state_var = new_state ()
-
-let rec comp_transl_process = function
-   Nil -> ()
+let rec comp_transl_process p = 
+  let state_var = new_state () in match p with
+ | Nil -> ()
  | Par(p,q) -> comp_transl_process p;
                comp_transl_process q
  | Repl (p,_) -> 
