@@ -1428,6 +1428,7 @@ let rec transl_process cur_state process =
   | Assign(items, proc, occ) ->
        let cur_state = update_cells (invalidate_cells cur_state) in
        transl_term_list (fun cur_state1 terms ->
+	 end_destructor_group (fun cur_state1a ->
          (* Case both sides succeed. *)
          transl_both_side_succeed (fun cur_state2 ->
            let updated_cells = List.fold_left2
@@ -1453,7 +1454,7 @@ let rec transl_process cur_state process =
            } in
 
            transl_process cur_state3 proc
-         ) cur_state1 terms;
+         ) cur_state1a terms) occ cur_state1 ;
        ) cur_state (List.map snd items)
 
   | ReadAs(items, proc, occ) ->
