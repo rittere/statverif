@@ -297,10 +297,17 @@ let red_rules = ref ([] : reduction list)
 let no_gen_var = ref []
 
 let add_rule hyp concl constra tags =
-  red_rules := (hyp, concl, 
-                Rule (!nrule, tags, hyp, concl, constra), constra)
-     :: (!red_rules);
-  incr nrule
+  let rule = (hyp, concl, 
+                    Rule (!nrule, tags, hyp, concl, constra), constra) in 
+  match tags with 
+    RinitState _ -> 
+      Rules.current_states  := rule::!Rules.current_states
+  | ProcessRule ((AssignTag _)::_, _) ->
+      Rules.assignment_rules :=  rule::!Rules.assignment_rules
+  | _ -> begin
+      red_rules := rule	:: (!red_rules);
+      incr nrule
+  end
 
 type name_param_info =
     Always of string * binder * term
