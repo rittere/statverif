@@ -1206,6 +1206,7 @@ let rec transl_process cur_state process =
       end
  | Output(tc,t,p,occ) ->
       begin
+        let cur_state = update_cells cur_state in
         match tc with 
           FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker -> 
 	    if !Param.non_interference then
