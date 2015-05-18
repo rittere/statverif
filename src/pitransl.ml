@@ -1718,6 +1718,16 @@ let rec comp_transl_process = function
      comp_transl_process q
  | Phase _ ->
      user_error "Phases are incompatible with key compromise.\nKey compromise is itself already a phase scenario\n"
+ | Lock(_,p,_) ->
+    comp_transl_process p
+ | Unlock(_,p,_) ->
+    comp_transl_process p
+ | Open(_,p,_) ->
+    comp_transl_process p
+ | ReadAs(_,p,_) ->
+    comp_transl_process p
+ | Assign(_,p,_) ->
+    comp_transl_process p
 
 let comp_rules_for_function _ f =
    match f.f_cat with
@@ -1833,7 +1843,7 @@ let transl p =
       None -> ()
     | Some w -> weak_secret_clauses w
   end;
-  
+
   List.iter (fun ch -> 
     match ch.f_cat with
       Name r -> r.prev_inputs <- Some (FunApp(ch, []))
@@ -1941,5 +1951,7 @@ let rec move_new accu = function
 	put_new l1 (Get(pat, t1, move_new l2 p, Nil, occ))
   | Phase(n,p,occ) ->
       Phase(n, move_new accu p,occ)
-      
+
+
+	   
 let move_new p = move_new [] p
