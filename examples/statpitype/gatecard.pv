@@ -1,6 +1,8 @@
 
 type key.
 fun sign(bitstring, key): bitstring.
+reduc forall x:bitstring, k: key; checksign(sign(x, k), k) = x.
+reduc forall x:bitstring, k: key; getmsg(sign(x, k)) = x.
 
 channel ch.
 
@@ -8,12 +10,12 @@ free K: key [private].
 free L: key [private].
 free zero: bitstring [private].
 
-event gate_open(bitstring).
+event gate_open(bitstring,bitstring).
 event gate_debit(bitstring).
-event card_permit(bitstring).
+event card_permit(bitstring,bitstring).
 event card_add(bitstring).
 
-query x:bitstring; event(gate_open(x)) ==> event(card_permit(x)).
+query x:bitstring,y:bitstring; inj-event(card_permit(x,y)) ==> event(card_add(x)).
 
 cell s : bitstring := (zero, zero).
 
@@ -22,8 +24,8 @@ let gate =
     new n: bitstring;
     out(ch, n);
     in(ch, z : bitstring);
-    if z = sign(n, K) then (out(ch, ch);
-    event gate_open(n))
+    let (x:bitstring, =n) = checksign(n, K) in
+    event gate_open(x, n)
   ) | ( !
     in(ch, x_m : bitstring);
     event gate_debit(x_m);
@@ -36,13 +38,13 @@ let card =
     in(ch, y: bitstring);
     read s as (s_1: bitstring, s_2: bitstring);
     if s_2 <> zero then
-       event card_permit(s_2);
+       event card_permit(s_2, y);
        s := (s_1, zero);
-       out(ch, sign(y, K))
+       out(ch, sign((s_2, y), K))
     else if s_1 <> zero then
-       event card_permit(s_1);
+       event card_permit(s_1, y);
        s := (zero, zero);
-       out(ch, sign(y, K))
+       out(ch, sign((s_1, y), K))
   ) | ( !
     lock s;
     new m: bitstring;
