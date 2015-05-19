@@ -34,11 +34,6 @@ let plural n singular plural = if n = 1 then singular else plural
 
 (* Given a list of terms for states, return the item corresponding to the cell s. *)
 let pick_state terms s =
-  let rec find (s'::cells) (t::vs) =
-    if s == s' then t else find cells vs
-  in find (!Param.cells) terms
-
-let pick_state_bin terms s =
   let rec find ((s',_)::cells) (t::vs) =
     if s == s' then t else find cells vs
   in find (!Param.cells) terms
@@ -688,7 +683,7 @@ let concl upper concl tag =
               ^ plural (List.length cells) "cell " "cells "
               ^ String.concat "," (List.map (fun s -> s.f_name) cells)
               ^ " may be assigned the values ");
-            let t1, t2 = List.split (List.map (pick_state_bin (List.combine vs1 vs2)) cells) in
+            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
             term_list t1;
             print_string " (resp. ";
             term_list t2;
@@ -1009,7 +1004,7 @@ let rec display_hyp hyp tag =
         match m with
         | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _])
         | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
-            let t1, t2 = List.split (List.map (pick_state_bin (List.combine vs1 vs2)) cells) in
+            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
             print_string ("the " ^ plural (List.length cells) "state " "states ");
             display_term_list t1;
             print_string " (resp. ";
@@ -2031,7 +2026,7 @@ let rec display_hyp hyp hl tag =
         match m with
         | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _])
         | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
-            let t1, t2 = List.split (List.map (pick_state_bin (List.combine vs1 vs2)) cells) in
+            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
             print_string (plural (List.length cells) "The state " "The states ");
             WithLinks.term_list t1;
             print_string " (resp. ";
