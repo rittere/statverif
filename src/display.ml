@@ -34,9 +34,15 @@ let plural n singular plural = if n = 1 then singular else plural
 
 (* Given a list of terms for states, return the item corresponding to the cell s. *)
 let pick_state terms s =
+  let rec find (s'::cells) (t::vs) =
+    if s == s' then t else find cells vs
+  in find (!Param.cells) terms
+
+let pick_state_bin terms s =
   let rec find ((s',_)::cells) (t::vs) =
     if s == s' then t else find cells vs
   in find (!Param.cells) terms
+
 
 (* Helper function to make the display more readable: we abbreviate names with
    just a constant symbol. *)
@@ -669,12 +675,20 @@ let concl upper concl tag =
   | AssignTag(occ, cells) :: _ ->
       begin
         match concl with
+	| Pred({p_info = [Seq(n)]} as p, [_; FunApp(_,vs1)]) ->
+            print_string ((if upper then "The " else "the ")
+              ^ plural (List.length cells) "cell " "cells "
+              ^ String.concat "," (List.map (fun s -> s.f_name) cells)
+              ^ " may be assigned the values ");
+            let t1 = List.map (pick_state vs1) cells in
+            term_list t1;
+            display_phase p
 	| Pred({p_info = [SeqBin(n)]} as p, [_; FunApp(_,vs1); _; FunApp(_,vs2)]) ->
             print_string ((if upper then "The " else "the ")
               ^ plural (List.length cells) "cell " "cells "
               ^ String.concat "," (List.map (fun s -> s.f_name) cells)
               ^ " may be assigned the values ");
-            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
+            let t1, t2 = List.split (List.map (pick_state_bin (List.combine vs1 vs2)) cells) in
             term_list t1;
             print_string " (resp. ";
             term_list t2;
@@ -995,7 +1009,7 @@ let rec display_hyp hyp tag =
         match m with
         | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _])
         | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
-            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
+            let t1, t2 = List.split (List.map (pick_state_bin (List.combine vs1 vs2)) cells) in
             print_string ("the " ^ plural (List.length cells) "state " "states ");
             display_term_list t1;
             print_string " (resp. ";
@@ -2008,7 +2022,8 @@ let rec display_hyp hyp hl tag =
       end;
       print_string ".";
       newline()
-  | ((Pred({p_info = [ReachBin(n)]}, _))::h, s::hl, t) | ((Pred({p_info = [SeqBin(n)]}, _))::h, s::hl, t)->
+  | ((Pred({p_info = [ReachBin(n)]}, _))::h, s::hl, t) | ((Pred({p_info = [SeqBin(n)]}, _))::h, s::hl, t)
+  | ((Pred({p_info = [Seq(n)]}, _))::h, s::hl, t) ->
       display_hyp h hl t
   | (m::h,s::hl,(ReadAsTag(occ,cells)) :: t) ->
       display_hyp h hl t;
@@ -2016,7 +2031,7 @@ let rec display_hyp hyp hl tag =
         match m with
         | Pred({p_info = [AttackerBin(n,_)]} as p, [FunApp(_,vs1); _; FunApp(_,vs2); _])
         | Pred({p_info = [MessBin(n,_)]} as p, [FunApp(_,vs1); _; _; FunApp(_,vs2); _; _]) ->
-            let t1, t2 = List.split (List.map (pick_state (List.combine vs1 vs2)) cells) in
+            let t1, t2 = List.split (List.map (pick_state_bin (List.combine vs1 vs2)) cells) in
             print_string (plural (List.length cells) "The state " "The states ");
             WithLinks.term_list t1;
             print_string " (resp. ";
@@ -2087,7 +2102,8 @@ let rec display_hyp hyp hl tag =
   | (h, l, GetTagElse occ :: t) ->
       display_hyp h hl t
   | ([],[],[]) -> ()
-  | _ -> 
+  | (h, l, t) -> 
+     Printf.printf "\nUE begin\n";
       display_list WithLinks.fact " & " hyp;
       newline();
       display_list (fun n -> print_string (string_of_int n)) " " hl;

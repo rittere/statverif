@@ -405,7 +405,8 @@ let update_cells ts =
     hypothesis = (Pred(Param.get_pred (Seq(ts.cur_phase)),
                        [get_state fresh_cells; get_state new_cells]))
                  :: ts.hypothesis;
-    hyp_tags = SequenceTag :: ts.hyp_tags }
+    (* hyp_tags = SequenceTag :: ts.hyp_tags } *)
+    hyp_tags = ts.hyp_tags }
 
 (* Return initial cell states. *)
 let initial_state () =
