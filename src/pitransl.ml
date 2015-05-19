@@ -1448,6 +1448,7 @@ let rec transl_process cur_state process =
              ) cur_state2.cur_cells items terms
            in
            output_rule { cur_state2 with
+             hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis;
              hyp_tags = (AssignTag(occ, List.map fst items))::cur_state2.hyp_tags
            } (Pred(Param.get_pred (Seq(cur_state2.cur_phase)),
                    [get_state cur_state2.cur_cells; get_state updated_cells]));
@@ -1996,7 +1997,16 @@ let rec move_new accu = function
 	put_new l1 (Get(pat, t1, move_new l2 p, Nil, occ))
   | Phase(n,p,occ) ->
       Phase(n, move_new accu p,occ)
-
+  | Lock(s,p,occ) ->
+     Lock(s, move_new accu p, occ)
+  | Unlock(s,p,occ) ->
+     Unlock(s, move_new accu p, occ)
+  | Open(x,p,occ) ->
+     Open(x, move_new accu p, occ)
+  | ReadAs(l,p,occ) ->
+     ReadAs(l, move_new accu p, occ)
+  | Assign(l,p,occ) ->
+     Assign(l, move_new accu p, occ)
 
 	   
 let move_new p = move_new [] p

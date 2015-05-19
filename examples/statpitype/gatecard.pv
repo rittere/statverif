@@ -1,3 +1,4 @@
+set verboseCompleted = true.
 
 type key.
 fun sign(bitstring, key): bitstring.
@@ -16,6 +17,7 @@ event card_permit(bitstring,bitstring).
 event card_add(bitstring).
 
 query x:bitstring,y:bitstring; inj-event(card_permit(x,y)) ==> event(card_add(x)).
+(* query x:bitstring,y:bitstring; inj-event(gate_open(x,y)) ==> event(gate_debit(x)). *)
 
 cell s : bitstring := (zero, zero).
 

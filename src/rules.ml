@@ -1238,7 +1238,7 @@ let redundant_res res_list =
        compl_rules () in 
       List.iter (normal_rule ~insertAtBeginning:true)(!current_states);
       compl_rules ();
-  List.iter (normal_rule ~insertAtBeginning:true)(!assignment_rules);
+      List.iter (normal_rule ~insertAtBeginning:true)(!assignment_rules);
       compl_rules ();
   !rule_base_ns
     
