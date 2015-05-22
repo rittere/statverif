@@ -60,4 +60,4 @@ let card_add = !
        event card_add(m);
        s := (s_1, m).
 
-process gate_open | gate_debit | card_permit | card_add
+process gate_debit | card_permit | card_add

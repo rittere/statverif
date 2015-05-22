@@ -379,7 +379,23 @@ This section consists of:
 (**Test \sigma H \subseteq H' for multiset inclusion *)
 let rec match_fact_with_hyp nextf fact1 hyp2 passed_hyp = 
   match hyp2 with
-  | [] -> raise NoMatch
+  | [] -> 
+     begin
+       (* Check if fact1 must not be eliminated *)
+       match fact1 with
+       | Pred({ p_type = p_type }, _) ->
+	  begin
+	    try
+	      let _ = List.find ((=) Param.noelim_type) p_type in
+	      Printf.printf "noelim fact ";
+	      Display.Text.display_fact fact1;
+	      Printf.printf "\n";
+	      nextf passed_hyp
+	    with Not_found ->
+	      raise NoMatch
+	  end
+       | _ -> raise NoMatch
+     end
   | (fact2::fact_l) -> 
       try
         Terms.auto_cleanup (fun () ->
@@ -515,7 +531,7 @@ let check_fact_fail = function
       begin
 	match p.p_info with
 	  [Attacker _ | AttackerBin _ | AttackerGuess _ ] (* attacker *) -> 
-	    if p == Param.end_pred || p == Param.end_pred_inj then
+	    if p == Param.end_pred || p == Param.end_pred_inj || p == Param.end1_pred_inj || p == Param.end2_pred_inj then
 	      List.iter check_no_fail l
 	    else
 	      List.iter check_top_fail l

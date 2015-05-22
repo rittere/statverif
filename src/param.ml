@@ -185,6 +185,7 @@ let bitstring_type = { tname = "bitstring" }
 let channel_type = { tname = "channel" }
 let sid_type = { tname = "sid" } (* session ids *)
 let event_type = { tname = "event" }
+let noelim_type = { tname = "noelim" }
 let bool_type = { tname = "bool" }
 let table_type = { tname = "table" }
 let state_type = { tname = "state" }
@@ -342,10 +343,11 @@ let get_pred info =
   build_pred_memo info
 
 (* For authenticity *)
-let end_pred = { p_name = "end"; p_type = [event_type]; p_prop = 0;
-		 p_info = [] }
-let end_pred_inj = { p_name = "end"; p_type = [sid_type; event_type] ; p_prop = 0;
-		     p_info = [] }
+let end_pred = { p_name = "end"; p_type = [event_type]; p_prop = 0; p_info = [] }
+let end1_pred_inj = { p_name = "end1"; p_type = [event_type; noelim_type]; p_prop = 0; p_info = [] }
+let end2_pred_inj = { p_name = "end2"; p_type = [event_type; noelim_type]; p_prop = 0; p_info = [] }
+let mid_pred_inj = { p_name = "mid"; p_type = [event_type; noelim_type]; p_prop = 0; p_info = [] }
+let end_pred_inj = { p_name = "end"; p_type = [sid_type; event_type] ; p_prop = 0; p_info = [] }
 
 (* For non-interference *)
 let testunif_pred = { p_name = "testunif"; p_type = [any_type; any_type]; 
