@@ -1,0 +1,155 @@
+#+LaTeX_HEADER: \usepackage{geometry}
+
+** Stateful injective agreement
+
+1. Prove non-injective correspondence between $begin(e1(M_1))$ and
+   $end(e2(M_2))$ as usual, it works! The use of sequence predicate
+   chains correctly the two sessions, since the state produced by the
+   begin event needs to be reachable in order for the end event to
+   succeed.
+
+2. Once non-injectivity is proven, treat $e2(M_2)$ both as a begin
+   (now called end1) and as an end (called end2) event, inserting the
+   clauses:
+   \begin{align*}
+     H \wedge end1(e2(M_2)) \Rightarrow mid  \\
+     H \wedge mid \Rightarrow end2(e2(M_2))
+   \end{align*}
+   Intuitively this forces the resolution to produce clauses that
+   contain $end1$ on the l.h.s. and $end2$ on the r.h.s.
+
+3. Saturate the clauses, ensuring that Horn clauses of the form $H
+   \wedge end1(e2(M_2)) \Rightarrow C$ are not eliminated as redundant
+   because $H \Rightarrow C$ is present. It is important to note that
+   this change in saturation does not influence termination, rather it
+   /doubles/ the amount of clauses produced in case both $H \wedge
+   end1(e1(M_2)) \Rightarrow C$ and $H \Rightarrow C$ are present.
+
+4. Look for rules in the saturation of the form:
+   $$  H \wedge end1(e2(M_2)) \Rightarrow end2(e2(M'_2)) $$
+   /Conjecture:/
+   Let $\sigma=mgu(M_2, M'_2)$. If two occurrences of $begin(e1(M_1))$
+   are forced to unify in $H$ then the protocol is secure, otherwise a
+   potential attack is found. The intuitive reason why this should
+   work is that if only one /begin/ event is found, and both /end1/
+   and /end2/ events appear in the clause, then in the abstraction one
+   begin event could have generated two end events, hence there is a
+   potential attack. If two begin events are present in the
+   hypothesis, then they are marked with different terms, representing
+   potentially different sessions of the process that executed the
+   begin event. If unifying the /end1/ and /end2/ events triggers also
+   the unification of the two instances of /begin/, this means that
+   the two occurrences represent one single session, hence the clause
+   does not represent an attack.
+
+   *This doesn't hold* as we were able to prove a counter example
+   (protocol in test.pv that does not have injective agreement
+   property).
+
+** Example:
+
+   GateCard.pv generates the following clauses, when testing
+   non-injective agreement between $permit(x,y) \Rightarrow add(x)$:
+   \begin{flalign*}
+   & s_1 \neq 0 \wedge att((s_1,0),y) \wedge seq(s,(s_1,0)) \Rightarrow end(permit(s_1,y)) & \\
+   & s_1 \neq 0 \wedge att((s_1,0),y) \wedge seq(s,(s_1,0)) \Rightarrow seq((s_1,0),(0,0)) \\
+   & s_1 \neq 0 \wedge seq((s_1,0),(0,0)) \wedge att((s_1,0),y) \wedge seq(s,(s_1,0)) \Rightarrow att((0,0),sign((s_1,y),K[])) \\
+   & s_2 \neq 0 \wedge att((s_1,s_2),y) \wedge seq(s,(s_1,s_2)) \Rightarrow end(permit(s_2,y)) \\
+   & s_2 \neq 0 \wedge att((s_1,s_2),y) \wedge seq(s,(s_1,s_2)) \Rightarrow seq((s_1,s_2),(s_1,0)) \\
+   & s_2 \neq 0 \wedge seq((s_1,s_2),(s_1,0)) \wedge att((s_1,s_2),y) \wedge seq(s,(s_1,s_2)) \Rightarrow att((s_1,0),sign((s_2,y),K[])) \\
+   & seq(s,s') \Rightarrow att(s',m[i]) \\
+   & begin(add(m[i])) \wedge att((0,s_2),sign(m[i],L[])) \wedge seq(s,(0,s_2)) \Rightarrow seq((0,s_2),(m[i],0)) \\
+   & s_1 \neq 0 \wedge begin(add(m[i])) \wedge att((s_1,0),sign(m[i],L[])) \wedge seq(s,(s_1,0)) \Rightarrow seq((s_1,0),(s_1,m[i]))
+   \end{flalign*}
+   When testing injective agreement we produce the following clauses:
+   \begin{flalign*}
+   & s_1 \neq 0 \wedge att((s_1,0),y) \wedge seq(s,(s_1,0)) \wedge mid \Rightarrow end2(permit(s_1,y)) & \\
+   & s_1 \neq 0 \wedge att((s_1,0),y) \wedge seq(s,(s_1,0)) \wedge end1(permit(s_1,y)) \Rightarrow mid  \\
+   & s_1 \neq 0 \wedge att((s_1,0),y) \wedge seq(s,(s_1,0)) \wedge end1(permit(s_1,y)) \wedge mid \Rightarrow seq((s_1,0),(0,0)) \\
+   & s_1 \neq 0 \wedge seq((s_1,0),(0,0)) \wedge att((s_1,0),y) \wedge seq(s,(s_1,0)) \wedge end1(permit(s_1,y)) \wedge mid \\
+   & \hspace{3em} \Rightarrow att((0,0),sign((s_1,y),K[])) \\
+   & s_2 \neq 0 \wedge att((s_1,s_2),y) \wedge seq(s,(s_1,s_2)) \wedge mid \Rightarrow end2(permit(s_2,y)) \\
+   & s_2 \neq 0 \wedge att((s_1,s_2),y) \wedge seq(s,(s_1,s_2)) \wedge end1(permit(s_2,y)) \Rightarrow mid \\
+   & s_2 \neq 0 \wedge att((s_1,s_2),y) \wedge seq(s,(s_1,s_2)) \wedge end1(permit(s_2,y)) \wedge mid \Rightarrow seq((s_1,s_2),(s_1,0)) \\
+   & s_2 \neq 0 \wedge seq((s_1,s_2),(s_1,0)) \wedge att((s_1,s_2),y) \wedge seq(s,(s_1,s_2)) \wedge end1(permit(s_2,y)) \wedge mid \\
+   & \hspace{3em} \Rightarrow att((s_1,0),sign((s_2,y),K[])) \\
+   & seq(s,s') \Rightarrow att(s',m[i]) \\
+   & begin(add(m[i])) \wedge att((0,s_2),sign(m[i],L[])) \wedge seq(s,(0,s_2)) \Rightarrow seq((0,s_2),(m[i],0)) \\
+   & s_1 \neq 0 \wedge begin(add(m[i])) \wedge att((s_1,0),sign(m[i],L[])) \wedge seq(s,(s_1,0)) \Rightarrow seq((s_1,0),(s_1,m[i]))
+   \end{flalign*}
+   Somehow we must record that the $m[i]$ generated by the card when
+   adding a new token are /fresh/, hence different from any other
+   token produced.
+
+   Saturation should produce the clause:
+   $$ begin(add(m[i])) \wedge end1(permit(m[i],n[j])) \wedge begin(add(m[i'])) \Rightarrow end2(permit(m[i'],n[j'])) $$
+   with the unification resulting in the following substitution:
+   $$ \sigma = \{{i}/{i'}, {j}/{j'}\} $$
+
+** Learned lesson:
+   1. The simple idea of checking $end1 \implies end2$ is sound but
+      could give rise to false attacks. Instead of the /mid/ predicate
+      we should use correctly the /seq/ predicate to capture the state
+      dependency between /end1/ and /end2/. As a solution for reaching
+      $end1 \implies end2$ in stateless protocols it is possible to
+      insert a dummy $seq(\phi, \phi)$ predicate so that the rules for
+      /end1/ and /end2/ can be chained.
+
+   2. What is not captured is the information on the state
+      $$ (0,0) \to (m[i],0) \to (0,0) \to (m[j],0) $$
+      it works because we know by freshness that $i \neq j$, hence we 
+      cannot reach the state $end1(x) \implies end2(x)$, because it would
+      force unification of i and j.
+
+   3. Idea:
+   
+      1. the attacker knowledge does not increase in the second
+         round of the protocol
+
+      2. the control flow in the second iteration is the same as in
+         the first iteration, so it makes no sense to go on in this
+         cycle.
+
+** Problems with Locks
+*** Visible intermediate states
+   Locks are too coarse. For example the process:
+   \[lock(s_1,s_2,s_3); new\ a; out(a); set\ a \in
+   s_1; set\ a \in s_2;\]
+   would generate:
+   \[att(a[0,0,x3])\]
+   \[implies(a[0,0,x3], a[1,0,x3])\]
+   \[implies(a[1,0,x3], a[1,1,x3])\]
+   and hence the predicate
+   \[att(a[1,0,x3])\]
+   is reachable, although one would like only the final state, namely
+   \[att(a[1,1,x3])\]
+   to be visible from the outside.
+*** Set-abstraction multi-value interleavings
+   For the set abstraction, one of the problems is the locality of the states in transitions
+   \[att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies(xm[x1,x2,x3],xm[x1,1,x3])\]
+   \[att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies(xc[0],xc[1])\]
+   we get all the diamond of interleavings:
+   \begin{figure}[h]
+   \begin{tikzpicture}[node distance=5em]
+   \node (a) {${{m}\over{100}}{{c}\over{0}}$};
+   \node [above right of=a] (b) {${{m}\over{110}}{{c}\over{0}}$};
+   \node [below right of=a] (c) {${{m}\over{100}}{{c}\over{1}}$};
+   \node [below right of=b] (d) {${{m}\over{110}}{{c}\over{1}}$};
+   \draw [->] (a) to (b);
+   \draw [->] (b) to (d);
+   \draw [->] (a) to (c);
+   \draw [->] (c) to (d);
+   \end{tikzpicture}
+   \end{figure}
+   which is bad because the intermediate states should not be visible. We would like to see the following state transition system:
+   \begin{figure}[h]
+   \begin{tikzpicture}[node distance=5em]
+   \node (a) {${m \over 100}{c \over 0}$};
+   \node [right of=a] (b) {${m \over 110}{c \over 1}$};
+   \draw [->] (a) to (b);
+   \end{tikzpicture}
+   \end{figure}
+   we could solve it by:
+   $$ att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies([xm[x1,x2,x3],xc[0]],[xm[x1,1,x3],xc[1]]) $$
+   $$ att(sign(m[x1,x2,x3],xc[0],k[])) \wedge &implies([xm[x1,x2,x3],xc[0]],[xm[x1,1,x3],xc[1]])
+      \implies att(sign(m[x1,1,x3],xc[1],k[]))\] $$
