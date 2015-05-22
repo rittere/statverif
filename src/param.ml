@@ -344,8 +344,6 @@ let get_pred info =
 
 (* For authenticity *)
 let end_pred = { p_name = "end"; p_type = [event_type]; p_prop = 0; p_info = [] }
-let end1_pred_inj = { p_name = "end1"; p_type = [event_type; noelim_type]; p_prop = 0; p_info = [] }
-let end2_pred_inj = { p_name = "end2"; p_type = [event_type]; p_prop = 0; p_info = [] }
 let mid_pred_inj = { p_name = "mid"; p_type = [bool_type]; p_prop = 0; p_info = [] }
 let end_pred_inj = { p_name = "end"; p_type = [sid_type; event_type] ; p_prop = 0; p_info = [] }
 

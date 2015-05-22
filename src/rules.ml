@@ -533,7 +533,7 @@ let check_fact_fail = function
       begin
 	match p.p_info with
 	  [Attacker _ | AttackerBin _ | AttackerGuess _ ] (* attacker *) -> 
-	    if p == Param.end_pred || p == Param.end_pred_inj || p == Param.end1_pred_inj || p == Param.end2_pred_inj then
+	    if p == Param.end_pred || p == Param.end_pred_inj then
 	      List.iter check_no_fail l
 	    else
 	      List.iter check_top_fail l

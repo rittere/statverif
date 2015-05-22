@@ -166,8 +166,6 @@ val get_type_suffix : Types.typet -> string
 
 (* predicates *)
 
-val end1_pred_inj : Types.predicate
-val end2_pred_inj : Types.predicate
 val mid_pred_inj : Types.predicate
 val end_pred : Types.predicate
 val end_pred_inj : Types.predicate
