@@ -2642,9 +2642,10 @@ let query_to_facts q =
 	QSEvent(_,(FunApp(f,l) as param)) -> 
 	  facts := 
 	    (if (Pievent.get_event_status f).end_status = Inj then
-	      Pred(Param.end_pred_inj, [Var(Terms.new_var "endsid" Param.sid_type);param])
+	      [Pred(Param.end_pred_inj, [Var(Terms.new_var "endsid" Param.sid_type);param]);
+	       Pred(Param.end2_pred_inj, [Var(Terms.new_var "endsid" Param.sid_type);param])]
 	    else
-	      Pred(Param.end_pred, [param])) :: (!facts)
+	      [Pred(Param.end_pred, [param])]) @ (!facts)
       | QSEvent(_, _) ->
 	  user_error ("Events should be function applications\n")
       | QFact(p,l) ->

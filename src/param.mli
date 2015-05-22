@@ -154,6 +154,7 @@ val any_type : Types.typet
 val bitstring_type : Types.typet
 val channel_type : Types.typet
 val sid_type : Types.typet
+val noelim_type : Types.typet
 val event_type : Types.typet
 val bool_type : Types.typet
 val table_type : Types.typet
@@ -165,6 +166,9 @@ val get_type_suffix : Types.typet -> string
 
 (* predicates *)
 
+val end1_pred_inj : Types.predicate
+val end2_pred_inj : Types.predicate
+val mid_pred_inj : Types.predicate
 val end_pred : Types.predicate
 val end_pred_inj : Types.predicate
 val testunif_pred : Types.predicate
