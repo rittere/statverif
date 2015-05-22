@@ -169,7 +169,7 @@ and fact_format = predicate * format list
 
 and fact = 
     Pred of predicate * term list
-  | Out of term * (binder * term) list
+  | Out of (* predicate * *) term * (binder * term) list
 
 (* The following constraints are simple constraints.
    A list of simple constraints is a constraint, and represents the OR

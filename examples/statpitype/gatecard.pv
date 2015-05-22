@@ -16,9 +16,9 @@ event gate_debit(bitstring).
 event card_permit(bitstring,bitstring).
 event card_add(bitstring).
 
-query x:bitstring,y:bitstring; inj-event(card_permit(x,y)) ==> inj-event(card_add(x)).
+(*query x:bitstring,y:bitstring; inj-event(card_permit(x,y)) ==> inj-event(card_add(x)).*)
 (*query x:bitstring,y:bitstring; inj-event(gate_open(x,y)) ==> inj-event(gate_debit(x)).*)
-(*query x:bitstring,y:bitstring; inj-event(card_add(x)) ==> inj-event(gate_debit(x)).*)
+query x:bitstring,y:bitstring; inj-event(card_add(x)) ==> inj-event(gate_debit(x)).
 (*query x:bitstring,y:bitstring; inj-event(gate_open(x,y)) ==> inj-event(card_permit(x,y)).*)
 
 cell s : bitstring := (zero, zero).
@@ -39,12 +39,12 @@ let card_permit = !
     in(ch, y: bitstring);
     read s as (s_1: bitstring, s_2: bitstring);
     if s_2 <> zero then
-       event card_permit(s_2, y);
        s := (s_1, zero);
+       event card_permit(s_2, y);
        out(ch, sign((s_2, y), K))
     else if s_1 <> zero then
-       event card_permit(s_1, y);
        s := (zero, zero);
+       event card_permit(s_1, y);
        out(ch, sign((s_1, y), K)).
 let card_add = !
     lock s;
@@ -60,4 +60,4 @@ let card_add = !
        event card_add(m);
        s := (s_1, m).
 
-process gate_debit | card_permit | card_add
+process gate_debit | card_add

@@ -30,6 +30,7 @@ open Types
 open Terms
 
 let never_select_weight = -10000
+let always_select_weight = 10000
 let match_concl_weight = -7000
 let default_add_no_unif_weight = -5000
 let default_user_no_unif_weight = -6000
@@ -271,12 +272,16 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
         sel (nold, wold) (n+1) l
     end
     | (Pred(p,lp) as h::l) -> 
+
 	let wnew =
-	  if matchafactstrict concl h then match_concl_weight else 
-	  let wtmp = find_same_format (p,lp) (!no_unif_set) in
-(* 	  let _ = Printf.printf "wtmp = %d\n" wtmp in  *)
-	  if wtmp < 0 then wtmp else
-	  if !Param.select_fun == Param.TermMaxsize then fact_size h else 0
+	  if p = Param.mid_pred_inj && lp = [] then 
+	    always_select_weight
+	  else
+	    if matchafactstrict concl h then match_concl_weight else 
+	      let wtmp = find_same_format (p,lp) (!no_unif_set) in
+	      (* 	  let _ = Printf.printf "wtmp = %d\n" wtmp in  *)
+	      if wtmp < 0 then wtmp else
+		if !Param.select_fun == Param.TermMaxsize then fact_size h else 0
 	in
 (* 	let _ = Printf.printf "wnew = %d\n" wnew in  *)
         if wnew > wold 

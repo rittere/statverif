@@ -450,7 +450,7 @@ let reorder hyp =
 
 (* 3. The final function for subsumption test *)
 
-let implies (hyp1, concl1, _, constr1) ((hyp2, concl2, _, constr2) as r) =
+let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r) =
   if List.length hyp1 > List.length hyp2 then false else
   (* let t0 = Unix.times() in *)
   try 
@@ -476,6 +476,8 @@ let implies (hyp1, concl1, _, constr1) ((hyp2, concl2, _, constr2) as r) =
        end; *)
       Printf.printf "Superfluous rule found: ";
       Display.Text.display_rule r;
+      Printf.printf " is subsumed by ";
+      Display.Text.display_rule r1;
       true
 	)
   with NoMatch -> 

@@ -1348,30 +1348,30 @@ let rec transl_process cur_state process =
 	     transl_term (no_fail (fun cur_state1 pat1 -> 
                end_destructor_group (fun cur_state2 ->
 		 (* Standard ProVerif injectivity*)
- 		 (* output_rule { cur_state2 with *)
+                 (* output_rule { cur_state2 with *)
                  (*               hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags; *)
                  (*               hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis *)
-		 (* 	     } (Pred(Param.end_pred_inj, [first_param; pat1])); *)
-		 (* Stateful injectivity *)
-		 let cur_state3 = { cur_state2 with 
-				    hypothesis = Pred(Param.mid_pred_inj, [pat1]) :: cur_state2.hypothesis;
-				    hyp_tags = (BeginEvent(occ)) :: cur_state2.hyp_tags (* TODO: fix tags for trace reconstruction *)} in
- 		 output_rule { cur_state3 with 
-                               hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
-                               hypothesis = replace_begin_out cur_state3.name_params cur_state3.hyp_tags cur_state3.hypothesis
-			     } (Pred(Param.end_pred_inj, [first_param; pat1]));
+                 (*          } (Pred(Param.end_pred_inj, [first_param; pat1])); *)
+                 (* Stateful injectivity *)
+                 let cur_state3 = { cur_state2 with
+                                   hypothesis = Pred(Param.mid_pred_inj, []) :: cur_state2.hypothesis;
+                                   hyp_tags = cur_state2.hyp_tags (* TODO: fix tags for trace reconstruction *)} in
+                 output_rule { cur_state3 with
+                                hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
+                                hypothesis = replace_begin_out cur_state3.name_params cur_state3.hyp_tags cur_state3.hypothesis
+                             } (Pred(Param.end_pred_inj, [first_param; pat1]));
 
-		 let cur_state4 = { cur_state2 with 
-				    hypothesis = Pred(Param.end1_pred_inj, [pat1]) :: cur_state2.hypothesis;
-				    hyp_tags = cur_state2.hyp_tags (* TODO: fix tags for trace reconstruction *)} in
- 		 output_rule { cur_state4 with 
+                 let cur_state4 = { cur_state2 with
+                                    hypothesis = Pred(pred_begin_tmp, [pat1]) :: cur_state2.hypothesis;
+                                    hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state2.hyp_tags } in
+                 output_rule { cur_state4 with
                                hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
                                hypothesis = replace_begin_out cur_state4.name_params cur_state4.hyp_tags cur_state4.hypothesis
-			     } (Pred(Param.mid_pred_inj, [pat1]));
+                             } (Pred(Param.mid_pred_inj, []));
 
 		 transl_process { cur_state4 with
-				    hypothesis = (*Pred(Param.mid_pred_inj, [pat1]) ::*) cur_state4.hypothesis;
-				    hyp_tags = cur_state4.hyp_tags (* TODO: fix tags for trace reconstruction *)}
+				  hypothesis = (*Pred(Param.mid_pred_inj, [pat1]) ::*) cur_state4.hypothesis;
+				  hyp_tags = cur_state4.hyp_tags (* TODO: fix tags for trace reconstruction *)}
 				p
 				    ) occ cur_state1
 			 )) cur_state lendbegin;
@@ -1388,15 +1388,18 @@ let rec transl_process cur_state process =
      end;
      begin
        match fstatus.begin_status with
-	 No -> 
+	 No -> begin
            (* Even if the event does nothing, the term lendbegin is evaluated *)
-	   transl_term 
-	     (no_fail (fun cur_state0 pat_begin -> end_destructor_group 
-		 (fun cur_state1 ->
-		   transl_process { cur_state1 with hyp_tags = (BeginEvent(occ)) :: cur_state1.hyp_tags } p
- 		 ) occ cur_state0
-		 )) cur_state lendbegin 
-      | Inj | NonInj ->
+	      match fstatus.end_status with
+	      |	No | NonInj -> transl_term 
+			(no_fail (fun cur_state0 pat_begin -> end_destructor_group 
+		           (fun cur_state1 ->
+			      transl_process { cur_state1 with hyp_tags = (BeginEvent(occ)) :: cur_state1.hyp_tags } p
+ 			   ) occ cur_state0
+			 )) cur_state lendbegin 
+	      | Inj -> ()
+	    end
+	 | Inj | NonInj ->
 	   transl_term_incl_destructor 
 	     (no_fail (fun cur_state0 pat_begin -> end_destructor_group 
 		 (fun cur_state1 ->
