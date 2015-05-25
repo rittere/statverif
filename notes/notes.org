@@ -1,4 +1,5 @@
 #+LaTeX_HEADER: \usepackage{geometry}
+#+LaTeX_HEADER: \usepackage{tikz}
 
 ** Stateful injective agreement
 
@@ -112,44 +113,45 @@
 
 ** Problems with Locks
 *** Visible intermediate states
-   Locks are too coarse. For example the process:
-   \[lock(s_1,s_2,s_3); new\ a; out(a); set\ a \in
-   s_1; set\ a \in s_2;\]
-   would generate:
-   \[att(a[0,0,x3])\]
-   \[implies(a[0,0,x3], a[1,0,x3])\]
-   \[implies(a[1,0,x3], a[1,1,x3])\]
-   and hence the predicate
-   \[att(a[1,0,x3])\]
-   is reachable, although one would like only the final state, namely
-   \[att(a[1,1,x3])\]
-   to be visible from the outside.
+   1. Locks are too coarse. For example the process:
+      \[lock(s_1,s_2,s_3); new\ a; out(a); set\ a \in s_1; set\ a \in s_2;\]
+      would generate:
+      \[att(a[0,0,x3])\]
+      \[implies(a[0,0,x3], a[1,0,x3])\]
+      \[implies(a[1,0,x3], a[1,1,x3])\]
+      and hence the predicate
+      \[att(a[1,0,x3])\]
+      is reachable, although one would like only the final state, namely
+      \[att(a[1,1,x3])\]
+      to be visible from the outside.
+
 *** Set-abstraction multi-value interleavings
-   For the set abstraction, one of the problems is the locality of the states in transitions
-   \[att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies(xm[x1,x2,x3],xm[x1,1,x3])\]
-   \[att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies(xc[0],xc[1])\]
-   we get all the diamond of interleavings:
-   \begin{figure}[h]
-   \begin{tikzpicture}[node distance=5em]
-   \node (a) {${{m}\over{100}}{{c}\over{0}}$};
-   \node [above right of=a] (b) {${{m}\over{110}}{{c}\over{0}}$};
-   \node [below right of=a] (c) {${{m}\over{100}}{{c}\over{1}}$};
-   \node [below right of=b] (d) {${{m}\over{110}}{{c}\over{1}}$};
-   \draw [->] (a) to (b);
-   \draw [->] (b) to (d);
-   \draw [->] (a) to (c);
-   \draw [->] (c) to (d);
-   \end{tikzpicture}
-   \end{figure}
-   which is bad because the intermediate states should not be visible. We would like to see the following state transition system:
-   \begin{figure}[h]
-   \begin{tikzpicture}[node distance=5em]
-   \node (a) {${m \over 100}{c \over 0}$};
-   \node [right of=a] (b) {${m \over 110}{c \over 1}$};
-   \draw [->] (a) to (b);
-   \end{tikzpicture}
-   \end{figure}
-   we could solve it by:
-   $$ att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies([xm[x1,x2,x3],xc[0]],[xm[x1,1,x3],xc[1]]) $$
-   $$ att(sign(m[x1,x2,x3],xc[0],k[])) \wedge &implies([xm[x1,x2,x3],xc[0]],[xm[x1,1,x3],xc[1]])
+   1. For the set abstraction, one of the problems is the locality of the states in transitions
+      \[att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies(xm[x1,x2,x3],xm[x1,1,x3])\]
+      \[att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies(xc[0],xc[1])\]
+
+   2. we get all the diamond of interleavings:
+
+      \begin{tikzpicture}[node distance=5em]
+      \node (a) {${{m}\over{100}}{{c}\over{0}}$};
+      \node [above right of=a] (b) {${{m}\over{110}}{{c}\over{0}}$};
+      \node [below right of=a] (c) {${{m}\over{100}}{{c}\over{1}}$};
+      \node [below right of=b] (d) {${{m}\over{110}}{{c}\over{1}}$};
+      \draw [->] (a) to (b);
+      \draw [->] (b) to (d);
+      \draw [->] (a) to (c);
+      \draw [->] (c) to (d);
+      \end{tikzpicture}
+
+   3. which is bad because the intermediate states should not be visible. We would like to see the following state transition system:
+
+      \begin{tikzpicture}[node distance=5em]
+      \node (a) {${m \over 100}{c \over 0}$};
+      \node [right of=a] (b) {${m \over 110}{c \over 1}$};
+      \draw [->] (a) to (b);
+      \end{tikzpicture}
+
+   4. we could solve it by:
+      $$ att(sign(xm[x1,x2,x3],xc[0],k[])) \implies implies([xm[x1,x2,x3],xc[0]],[xm[x1,1,x3],xc[1]]) $$
+      $$ att(sign(m[x1,x2,x3],xc[0],k[])) \wedge &implies([xm[x1,x2,x3],xc[0]],[xm[x1,1,x3],xc[1]])
       \implies att(sign(m[x1,1,x3],xc[1],k[]))\] $$
