@@ -1347,34 +1347,24 @@ let rec transl_process cur_state process =
 	     in
 	     transl_term (no_fail (fun cur_state1 pat1 -> 
                end_destructor_group (fun cur_state2 ->
-		 (* Standard ProVerif injectivity*)
-                 (* output_rule { cur_state2 with *)
-                 (*               hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags; *)
-                 (*               hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis *)
-                 (*          } (Pred(Param.end_pred_inj, [first_param; pat1])); *)
+		 (* Standard ProVerif injectivity *)
+		 output_rule { cur_state2 with
+                               hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
+                               hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis
+                             } (Pred(Param.end_pred_inj, [first_param; pat1]));
                  (* Stateful injectivity *)
                  let cur_state3 = { cur_state2 with
-                                   hypothesis = Pred(Param.mid_pred_inj, []) :: cur_state2.hypothesis;
-                                   hyp_tags = cur_state2.hyp_tags (* TODO: fix tags for trace reconstruction *)} in
-                 output_rule { cur_state3 with
-                                hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
-                                hypothesis = replace_begin_out cur_state3.name_params cur_state3.hyp_tags cur_state3.hypothesis
-                             } (Pred(Param.end_pred_inj, [first_param; pat1]));
-
-                 let cur_state4 = { cur_state2 with
                                     hypothesis = Pred(pred_begin_tmp, [pat1]) :: cur_state2.hypothesis;
                                     hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state2.hyp_tags } in
-                 output_rule { cur_state4 with
-                               hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
-                               hypothesis = replace_begin_out cur_state4.name_params cur_state4.hyp_tags cur_state4.hypothesis
-                             } (Pred(Param.mid_pred_inj, []));
-
-		 transl_process { cur_state4 with
-				  hypothesis = (*Pred(Param.mid_pred_inj, [pat1]) ::*) cur_state4.hypothesis;
-				  hyp_tags = cur_state4.hyp_tags (* TODO: fix tags for trace reconstruction *)}
-				p
-				    ) occ cur_state1
-			 )) cur_state lendbegin;
+		 (* Forward search on the process:
+                    - if the next action is an assignment then translate the continuation as normal,
+                    - otherwise insert an empty assignment.
+                    This is used to chain together the end1 and end2 events.*)
+                 match p with
+		 | Assign(_,_,_) -> transl_process cur_state3 p
+		 | _ -> transl_process cur_state3 (Assign([], p, occ))
+               ) occ cur_state1
+             )) cur_state lendbegin;
        | NonInj ->
 	     transl_term (no_fail (fun cur_state1 pat1 -> 
                end_destructor_group (fun cur_state2 ->
@@ -1382,9 +1372,8 @@ let rec transl_process cur_state process =
                                hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
                                hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis
 			     } (Pred(Param.end_pred, [pat1]))
-				    ) occ cur_state1
-			 )) cur_state lendbegin
-	     
+               ) occ cur_state1
+	     )) cur_state lendbegin
      end;
      begin
        match fstatus.begin_status with
