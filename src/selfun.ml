@@ -274,9 +274,12 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
     | (Pred(p,lp) as h::l) -> 
 
 	let wnew =
-	  if p = Param.mid_pred_inj && lp = [] then 
+	  match p with
+	  | { p_name = "seq" } ->
+	    Printf.printf "always_select_weight applied to ";
+	    Display.Text.display_fact h;
 	    always_select_weight
-	  else
+	  | _ ->
 	    if matchafactstrict concl h then match_concl_weight else 
 	      let wtmp = find_same_format (p,lp) (!no_unif_set) in
 	      (* 	  let _ = Printf.printf "wtmp = %d\n" wtmp in  *)
