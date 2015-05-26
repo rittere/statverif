@@ -383,6 +383,13 @@ let rec match_fact_with_hyp nextf fact1 hyp2 passed_hyp =
      begin
        (* Check if fact1 must not be eliminated *)
        match fact1 with
+       | Out(FunApp(_,_), _) ->
+	  begin
+	    Printf.printf "noelim fact ";
+	    Display.Text.display_fact fact1;
+	    Printf.printf "\n";
+	    nextf passed_hyp
+	  end
        | Pred({ p_type = p_type }, _) ->
 	  begin
 	    try
