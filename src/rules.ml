@@ -467,7 +467,11 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r)
       	| Pred(p, []) when p == Param.bad_pred -> ()
      	| _ -> Terms.match_facts concl1 concl2
       end;
-      match_hyp (TermsEq.implies_constra_list (concl2 :: hyp2) constr2 constr1)
+      let constr2' =
+	try TermsEq.simplify_constra_list (concl2::hyp2) constr2
+	with TermsEq.FalseConstraint -> constr2
+      in
+      match_hyp (TermsEq.implies_constra_list (concl2 :: hyp2) constr2' constr1)
   	(reorder hyp1) hyp2;
       (* let t1 = Unix.times() in
       if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
