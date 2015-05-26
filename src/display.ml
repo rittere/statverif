@@ -81,7 +81,7 @@ let rec abbrev_term abbrev_table = function
 
 let abbrev_fact abbrev_table = function
     Pred(p,l) -> Pred(p, List.map (abbrev_term abbrev_table) l)
-  | Out(t,l) -> Out(abbrev_term abbrev_table t, 
+  | Out(ty, t,l) -> Out(ty, abbrev_term abbrev_table t, 
 		    List.map (fun (v,t) -> (v, abbrev_term abbrev_table t)) l)
 
 let abbrev_constra abbrev_table = List.map (List.map (function 
@@ -560,7 +560,7 @@ let fact = function
 	  term_list t;
 	  if !Param.typed_frontend then print_string ")"
 	end
-  | Out(t,l) ->
+  | Out(ty,t,l) ->
       display_idcl CPred "begin";
       if !Param.typed_frontend then print_string "(" else print_string ":";
       term t;
@@ -1027,7 +1027,7 @@ let rec display_hyp hyp tag =
       Lang.display_occ occ;
       print_string ",";
       newline()
-  | (Out(e,_) ::h, BeginFact :: BeginEvent(occ) :: t) ->
+  | (Out(_,e,_) ::h, BeginFact :: BeginEvent(occ) :: t) ->
       display_hyp h t;
       print_string "event ";
       display_term e;
@@ -1406,7 +1406,7 @@ let display_fact2 = function
 	  display_term_list2 t;
 	  if !Param.typed_frontend then print_string ")"
 	end
-  | Out(t,l) ->
+  | Out(_,t,l) ->
       display_idcl CPred "begin";
       if !Param.typed_frontend then print_string "(" else print_string ":";
       display_term2 t;
@@ -2052,7 +2052,7 @@ let rec display_hyp hyp hl tag =
       newline()
   | (h, hl, LetFilterTag(occ) :: t) ->
       display_hyp h hl t
-  | (Out(e,l) ::h, s::hl, BeginFact :: BeginEvent(occ) :: t) ->
+  | (Out(_,e,l) ::h, s::hl, BeginFact :: BeginEvent(occ) :: t) ->
       display_hyp h hl t;
       print_string "The event ";
       WithLinks.term e;

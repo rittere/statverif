@@ -153,7 +153,7 @@ module HashFact =
 
     let skeleton_fact = function
 	Pred(p,l) -> SPred(p.p_name, List.map skeleton_term l)
-      |	Out(t,_) -> SOut(skeleton_term t)
+      |	Out(_,t,_) -> SOut(skeleton_term t)
 
     let hash a = a.hash
 

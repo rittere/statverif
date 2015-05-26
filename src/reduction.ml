@@ -678,7 +678,7 @@ let rec do_red_nointeract f prev_state n =
 	      auto_cleanup (fun () ->
 		let (t', name_params') = term_evaluation_name_params (OEvent(occ)) t name_params in
 		let new_occs = BeginFact :: (BeginEvent (occ)) :: occs in
-		let new_facts = (Out(t', [])) :: facts in
+		let new_facts = (Out([Param.event_type], t', [])) :: facts in
 		find_io_rule (fun _ ->
 		  do_red_nointeract f { prev_state with
 	                                subprocess = replace_at n (p, name_params', new_occs, new_facts, Nothing) prev_state.subprocess;
@@ -1051,7 +1051,7 @@ let rec init_rule state tree =
     FHAny | FEmpty -> 
       begin
 	match tree.thefact with
-	  Out(_,_) -> state
+	  Out(_,_,_) -> state
 	| Pred(p, [t]) when p.p_prop land Param.pred_ATTACKER != 0 ->
 	    (* Note that the predicate "comp" is not pred_ATTACKER and
 	       could be handled similarly, but anyway it does not
@@ -1824,7 +1824,7 @@ let rec has_sid_term sid = function
 
 let find_sid_fact end_sid no_dup_begin_sids = function
     Pred(_,l) -> ()
-  | Out(t,l) -> 
+  | Out(ty,t,l) -> 
       if not (List.exists (fun (_,t') -> has_sid_term end_sid t') l) then
 	List.iter (fun (v,t') -> 
 	  if v.sname = "@sid" then add_sid (get_sid t') no_dup_begin_sids) l
@@ -2391,7 +2391,7 @@ let rec simplify_tree first recheck next_f tree =
       match f1, f2 with
 	Pred(p1,l1), Pred(p2,l2) when p1 == p2 ->
 	  List.iter2 add_unif_term l1 l2
-      | Out(t1,_),Out(t2,_) -> 
+      | Out(_,t1,_),Out(_,t2,_) -> 
 	  add_unif_term t1 t2
       | _ -> 
 	  Display.Def.print_line "Trying to unify incompatible facts in unifyDerivation; skipping this impossible unification.";

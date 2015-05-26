@@ -177,7 +177,7 @@ let rec check_fact error_message seen_pred_calls bound_vars = function
     Pred(p, l) ->
       check_pred error_message seen_pred_calls (p, List.map (is_ground (!bound_vars)) l);
       List.iter (binds_vars error_message bound_vars) l
-  | Out(_,_) -> 
+  | Out(_,_,_) -> 
       internal_error "Out fact not allowed in user clauses in pi input"
 
 and check_pred error_message seen_pred_calls (p, ground_list) = 
@@ -231,7 +231,7 @@ and check_pred error_message seen_pred_calls (p, ground_list) =
 		  error_message''();
 		  user_error "In the conclusion of a clause, all variables should have been bound by evaluating the hypothesis\n"
 		end) l'
-      |	(_, Out(_,_), _, _) ->
+      |	(_, Out(_,_,_), _, _) ->
 	  internal_error "No Out fact allowed in conclusion (check_pred)"
       ) (!Param.red_rules);
     List.iter (function 
@@ -252,7 +252,7 @@ and check_pred error_message seen_pred_calls (p, ground_list) =
 		  error_message'();
 		  user_error "In a fact, all variables should have been bound\n"
 		end) l'
-      |	Out(_,_) ->
+      |	Out(_,_,_) ->
 	  internal_error "No Out fact allowed in conclusion (check_pred)"
       ) (!Param.elim_true)
 
@@ -286,7 +286,7 @@ let check_first_fact vlist = function
 	  end
 		 ) vlist;
       check_fact error_message [] bound_vars f
-  | Out(_,_) -> 
+  | Out(_,_,_) -> 
       internal_error "No Out fact in let...suchthat"
 
 (* Rule base *)
@@ -530,7 +530,7 @@ let output_rule { hypothesis = prev_input; constra = constra; unif = unif;
 		| [Mess(0,ty)] -> Param.get_pred(Mess(1,ty))
 		| [Table(0)] -> Param.get_pred(Table(1))
 		| _ -> chann), List.map copy_term3 t)
-	    | Out(t,l) -> Out(copy_term3 t, List.map copy_term_pair3 l)
+	    | Out(ty,t,l) -> Out(ty,copy_term3 t, List.map copy_term_pair3 l)
 	  in
 	  let rec copy_constra3 c = List.map (function
 	      Neq(t1,t2) -> Neq(copy_term3 t1, copy_term3 t2)) c
@@ -806,6 +806,11 @@ let pred_begin_tmp = { p_name = "begin_tmp";
 		       p_prop = 0; 
 		       p_info = [] }
 
+let pred_end1_tmp = { p_name = "begin_tmp"; 
+		      p_type = [Param.noelim_type; Param.event_type]; 
+		      p_prop = 0; 
+		      p_info = [] }
+
 let occ_cst = FunApp({ f_name = "@occ_cst";
 		       f_type = [], Param.any_type;
 		       f_cat = Tuple;
@@ -832,7 +837,8 @@ let replace_begin_out name_params tags hyp =
    let make_out = make_out_fun name_params in
    let tag_ref = ref tags in
    List.map (function 
-       Pred(pred_begin_x, [FunApp(f,l) as pat_begin]) when pred_begin_x == pred_begin_tmp ->
+       Pred(pred_begin_x, [FunApp(f,l) as pat_begin])
+		   when pred_begin_x == pred_begin_tmp || pred_begin_x == pred_end1_tmp ->
 	 let fstatus = Pievent.get_event_status f in
 	 let rec find_occ = function
 	     [] -> Parsing_helper.internal_error "Should find BeginFact and BeginEvent tags"
@@ -845,9 +851,9 @@ let replace_begin_out name_params tags hyp =
 	 if fstatus.begin_status = Inj then
 	   (* Store the occurrence of the "begin" event in the environment, 
               to be able to find it back in piauth.ml *)
-	   Out(pat_begin, make_out @ [get_occ_var occ, occ_cst] )
+	   Out(pred_begin_x.p_type, pat_begin, make_out @ [get_occ_var occ, occ_cst] )
 	 else
-	   Out(pat_begin, [])
+	   Out(pred_begin_x.p_type, pat_begin, [])
      | Pred(pred_begin_x,_)  when pred_begin_x == pred_begin_tmp -> 
          user_error ("Events should be function applications\n")
      | c -> c) hyp
@@ -1009,7 +1015,7 @@ let transl_pat_fail next_f cur_state pat pat' =
 
 let transl_fact next_fun cur_state occ f =
   match f with
-    Out(_, _) -> Parsing_helper.internal_error "Out fact not allowed in let... suchthat"
+    Out(_, _, _) -> Parsing_helper.internal_error "Out fact not allowed in let... suchthat"
   | Pred(p,tl) ->
       transl_term_list_incl_destructor (no_fail_list (fun cur_state1 patl ->
 	next_fun (Pred(p,patl)) cur_state1)) cur_state occ tl 
@@ -1354,7 +1360,7 @@ let rec transl_process cur_state process =
                              } (Pred(Param.end_pred_inj, [first_param; pat1]));
                  (* Stateful injectivity *)
                  let cur_state3 = { cur_state2 with
-                                    hypothesis = Pred(pred_begin_tmp, [pat1]) :: cur_state2.hypothesis;
+                                    hypothesis = Pred(pred_end1_tmp, [pat1]) :: cur_state2.hypothesis;
                                     hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state2.hyp_tags } in
 		 (* Forward search on the process:
                     - if the next action is an assignment then translate the continuation as normal,

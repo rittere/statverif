@@ -92,7 +92,7 @@ and close_term_list_eq restwork = function
 let close_fact_eq restwork = function
     Pred(p,l) ->
       close_term_list_eq (fun l' -> restwork (Pred(p,l'))) l
-  | Out(t,l) ->
+  | Out(_,t,l) ->
       Parsing_helper.internal_error "Out facts should not appear in TermsEq.close_fact_eq"
       (* restwork (Out(t,l))
 	 If Out facts were present, we might need to
@@ -200,7 +200,7 @@ let close_fact_destr_eq accu_constra restwork = function
 	    with Unify -> ()
 		)
 	    ) l
-  | Out(t,l) ->
+  | Out(_,t,l) ->
       Parsing_helper.internal_error "Out facts should not appear in TermsEq.close_fact_destr_eq"
 
 let rec close_fact_destr_list_eq accu_constra restwork = function
@@ -987,7 +987,7 @@ let copy_remove_syntactic_pair = fun (v,t) -> (v, copy_remove_syntactic t)
 
 let copy_remove_syntactic_fact = function
     Pred(chann, t) -> Pred(chann, List.map copy_remove_syntactic t)
-  | Out(t,l) -> Out(copy_remove_syntactic t, List.map copy_remove_syntactic_pair l)
+  | Out(ty,t,l) -> Out(ty, copy_remove_syntactic t, List.map copy_remove_syntactic_pair l)
 
 let rec copy_remove_syntactic_constra c = List.map (function
     Neq(t1,t2) -> Neq(copy_remove_syntactic t1, copy_remove_syntactic t2)) c
@@ -1005,7 +1005,7 @@ let remove_syntactic_pair = fun (v,t) -> (v, remove_syntactic_term t)
 
 let remove_syntactic_fact = function
     Pred(chann, t) -> Pred(chann, List.map remove_syntactic_term t)
-  | Out(t,l) -> Out(remove_syntactic_term t, List.map remove_syntactic_pair l)
+  | Out(ty,t,l) -> Out(ty, remove_syntactic_term t, List.map remove_syntactic_pair l)
 
 let rec remove_syntactic_constra c = List.map (function
     Neq(t1,t2) -> Neq(remove_syntactic_term t1, remove_syntactic_term t2)

@@ -288,7 +288,7 @@ let rec occurs_f_pat f = function
 
 let occurs_f_fact f = function
     Pred(_,l) -> List.exists (occurs_f f) l
-  | Out(t, l) -> 
+  | Out(_, t, l) -> 
       (occurs_f f t) || 
       (List.exists(fun (_,t) -> occurs_f f t) l)
 
@@ -309,10 +309,10 @@ let equals_term_pair (v, t) (v', t') = (v == v') && (equal_terms t t')
 
 let equal_facts f1 f2 = 
   match (f1,f2) with
-    Pred(chann1, t1),Pred(chann2, t2) ->
-      (chann1 == chann2) && (List.for_all2 equal_terms t1 t2)
-  | Out(t1,l1),Out(t2,l2) ->
-      (equal_terms t1 t2) && (List.length l1 = List.length l2) 
+  | Pred(chann1, t1),Pred(chann2, t2) ->
+     (chann1 == chann2) && (List.for_all2 equal_terms t1 t2)
+  | Out(ty1,t1,l1),Out(ty2,t2,l2) ->
+     (ty1 == ty2) && (equal_terms t1 t2) && (List.length l1 = List.length l2) 
 	&& (List.for_all2 equals_term_pair l1 l2)
   | _ -> false
 
@@ -484,7 +484,7 @@ let copy_term_pair = fun (v,t) -> (v, copy_term t)
 
 let copy_fact = function
     Pred(chann, t) -> Pred(chann, List.map copy_term t)
-  | Out(t, l) -> Out(copy_term t, List.map copy_term_pair l)
+  | Out(ty, t, l) -> Out(ty, copy_term t, List.map copy_term_pair l)
 
 let copy_constra c = List.map (function
       Neq(t1,t2) -> Neq(copy_term t1, copy_term t2)) c
@@ -577,7 +577,8 @@ let unify_facts f1 f2 =
     Pred(chann1, t1),Pred(chann2,t2) ->
       if chann1 != chann2 then raise Unify;
       List.iter2 unify t1 t2
-  | Out(t1,l1),Out(t2,l2) ->
+  | Out(ty1,t1,l1),Out(ty2,t2,l2) ->
+      (* Warning: not checking types *)
       unify t1 t2;
       (* Warning: this might be a bit insecure? 
 	 if List.length l1 != List.length l2 then raise Unify; *)
@@ -616,7 +617,7 @@ let copy_term2_pair = fun (v,t) -> (v, copy_term2 t)
 
 let copy_fact2 = function
     Pred(chann, t) -> Pred(chann, List.map copy_term2 t)
-  | Out(t,l) -> Out(copy_term2 t, List.map copy_term2_pair l)
+  | Out(ty,t,l) -> Out(ty, copy_term2 t, List.map copy_term2_pair l)
 
 let rec copy_constra2 c = List.map (function
       Neq(t1,t2) -> Neq(copy_term2 t1, copy_term2 t2)) c
@@ -661,7 +662,8 @@ let match_facts f1 f2 =
     Pred(chann1, t1),Pred(chann2, t2) ->
       if chann1 != chann2 then raise NoMatch;
       List.iter2 match_terms t1 t2
-  | Out(t1,l1),Out(t2,l2) ->
+  | Out(ty1,t1,l1),Out(ty2,t2,l2) ->
+      (* Warning: not checking types here *)
       match_terms t1 t2;
       let len1 = List.length l1 in
       let len2 = List.length l2 in
@@ -747,7 +749,7 @@ let rec term_pair_list_size = function
 
 let fact_size = function
     Pred(_, tl) -> 1 + term_list_size tl
-  | Out(t,l) -> term_size t + term_pair_list_size l
+  | Out(_,t,l) -> term_size t + term_pair_list_size l
 
 
 
@@ -827,7 +829,7 @@ let get_vars_constra vlist = function
 
 let get_vars_fact vlist = function
     Pred(_,l) -> List.iter (get_vars vlist) l
-  | Out(t,l) ->
+  | Out(_,t,l) ->
       get_vars vlist t;
       List.iter(fun (_,t') -> get_vars vlist t') l
 
@@ -842,7 +844,7 @@ let rec copy_term3 = function
 
 let copy_fact3 = function
     Pred(p,l) -> Pred(p, List.map copy_term3 l)
-  | Out(t,l) -> Out(copy_term3 t, List.map (fun (x,t') -> (x, copy_term3 t')) l)
+  | Out(ty,t,l) -> Out(ty,copy_term3 t, List.map (fun (x,t') -> (x, copy_term3 t')) l)
 
 let rec copy_constra3 c = List.map (function
   | Neq(t1,t2) -> Neq(copy_term3 t1, copy_term3 t2)

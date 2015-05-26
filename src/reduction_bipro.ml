@@ -1002,7 +1002,7 @@ let rec init_rule state tree =
     FHAny | FEmpty -> 
       begin
 	match tree.thefact with
-	  Out(_,_) -> state
+	  Out(_,_,_) -> state
 	| Pred(p, [t]) when p.p_prop land Param.pred_ATTACKER != 0 ->
 	    begin
 	      let t' = rev_name_subst t in
@@ -1945,7 +1945,7 @@ let rec simplify_tree first next_f tree =
       match f1, f2 with
 	Pred(p1,l1), Pred(p2,l2) when p1 == p2 ->
 	  List.iter2 add_unif_term l1 l2
-      | Out(t1,_),Out(t2,_) -> 
+      | Out(_,t1,_),Out(_,t2,_) -> 
 	  add_unif_term t1 t2
       | _ -> 
 	  Display.Def.print_line "Trying to unify incompatible facts in unifyDerivation; skipping this impossible unification."

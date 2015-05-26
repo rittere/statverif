@@ -303,7 +303,7 @@ let corresp_att_mess_bin p1 p2 =
 
 let match_equiv next_f f1 f2 =
   match (f1,f2) with
-    Out(t1,l1), Out(t2,l2) -> match_modulo next_f t2 t1 
+    Out(_,t1,l1), Out(_,t2,l2) -> match_modulo next_f t2 t1 
   | Pred(p1,l1), Pred(p2,l2) when p1 == p2 -> match_modulo_list next_f l2 l1 
   | Pred(p1,[t1]), Pred(p2, [t2';t2]) 
         when (corresp_att_mess p1 p2) 
@@ -329,7 +329,7 @@ let term_subst t n1 n2 =
 let fact_subst f n1 n2 = 
   match f with
     Pred(p,l) -> Pred(p, List.map (fun t -> term_subst t n1 n2) l)
-  | Out(t,l) -> Out(term_subst t n1 n2, List.map(fun (b,t) -> (b, term_subst t n1 n2)) l)
+  | Out(ty,t,l) -> Out(ty,term_subst t n1 n2, List.map(fun (b,t) -> (b, term_subst t n1 n2)) l)
 
 let rec pat_subst p n1 n2 = 
   match p with
@@ -418,7 +418,7 @@ let rec close_term = function
 
 let close_fact = function
     Pred(p,l) -> List.iter close_term l
-  | Out(t,l) -> close_term t; List.iter (fun (_,t') -> close_term t') l
+  | Out(_,t,l) -> close_term t; List.iter (fun (_,t') -> close_term t') l
 
 let rec close_tree tree =
   close_fact tree.thefact;
@@ -473,7 +473,7 @@ let equal_facts_modulo f1 f2 =
   match f1, f2 with
     Pred(p1,l1), Pred(p2,l2) ->
       (p1 == p2) && (List.for_all2 equal_open_terms_modulo l1 l2)
-  | Out(t1,_),Out(t2,_) -> 
+  | Out(_,t1,_),Out(_,t2,_) -> 
       equal_open_terms_modulo t1 t2
   | _ -> false
 
@@ -527,7 +527,7 @@ and rev_name_subst_list l = List.map rev_name_subst l
 
 let rev_name_subst_fact = function
     Pred(p,l) -> Pred(p, rev_name_subst_list l)
-  | Out(t,l) -> Out(rev_name_subst t, List.map (fun (v,t') -> (v,rev_name_subst t')) l)
+  | Out(ty,t,l) -> Out(ty,rev_name_subst t, List.map (fun (v,t') -> (v,rev_name_subst t')) l)
 
 (* Check if a term is an allowed channel *)
 
@@ -558,7 +558,7 @@ let rec close_term_collect_links links = function
 
 let close_fact_collect_links links = function
     Pred(p,l) -> List.iter (close_term_collect_links links) l
-  | Out(t,l) -> close_term_collect_links links t; List.iter (fun (_,t') -> close_term_collect_links links t') l
+  | Out(_,t,l) -> close_term_collect_links links t; List.iter (fun (_,t') -> close_term_collect_links links t') l
 
 let rec close_tree_collect_links links tree =
   close_fact_collect_links links tree.thefact;

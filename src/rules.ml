@@ -68,7 +68,7 @@ let rec get_vars_rep vlist = function
 
 let get_vars_rep_fact vlist = function
     Pred(p,l) -> List.iter (get_vars_rep vlist) l
-  | Out(t,l) -> get_vars_rep vlist t;
+  | Out(_,t,l) -> get_vars_rep vlist t;
       List.iter (fun (_,t') -> get_vars_rep vlist t') l
 
 let is_in_list vlist v =
@@ -138,7 +138,7 @@ let rec limit_depth n t =
 
 let limit_depth_fact n = function
     Pred(chann,t) -> Pred(chann, List.map (limit_depth n) t)
-  | Out(t,l) -> Out(limit_depth n t, List.map (fun (v,t) -> (v, limit_depth n t)) l)
+  | Out(ty,t,l) -> Out(ty, limit_depth n t, List.map (fun (v,t) -> (v, limit_depth n t)) l)
 
 let rec limit_depth_constra n c = List.map (function
     Neq(t1,t2) -> Neq(limit_depth n t1, limit_depth n t2)) c
@@ -284,7 +284,7 @@ let rec term_occur_count v = function
 
 let fact_occur_count v = function
     Pred(chann, l) -> list_add (term_occur_count v) l
-  | Out(t,l) ->
+  | Out(_,t,l) ->
       term_occur_count v t + list_add (fun (_,t2) -> term_occur_count v t2) l
 
 let occur_count v l = list_add (fact_occur_count v) l
@@ -379,30 +379,7 @@ This section consists of:
 (**Test \sigma H \subseteq H' for multiset inclusion *)
 let rec match_fact_with_hyp nextf fact1 hyp2 passed_hyp = 
   match hyp2 with
-  | [] -> 
-     begin
-       (* Check if fact1 must not be eliminated *)
-       match fact1 with
-       | Out(FunApp(_,_), _) ->
-	  begin
-	    Printf.printf "noelim fact ";
-	    Display.Text.display_fact fact1;
-	    Printf.printf "\n";
-	    nextf passed_hyp
-	  end
-       | Pred({ p_type = p_type }, _) ->
-	  begin
-	    try
-	      let _ = List.find ((=) Param.noelim_type) p_type in
-	      Printf.printf "noelim fact ";
-	      Display.Text.display_fact fact1;
-	      Printf.printf "\n";
-	      nextf passed_hyp
-	    with Not_found ->
-	      raise NoMatch
-	  end
-       | _ -> raise NoMatch
-     end
+  | [] -> raise NoMatch
   | (fact2::fact_l) -> 
       try
         Terms.auto_cleanup (fun () ->
@@ -436,7 +413,7 @@ let rec has_unbound_var = function
 
 let fact_has_unbound_var = function
     Pred(_, tl) -> List.exists has_unbound_var tl
-  | Out(t,l) -> (has_unbound_var t) || (List.exists 
+  | Out(_,t,l) -> (has_unbound_var t) || (List.exists 
       (fun (v,t) -> has_unbound_var t) l)
 
 let rank f =
@@ -455,6 +432,36 @@ let reorder hyp =
   else
     hyp
 
+(* Reversed version of match_fact_with_hyp, where we check existence
+   of fact2 in hyp2 that subsumes fact1 *)
+let rec match_fact_with_hyp_rev nextf fact1 hyp2 passed_hyp = 
+  match hyp2 with
+  | [] -> raise NoMatch
+  | (fact2::fact_l) -> 
+      try
+        Terms.auto_cleanup (fun () ->
+	  Terms.match_facts fact2 fact1;
+          nextf (passed_hyp @ fact_l) 
+        )
+      with NoMatch ->
+	match_fact_with_hyp nextf fact1 fact_l (fact2 :: passed_hyp)
+
+(* Checks that all noelim facts in hyp2 are also present in hyp1,
+   otherwise raise NoMatch *)
+let rec find_noelim_fact hyp1 hyp2 =
+  match hyp2 with
+  | [] -> ()
+  | (Out(p_type, FunApp(_,_),_) as f2) :: hyp
+  | (Pred({ p_type = p_type },_) as f2) :: hyp ->
+     begin
+       try
+	 let _ = List.find ((=) Param.noelim_type) p_type in
+	 match_fact_with_hyp_rev (function _ -> find_noelim_fact hyp1 hyp) f2 hyp1 []
+       with Not_found ->
+	 find_noelim_fact hyp1 hyp
+     end
+  | _ :: hyp -> find_noelim_fact hyp1 hyp
+
 (* 3. The final function for subsumption test *)
 
 let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r) =
@@ -467,12 +474,10 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r)
       	| Pred(p, []) when p == Param.bad_pred -> ()
      	| _ -> Terms.match_facts concl1 concl2
       end;
-      let constr2' =
-	try TermsEq.simplify_constra_list (concl2::hyp2) constr2
-	with TermsEq.FalseConstraint -> constr2
-      in
-      match_hyp (TermsEq.implies_constra_list (concl2 :: hyp2) constr2' constr1)
+      match_hyp
+	(TermsEq.implies_constra_list (concl2 :: hyp2) constr2 constr1)
   	(reorder hyp1) hyp2;
+      find_noelim_fact hyp1 hyp2;
       (* let t1 = Unix.times() in
       if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
        begin
@@ -555,7 +560,7 @@ let check_fact_fail = function
 	    List.iter check_no_fail l
 	| _ -> Parsing_helper.internal_error "Terms.check_rule: unexpected predicate info"
       end
-  | Out(t,l) ->
+  | Out(_,t,l) ->
       check_no_fail t;
       List.iter (fun (_,t) -> check_no_fail t) l
 
@@ -841,11 +846,11 @@ let check_occurs_fact p0 v = function
   | Pred(p, [t1; Var v']) when p.p_prop land Param.pred_ELEM != 0 && p == p0
 	      && v == v' -> occurs_var v t1
   | Pred(p, tl) -> List.exists (occurs_var v) tl
-  | Out(t, env) -> (occurs_var v t) || (List.exists (fun (_, t) -> occurs_var v t) env)
+  | Out(_, t, env) -> (occurs_var v t) || (List.exists (fun (_, t) -> occurs_var v t) env)
 
 let check_occurs_concl v = function
   | Pred(p, tl) -> List.exists (occurs_var v) tl
-  | Out(t, env) -> internal_error "Out fact should not occur in conclusion"
+  | Out(_, t, env) -> internal_error "Out fact should not occur in conclusion"
 
 let check_occurs_constra v c = List.exists 
     (function Neq(t1,t2) -> occurs_var v t1 || occurs_var v t2) c

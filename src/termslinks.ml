@@ -42,7 +42,8 @@ let rec equal_terms_with_links t1 t2 = (t1 == t2) || (match (t1,t2) with
 
 let equal_facts_with_links f f' = (f == f') || (match (f,f') with
   Pred(p,l), Pred(p',l') -> (p == p') && (List.for_all2 equal_terms_with_links l l') 
-| Out(t,l),Out(t',l') -> 
+| Out(ty,t,l),Out(ty',t',l') -> 
+   (* Warning: not doing any check on types *)
     (equal_terms_with_links t t') && 
     (List.for_all2 (fun (v,t) (v',t') -> (v == v') && (equal_terms_with_links t t')) l l')
 | _,_ -> false)

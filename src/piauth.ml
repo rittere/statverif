@@ -105,7 +105,7 @@ let rec put_constants = function
 
 let put_constants_fact = function
     Pred(p,l) -> List.iter put_constants l
-  | Out(t,tl) -> 
+  | Out(_,t,tl) -> 
       put_constants t;
       List.iter (fun (_,t') -> put_constants t') tl
 
@@ -189,7 +189,7 @@ let specvar_to_var_env = List.map (fun (v,t) -> (v, specvar_to_var t))
 
 let specvar_to_var_fact = function
     Pred(p,l) -> Pred(p, List.map specvar_to_var l)
-  | Out(t,tl) -> Out(specvar_to_var t, 
+  | Out(ty,t,tl) -> Out(ty,specvar_to_var t, 
 		     List.map (fun (x,t') -> (x,specvar_to_var t')) tl)
 
 let specvar_to_var_constra = List.map (function
@@ -396,7 +396,7 @@ let rec events_to_hyp = function
 	      QSEvent(b, param) -> 
 	  (* The second arg of Out is used only as a marker to know whether
              the event is injective or not *)
-		((Out(param, if b then inj_marker else non_inj_marker)) :: hyp', hyp_q', constra', eq_left', eq_right')
+		((Out([Param.event_type], param, if b then inj_marker else non_inj_marker)) :: hyp', hyp_q', constra', eq_left', eq_right')
 	    | QFact(p,l) -> ((Pred(p,l)) :: hyp', hyp_q', constra', eq_left', eq_right')
 	    | QNeq (t1,t2) -> (hyp', hyp_q', [Neq(t1,t2)] :: constra', eq_left', eq_right')
 	    | QEq (t1,t2) -> (hyp', hyp_q', constra', t1 :: eq_left', t2 :: eq_right')
@@ -404,7 +404,7 @@ let rec events_to_hyp = function
       |	NestedQuery(Before(QSEvent(b, param),_) as q) ->
 	  (* The second arg of Out is used only as a marker to know whether
              the event is injective or not *)
-	  ((Out(param, if b then inj_marker else non_inj_marker)) :: hyp', q :: hyp_q', constra', eq_left', eq_right')
+	  ((Out([Param.event_type], param, if b then inj_marker else non_inj_marker)) :: hyp', q :: hyp_q', constra', eq_left', eq_right')
       |	NestedQuery(Before(QFact(p,l),_) as q) ->
 	  ((Pred(p,l)):: hyp', q :: hyp_q', constra', eq_left', eq_right')
       |	NestedQuery(_) ->
@@ -625,7 +625,7 @@ let match_facts_mod_eq f f1 f2 = match (f1,f2) with
       TermsEq.unify_modulo_list (fun () -> try f() with Unify -> raise Not_found) t1 t2
     with Not_found -> raise Unify
     end
-| Out(t1,l1),Out(t2,l2) ->
+| Out(ty1,t1,l1),Out(ty2,t2,l2) ->
     (* Is it the right direction ? *)
     let len1 = List.length l1 in
     let len2 = List.length l2 in
@@ -700,7 +700,7 @@ let match_facts_eq f end_session_id f1 f2 = match (f1,f2) with
   Pred(chann1, t1),Pred(chann2, t2) ->
     if chann1 != chann2 then raise Unify;
     TermsEq.unify_modulo_list f t1 t2
-| Out(t1,marker),Out(t2,l2) ->
+| Out(_,t1,marker),Out(_,t2,l2) ->
     if marker == non_inj_marker then
       TermsEq.unify_modulo f t1 t2
     else
