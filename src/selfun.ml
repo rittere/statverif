@@ -268,6 +268,7 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 	     the decomposition of data constructors. *)
 	Printf.printf "hypothesis unselectable\n";
 	Display.Text.display_fact f;
+	Printf.printf "\n";
 	Display.Text.display_rule rule;
         sel (nold, wold) (n+1) l
     end
