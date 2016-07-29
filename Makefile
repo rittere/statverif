@@ -5,7 +5,7 @@ OCAMLLEX ?= ocamllex
 OCAML ?= ocamlopt
 OCAMLDEP ?= ocamldep
 PATHFLAGS = -I $(SRCDIR)
-OCAMLFLAGS ?= -g -w p
+OCAMLFLAGS ?= -g -w p -annot
 
 SRCDIR = src
 
