@@ -2,7 +2,7 @@
 
 OCAMLYACC ?= ocamlyacc
 OCAMLLEX ?= ocamllex
-OCAML ?= ocamlopt
+OCAML ?= ocamlc
 OCAMLDEP ?= ocamldep
 PATHFLAGS = -I $(SRCDIR)
 OCAMLFLAGS ?= -g -w p -annot
@@ -34,12 +34,12 @@ proveriftotex_SOURCES = $(addprefix $(SRCDIR)/,\
 all: proverif proveriftotex
 
 proverif_CMI := $(patsubst %.mli,%.cmi,$(filter %.mli,$(proverif_SOURCES)))
-proverif_OBJECTS := $(patsubst %.ml,%.cmx,$(filter %.ml,$(proverif_SOURCES)))
+proverif_OBJECTS := $(patsubst %.ml,%.cmo,$(filter %.ml,$(proverif_SOURCES)))
 proverif: $(proverif_CMI) $(proverif_OBJECTS)
 	$(OCAML) $(PATHFLAGS) $(OCAMLFLAGS) -o $@ $(proverif_OBJECTS)
 
 proveriftotex_CMI := $(patsubst %.mli,%.cmi,$(filter %.mli,$(proveriftotex_SOURCES)))
-proveriftotex_OBJECTS := $(patsubst %.ml,%.cmx,$(filter %.ml,$(proveriftotex_SOURCES)))
+proveriftotex_OBJECTS := $(patsubst %.ml,%.cmo,$(filter %.ml,$(proveriftotex_SOURCES)))
 proveriftotex: $(proveriftotex_CMI) $(proveriftotex_OBJECTS)
 	$(OCAML) $(PATHFLAGS) $(OCAMLFLAGS) -o $@ $(proveriftotex_OBJECTS)
 
@@ -47,7 +47,7 @@ proveriftotex: $(proveriftotex_CMI) $(proveriftotex_OBJECTS)
 	$(OCAML) -c $(PATHFLAGS) $(OCAMLFLAGS) $<
 
 # .ml files need their corresponding .mli files compiled first.
-%.cmx: %.ml %.cmi
+%.cmo: %.ml %.cmi
 	$(OCAML) -c $(PATHFLAGS) $(OCAMLFLAGS) $*.ml
 
 # Some .ml files have no corresponding .mli files.
@@ -55,16 +55,16 @@ proveriftotex: $(proveriftotex_CMI) $(proveriftotex_OBJECTS)
 $(strip                                                                    \
   $(foreach i,$(filter %.ml,$(proverif_SOURCES) $(proveriftotex_SOURCES)), \
     $(if $(filter $(i:.ml=.mli),                                           \
-      $(proverif_SOURCES) $(proveriftotex_SOURCES)),,$(i:.ml=.cmx))        \
-  ) $(patsubst %.mll,%.cmx,$(wildcard $(SRCDIR)/*.mll))                    \
-): %.cmx: %.ml
+      $(proverif_SOURCES) $(proveriftotex_SOURCES)),,$(i:.ml=.cmo))        \
+  ) $(patsubst %.mll,%.cmo,$(wildcard $(SRCDIR)/*.mll))                    \
+): %.cmo: %.ml
 	$(OCAML) -c $(PATHFLAGS) $(OCAMLFLAGS) $*.ml
 
 .PHONY: clean
 CLEANFILES := proverif proveriftotex \
 	$(proverif_CMI) $(proverif_OBJECTS) \
 	$(proveriftotex_CMI) $(proveriftotex_OBJECTS) \
-	$(proverif_OBJECTS:.cmx=.o) $(proverif_OBJECTS:.cmx=.o)
+	$(proverif_OBJECTS:.cmo=.o) $(proverif_OBJECTS:.cmo=.o)
 ACCIDENT := $(filter %.ml,$(CLEANFILES)) $(filter %.mli,$(CLEANFILES))
 ifneq ($(strip $(ACCIDENT)),)
 	junk := $(error Source files in CLEANFILES! $(ACCIDENT))
@@ -90,6 +90,6 @@ clean:
 .PHONY: depend
 depend:
 	$(OCAMLDEP) $(PATHFLAGS) $(proverif_SOURCES) $(proveriftotex_SOURCES) \
-	    | sed -r 's/^([^\.:]+)\.cmx:(.*)\1\.cmi/\1\.cmx \1\.cmi:\2/' >.dependencies
+	    | sed -r 's/^([^\.:]+)\.cmo:(.*)\1\.cmi/\1\.cmo \1\.cmi:\2/' >.dependencies
 
 -include .dependencies

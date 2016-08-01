@@ -1715,7 +1715,7 @@ let display_event = function
       display_term t2
 
 let rec display_corresp_query = function
-    Before(e, []) -> 
+    Before(e, []) ->
       display_idcl CKeyword "not ";
       display_event e
   | Before(e, a::l) -> 

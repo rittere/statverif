@@ -2510,8 +2510,9 @@ let rec check_event env (f,e) =
       else
 	QSEvent(true, FunApp((get_event_fun env f (Param.sid_type :: tyl')),
 			     (Terms.new_var_def Param.sid_type)::tl'))
-  | PGFunApp(("attacker",_), tl) ->
+  | PGFunApp(("attacker",_), tl) -> begin
       check_attacker env e tl (-1)
+  end
   | PGFunApp(("mess",_), tl) ->
       check_mess env e tl (-1)
   | PGFunApp((s, ext) as p, tl) ->
@@ -2573,7 +2574,7 @@ let rec check_real_query_top env = function
       let ev'' = 
 	match ev' with
 	  QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur alone queries\n"
-	| QFact _ -> ev'
+	| QFact _ ->  ev'
 	| QSEvent _ when !Param.key_compromise == 0 -> ev'
 	| QSEvent(inj, FunApp(f, sid::l)) ->
 	    QSEvent(inj, FunApp(f, non_compromised_session::l))
@@ -2584,8 +2585,8 @@ let rec check_real_query_top env = function
 
 let rec check_query_list env = function
     [] -> []
-  | (PRealQuery q)::lq -> 
-      (RealQuery(check_real_query_top env q))::(check_query_list env lq)
+  | (PRealQuery q)::lq ->
+	(RealQuery(check_real_query_top env q))::(check_query_list env lq)
   | (PPutBegin(i, l))::lq ->
       let l' = List.map (fun (s,e) ->
 	try

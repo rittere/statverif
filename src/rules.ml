@@ -466,7 +466,7 @@ let rec find_noelim_fact hyp1 hyp2 =
 
 let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r) =
   if List.length hyp1 > List.length hyp2 then false else
-  (* let t0 = Unix.times() in *)
+(*  let t0 = Unix.times() in *)
   try 
     Terms.auto_cleanup (fun () ->
       begin
@@ -478,7 +478,7 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r)
 	(TermsEq.implies_constra_list (concl2 :: hyp2) constr2 constr1)
   	(reorder hyp1) hyp2;
       find_noelim_fact hyp1 hyp2;
-      (* let t1 = Unix.times() in
+(*      let t1 = Unix.times() in
       if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
        begin
 	 print_string "testing implication ";
@@ -490,6 +490,7 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r)
 	 print_string " seconds.";
 	 Display.Text.newline()
        end; *)
+
       Printf.printf "Superfluous rule found: ";
       Display.Text.display_rule r;
       Printf.printf " is subsumed by ";
@@ -598,7 +599,9 @@ let add_rule ?(insertAtBeginning=false) rule =
   let test_impl = fun r -> implies r rule in
   if (List.exists test_impl (!rule_base_ns)) ||
      (List.exists (function (r,_) -> implies r rule) (!rule_base_sel)) ||
-     (Queue.exists rule_queue test_impl) then () else
+     (Queue.exists rule_queue test_impl) then
+    Printf.printf "rule not added\n" (* () *)
+    else
     begin
       (* eliminates from the rule_base the rules implied by rule *)
       let test_impl = fun r -> not(implies rule r) in

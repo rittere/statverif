@@ -375,6 +375,10 @@ let new_state () =
         value = Var x }
     result) FunMap.empty !Param.cells
 
+let add_state arg =
+  let fresh_cells = new_state () in
+  [get_state fresh_cells ; arg]
+    
 let new_state_format () =
   FFunApp(Param.state_fun,
     List.map (fun ({f_type=_,t} as cell,_) ->
@@ -1853,7 +1857,8 @@ let transl p =
            because the attacker already has fail in all phases. *)
 	let w = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (Attacker(i-1,t)) in
-	add_rule [Pred(att_im1, [w])] (Pred(att_i, [w])) [] PhaseChange
+	let state_var = new_state () in 
+	add_rule [Pred(att_im1, [get_state state_var; w])] (Pred(att_i, [get_state state_var; w])) [] PhaseChange
 	  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
     if i > 0 then
       let tbl_i = Param.get_pred (Table(i)) in

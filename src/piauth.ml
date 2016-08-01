@@ -1183,13 +1183,27 @@ let do_query display_query = function
 		end
 	end;
       supplemental_info := None
-	
+
+let add_state q =
+  match q with
+    RealQuery (Before(e, [] )) ->
+      let e =
+	match e with
+	  QFact(att_n, [arg]) -> 
+	    let args = Pitransl.add_state arg in
+	    QFact(att_n, args)
+	| _ -> e
+      in RealQuery(Before(e, []))
+  | _ -> q
+	  
 let solve_auth rules queries =
   init_clauses := rules;
   clauses_for_preds := None;
   Rules.completion rules;
   match queries with
-    [q] -> do_query false q
+    [q] ->
+      let q = add_state q in 
+      do_query false q
   | _ -> 
       if !Param.html_output then
 	Display.Html.print_string "<UL>\n";
