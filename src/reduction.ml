@@ -1102,11 +1102,25 @@ let rec init_rule state tree =
 		    let (p,c) = 
 		      match tree.thefact with
 			Pred(p,[t]) -> (p,rev_name_subst t)
-		      | _ -> Parsing_helper.internal_error "unexpected Apply clause"
+		      |	Pred(p,[_; t]) -> begin 
+			  Printf.printf "Throwing away state in init_rule\n";
+			    (p,rev_name_subst t)
+		      end
+		      | _ -> begin
+			  Printf.printf "About to fail1\n";
+			  Parsing_helper.internal_error "unexpected Apply clause"
+		      end
 		    in
 		    let h = List.map (function 
 			{ thefact = Pred(_,[t]) } -> rev_name_subst t
-		      |	_ -> Parsing_helper.internal_error "unexpected Apply clause") sons
+		      |	{ thefact = Pred(_,[_;t]) } -> begin
+			  Printf.printf "Throwing away again state in init_rule\n";
+			    rev_name_subst t
+		      end
+		      |	_ -> begin
+			  Printf.printf "About to fail2\n";
+Parsing_helper.internal_error "unexpected Apply clause"
+		      end) sons
 		    in
 	            {state1 with prepared_attacker_rule = (p, decompose_list h, decompose_term c)::state1.prepared_attacker_rule}
 		  end
