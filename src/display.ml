@@ -1891,7 +1891,8 @@ let display_output_fact = function
 let display_attacker_hyp nl hl =
   List.iter2 (fun n h ->
     match h.thefact with 
-      Pred(p, [v;v']) when p == Param.testunif_pred ->
+        ((Pred({p_info = [Seq(n)]}, _))) -> ()
+      | Pred(p, [v;v']) when p == Param.testunif_pred ->
 	print_string "The terms ";
 	WithLinks.term v;
 	print_string " and ";
@@ -2127,6 +2128,8 @@ let display_constra_list c =
 let display_clause_explain n lbl hyp_num_list hl constra concl =
   Printf.printf "Called display_clause_explain\n";
   Printf.printf "\n";
+  flush stdout;
+  flush stdout;
   match lbl with
     Rn _ -> 
       print_string "The attacker creates the new name ";
