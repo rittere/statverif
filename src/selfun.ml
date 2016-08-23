@@ -259,8 +259,10 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 	  begin
 	    print_string "Termination warning: ";
 	  end;
-	print_string ("Selecting " ^ (string_of_int nold));
-	Display.Text.newline();
+	if !Param.debug_output then begin 
+	  print_string ("Selecting " ^ (string_of_int nold));
+	  Display.Text.newline()
+        end;
         nold
     | (f::l) when is_unselectable f -> begin
 	  (* Guarantee that p(x) is never selected when we decompose data

@@ -1271,7 +1271,7 @@ let redundant_res res_list =
 		 Display.Text.display_rule rule2
 	       end; 
 	       compos normal_rule rule2 rule_sel) (!rule_base_ns);
-	   print_endline "";
+	   Debug.debug_print "\n";
 (* 	   List.iter (fun rule2 -> compos normal_rule rule2 rule_sel) (!rule_base_ns) *)
 	 end;
 
@@ -1441,8 +1441,10 @@ let completion rulelist =
   (* Complete the rule base *)
   List.iter normal_rule rulelist;
   Selfun.guess_no_unif rule_queue;
-  print_string "Rule base after normalisation\n";
-  Queue.iter rule_queue (fun rule -> Display.Text.display_rule rule);
+  if !Param.debug_output then begin 
+    print_string "Rule base after normalisation\n";
+    Queue.iter rule_queue (fun rule -> Display.Text.display_rule rule)
+  end;
   
   if hasEquationsToRecord() then
   begin
