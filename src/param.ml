@@ -97,6 +97,8 @@ let explain_derivation = ref true
 let reconstruct_trace = ref true
 let trace_backtracking = ref true
 
+let debug_output = ref false
+
 (* For trace reconstruction, to disable display of initial state when 
    backtracking is forbidden and the trace is displayed as it is build. *)
 let display_init_state = ref true

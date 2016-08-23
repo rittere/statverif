@@ -606,12 +606,12 @@ let unify_cells cur_state side =
 
 let rec transl_process cur_state process =
 
-  (* DEBUG mode *)
-
-(*     Printf.printf "\n\n**********************\n\n";
+(* if !Param.debug_output then begin
+     Printf.printf "\n\n**********************\n\n";
   Display.Text.display_process_occ "" process;
   display_transl_state cur_state;
-  flush_all ();   *)
+  flush_all ()
+end ; *)
 
   match process with
   | Nil -> ()

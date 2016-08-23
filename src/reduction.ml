@@ -1103,22 +1103,22 @@ let rec init_rule state tree =
 		      match tree.thefact with
 			Pred(p,[t]) -> (p,rev_name_subst t)
 		      |	Pred(p,[_; t]) -> begin 
-			  Printf.printf "Throwing away state in init_rule\n";
+			  Debug.debug_print "Throwing away state in init_rule\n";
 			    (p,rev_name_subst t)
 		      end
 		      | _ -> begin
-			  Printf.printf "About to fail1\n";
+			  Debug.debug_print "About to fail1\n";
 			  Parsing_helper.internal_error "unexpected Apply clause"
 		      end
 		    in
 		    let h = List.map (function 
 			{ thefact = Pred(_,[t]) } -> rev_name_subst t
 		      |	{ thefact = Pred(_,[_;t]) } -> begin
-			  Printf.printf "Throwing away again state in init_rule\n";
+			  Debug.debug_print "Throwing away again state in init_rule\n";
 			    rev_name_subst t
 		      end
 		      |	_ -> begin
-			  Printf.printf "About to fail2\n";
+			  Debug.debug_print "About to fail2\n";
 Parsing_helper.internal_error "unexpected Apply clause"
 		      end) sons
 		    in
@@ -1127,8 +1127,12 @@ Parsing_helper.internal_error "unexpected Apply clause"
               | Rn _ ->
                   begin
 	            match tree.thefact with
-                      Pred(p, [t]) ->
+                      Pred(p, [t]) -> 
                         { state1 with prepared_attacker_rule = (p, [], [rev_name_subst t])::state1.prepared_attacker_rule }
+                    | Pred(p, [_; t]) ->  begin (* Hack! Check *)
+			Debug.debug_print "Hack used\n";
+                        { state1 with prepared_attacker_rule = (p, [], [rev_name_subst t])::state1.prepared_attacker_rule }
+		    end
                     | _ -> 
 			Parsing_helper.internal_error "Rule Rn should conclude p(name)"
 	          end
@@ -2422,7 +2426,7 @@ let rec simplify_tree first recheck next_f tree =
 	    (* the session identifier is part of the fact id *)
 	    check_coherent ((HashFactId.Term (List.nth name_params count_params)) :: factId') 
 	      (concl, l1, name_params, sons) 
-	| OutputTag occ | InsertTag occ | InputPTag occ | OutputPTag occ | BeginEvent occ | AssignTag (occ, _) ->
+	| OutputTag _ | InsertTag _ | InputPTag _ | OutputPTag _ | BeginEvent _ | AssignTag (_, _) | SequenceTag ->
 	    if l1 == [] then
 	      (* I'm reaching the conclusion *)
 	      let fact_id = HashFactId.build factId' in

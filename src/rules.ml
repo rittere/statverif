@@ -491,10 +491,12 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r)
 	 Display.Text.newline()
        end; *)
 
-      Printf.printf "Superfluous rule found: ";
-      Display.Text.display_rule r;
-      Printf.printf " is subsumed by ";
-      Display.Text.display_rule r1;
+      if !Param.debug_output then begin 
+	Printf.printf "Superfluous rule found: ";
+	Display.Text.display_rule r;
+	Printf.printf " is subsumed by ";
+	Display.Text.display_rule r1
+      end;
       true
 	)
   with NoMatch -> 
@@ -594,13 +596,15 @@ let rule_base_sel = ref ([] : (reduction * int) list)
 
 let add_rule ?(insertAtBeginning=false) rule = 
   (* Check that the rule is not already in the rule base or in the queue *)
-  Printf.printf "Add-rule entered for rule:\n";
-  Display.Text.display_rule rule;
+  if !Param.debug_output then begin
+    Printf.printf "Add-rule entered for rule:\n";
+    Display.Text.display_rule rule
+  end;
   let test_impl = fun r -> implies r rule in
   if (List.exists test_impl (!rule_base_ns)) ||
      (List.exists (function (r,_) -> implies r rule) (!rule_base_sel)) ||
      (Queue.exists rule_queue test_impl) then
-    Printf.printf "rule not added\n" (* () *)
+    Debug.debug_print "rule not added\n" (* () *)
     else
     begin
       (* eliminates from the rule_base the rules implied by rule *)
@@ -614,7 +618,7 @@ let add_rule ?(insertAtBeginning=false) rule =
 	  Queue.addBeginning rule_queue rule
       else
 	Queue.add rule_queue rule;
-      Printf.printf "Added rule to rule queue.\n";
+      Debug.debug_print "Added rule to rule queue.\n";
     end
 
     
@@ -638,8 +642,11 @@ let simplify_rule_constra next_stage (hyp, concl, hist,constra) =
       (secrecy assumption) *)
 
 let elim_not next_stage ((hyp', _, _,_) as r) =
-(*  Printf.printf "elim_not called for rule with %s not_set\n" (if !not_set = [] then "empty" else "non-empty");
-  Display.Text.display_rule r;  *)
+(*  
+    if !Param.debug_output then begin 
+       Debug.debug_print "elim_not called for rule with %s not_set\n" (if !not_set = [] then "empty" else "non-empty");
+       Display.Text.display_rule r
+    end;  *)
   if (List.exists (fun h -> List.exists (matchafact h) (!not_set)) hyp') then
     ()
   else
@@ -1047,9 +1054,11 @@ let is_superfluous rule =
      (Queue.exists rule_queue test_impl) 
 
 let simplify_rule_constra_normal next_stage r =
-   if is_superfluous r then  begin
-    Printf.printf "Eliminated rule \n";
-    Display.Text.display_rule r
+  if is_superfluous r then  begin
+    if !Param.debug_output then begin 
+      Debug.debug_print "Eliminated rule \n";
+      Display.Text.display_rule r
+    end
   end
   else begin 
     assert (!Terms.current_bound_vars == []);
@@ -1138,8 +1147,10 @@ let compos next_stage (hyp1, concl1, hist1,constra1) ((hyp2, concl2, hist2,const
     let concl' = copy_fact2 concl2 in
     let hist' = Resolution(hist1, sel_index, hist2) in
     let constra' = ((List.map copy_constra2 constra1) @ (List.map copy_constra2 constra2)) in
-    print_string "Result of composition is\n";
-    Display.Text.display_rule (hyp', concl', hist', constra');
+    if !Param.debug_output then begin 
+      print_string "Result of composition is\n";
+      Display.Text.display_rule (hyp', concl', hist', constra')
+    end;
     cleanup();
   (*  incr resol_step; *)
     next_stage (hyp', concl', hist', constra')
@@ -1227,32 +1238,48 @@ let redundant_res res_list =
 	match rule with
      None -> ()
    | Some rule -> 
-       print_string "COMPOSING ";
-       Display.Text.display_rule rule;
+       if !Param.debug_output then begin
+	 print_string "COMPOSING ";
+	 Display.Text.display_rule rule
+       end;
        let sel_index = selection_fun rule in
        if sel_index == -1 then
 	 begin
 	   if not (redundant_glob rule) then
 	     begin
 	       rule_base_ns := rule :: (!rule_base_ns);
-	       List.iter (fun (rule2,n) -> print_string "WITH "; Printf.printf "(%d) " n; Display.Text.display_rule rule2; compos normal_rule rule (rule2,n)) (!rule_base_sel);
+	       List.iter 
+		 (fun (rule2,n) ->
+		   if !Param.debug_output then begin
+		     print_string "WITH "; 
+		     Printf.printf "(%d) " n; 
+		     Display.Text.display_rule rule2
+		   end; 
+		   compos normal_rule rule (rule2,n)) (!rule_base_sel);
+	       Debug.debug_print "\n"
 (* 	       List.iter (compos normal_rule rule) (!rule_base_sel) *)
-	       print_endline "";
 	     end
 	 end
        else
 	 begin
 	   let rule_sel = (rule, sel_index) in
 	   rule_base_sel := rule_sel :: (!rule_base_sel);
-	   List.iter (fun rule2 -> print_string "BACKWARDS WITH "; Display.Text.display_rule rule2; compos normal_rule rule2 rule_sel) (!rule_base_ns);
-(* 	   List.iter (fun rule2 -> compos normal_rule rule2 rule_sel) (!rule_base_ns) *)
+	   List.iter 
+	     (fun rule2 -> 
+	       if !Param.debug_output then begin 
+		 print_string "BACKWARDS WITH "; 
+		 Display.Text.display_rule rule2
+	       end; 
+	       compos normal_rule rule2 rule_sel) (!rule_base_ns);
 	   print_endline "";
+(* 	   List.iter (fun rule2 -> compos normal_rule rule2 rule_sel) (!rule_base_ns) *)
 	 end;
 
-       Printf.printf "#rule_base_ns = %d, rule_base_sel = %d, #rules in queue = %d\n" 
-	 (List.length !rule_base_ns)
-	 (List.length !rule_base_sel)
-         (Queue.length rule_queue);
+       if !Param.debug_output then 
+	 Printf.printf "#rule_base_ns = %d, rule_base_sel = %d, #rules in queue = %d\n" 
+	   (List.length !rule_base_ns)
+	   (List.length !rule_base_sel)
+           (Queue.length rule_queue);
 
        (* display the rule *)
        if !Param.verbose_rules then

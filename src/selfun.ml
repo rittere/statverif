@@ -266,10 +266,12 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 	  (* Guarantee that p(x) is never selected when we decompose data
 	     constructors on p. This is important for the soundness of 
 	     the decomposition of data constructors. *)
-	Printf.printf "hypothesis unselectable\n";
-	Display.Text.display_fact f;
-	Printf.printf "\n";
-	Display.Text.display_rule rule;
+	if !Param.debug_output then begin 
+	  Printf.printf "hypothesis unselectable\n";
+	  Display.Text.display_fact f;
+	  Printf.printf "\n";
+	  Display.Text.display_rule rule
+	end;
         sel (nold, wold) (n+1) l
     end
     | (Pred(p,lp) as h::l) -> 
@@ -277,9 +279,11 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 	let wnew =
 	  match p with
 	  | { p_name = "seq" } ->
-	    Printf.printf "always_select_weight applied to ";
-	    Display.Text.display_fact h;
-	    always_select_weight
+	      if !Param.debug_output then begin 
+		Printf.printf "always_select_weight applied to ";
+		Display.Text.display_fact h
+	      end;
+	      always_select_weight
 	  | _ ->
 	    if matchafactstrict concl h then match_concl_weight else 
 	      let wtmp = find_same_format (p,lp) (!no_unif_set) in
@@ -306,8 +310,10 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 	 the hypothesis *)
       if List.exists (fun h -> matchafactstrict h concl) hyp then match_concl_weight else -1
   in
-   Printf.printf "selection_fun_weight applied to rule\n";
-  Display.Text.display_rule rule; 
+  if !Param.debug_output then begin 
+    Printf.printf "selection_fun_weight applied to rule\n";
+    Display.Text.display_rule rule
+  end; 
   sel (-1, wconcl) 0 hyp
 
 (* Avoid creating cycles when instantiating in inst_constra:

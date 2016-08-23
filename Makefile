@@ -14,6 +14,7 @@ proverif_SOURCES = $(addprefix $(SRCDIR)/,\
 	parsing_helper.mli parsing_helper.ml stringmap.mli                            \
 	stringmap.ml ptree.mli piptree.mli pitptree.mli types.mli pitypes.mli         \
 	funmap.mli funmap.ml param.mli param.ml parser.mli parser.ml lexer.ml         \
+	debug.ml \
 	queue.mli queue.ml terms.mli terms.ml termslinks.mli termslinks.ml            \
 	display.mli display.ml history.mli history.ml termsEq.mli termsEq.ml          \
 	pievent.mli pievent.ml weaksecr.mli weaksecr.ml noninterf.mli noninterf.ml    \

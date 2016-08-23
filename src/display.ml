@@ -1064,7 +1064,7 @@ let rec display_hyp hyp tag =
   | ([],[]) -> ()
   | h::hs, [] -> Parsing_helper.internal_error "Too many hypotheses"
   | [], t::ts -> Parsing_helper.internal_error "Too many tags"
-  | _ -> begin Printf.printf "Unexpected hypothesis foudn\n"; Parsing_helper.internal_error "Unexpected hypothesis" end
+  | _ -> begin Debug.debug_print "Unexpected hypothesis found\n"; Parsing_helper.internal_error "Unexpected hypothesis" end
 
 let rec empty_hyp hyp tags =
   match hyp, tags with
@@ -1922,13 +1922,13 @@ let display_hyp_basic nl hl =
     newline()) nl hl
 
 let rec display_hyp hyp hl tag =
-(*    Printf.printf "Entered display_hyp with tags:\n";
+(*    Debug.debug_print "Entered display_hyp with tags:\n";
   display_list display_hyp_spec " " tag;
-  Printf.printf "\n";
-  Printf.printf "The hypotheses are:\n";
-  List.iter (fun h -> display_fact h; Printf.printf "\n\n") hyp;
-  Printf.printf "Have %d hypotheses \n" (List.length hyp); 
-  Printf.printf "have %d hl's \n" (List.length hl); *)
+  Debug.debug_print "\n";
+  Debug.debug_print "The hypotheses are:\n";
+  List.iter (fun h -> display_fact h; Debug.debug_print "\n\n") hyp;
+  Debug.debug_print "Have %d hypotheses \n" (List.length hyp); 
+  Debug.debug_print "have %d hl's \n" (List.length hl); *)
   match (hyp, hl, tag) with
     (Pred(p,[v;v'])::h, _::hl', TestUnifTag _ :: t) ->
       display_hyp h hl' t;
@@ -1942,8 +1942,8 @@ let rec display_hyp hyp hl tag =
   | (h, hl, LetTag _ :: t) | (h, hl, InputPTag _ :: t) 
   | (h, hl, OutputPTag _ :: t) | (h, hl, BeginEvent _ :: t)
   | (h, hl, OutputTag _ :: t) | (h, hl, InsertTag _ :: t)
-  | (h, hl, AssignTag _ :: t) |  (_::h, hl, KnowledgeProgressTag _ :: t) ->
-      display_hyp h hl t
+  | (h, hl, AssignTag _ :: t) |  (_::h, hl, KnowledgeProgressTag _ :: t) 
+  | (h, hl, SequenceTag ::t) -> display_hyp h hl t
   | ((Pred({p_info = [ReachBin(n)]}, _))::h, s::hl, t) | ((Pred({p_info = [SeqBin(n)]}, _))::h, s::hl, t)
   | ((Pred({p_info = [Seq(n)]}, _))::h, s::hl, t) ->
       display_hyp h hl t
@@ -2126,10 +2126,8 @@ let display_constra_list c =
 
 
 let display_clause_explain n lbl hyp_num_list hl constra concl =
-  Printf.printf "Called display_clause_explain\n";
-  Printf.printf "\n";
-  flush stdout;
-  flush stdout;
+  Debug.debug_print "Called display_clause_explain\n";
+  Debug.debug_print "\n";
   match lbl with
     Rn _ -> 
       print_string "The attacker creates the new name ";

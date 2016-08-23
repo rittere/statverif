@@ -875,6 +875,7 @@ let rec check_one = function
 	| "eqInNames", _ -> Param.boolean_param Param.eq_in_names p ext v
 	| "reconstructTrace", _ -> Param.boolean_param Param.reconstruct_trace p ext v
 	| "traceBacktracking", _ -> Param.boolean_param Param.trace_backtracking p ext v
+	| "debugOutput", _ -> Param.boolean_param Param.debug_output p ext v
 	| "unifyDerivation", _ -> Param.boolean_param Param.unify_derivation p ext v
 	| "traceDisplay", S ("none",_) -> Param.trace_display := Param.NoDisplay
 	| "traceDisplay", S ("short",_) -> Param.trace_display := Param.ShortDisplay
