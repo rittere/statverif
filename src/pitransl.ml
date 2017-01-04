@@ -393,21 +393,16 @@ let new_state_formatv () =
 let update_cells ts =
   if FunMap.for_all (fun _ cell -> cell.valid) ts.cur_cells then ts else
   let old_cells = ts.cur_cells in
-  let fresh_cells = new_state () in
   let new_cells = FunMap.mapi (fun ({f_name=s; f_type=(_,t)},_) cell ->
     if cell.valid then cell else
     { cell with
       valid = true;
       value = Var(Terms.new_var s t) }
   ) old_cells in
-  (* Since we don't have the transitive closure, we only require that
-     the new state is reachable, and so add an hypothesis of the form
-     seq(fresh_cells, new_cells) where fresh_cells contains only
-     variables, and the constraints are in new_cells *)
   { ts with
     cur_cells = new_cells;
     hypothesis = (Pred(Param.get_pred (Seq(ts.cur_phase)),
-                       [get_state fresh_cells; get_state new_cells]))
+                       [get_state old_cells; get_state new_cells]))
                  :: ts.hypothesis;
     (* hyp_tags = SequenceTag :: ts.hyp_tags } *)
     hyp_tags = ts.hyp_tags }
@@ -1223,7 +1218,6 @@ let rec transl_process cur_state process =
       end
  | Output(tc,t,p,occ) ->
       begin
-        let cur_state = update_cells cur_state in
         match tc with 
           FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker -> 
 	    if !Param.non_interference then
@@ -1441,7 +1435,7 @@ let rec transl_process cur_state process =
   | Lock(cells, proc, occ)
   | Unlock(cells, proc, occ) ->
       let new_locked = match process with Lock _ -> true | _ -> false in
-      let cur_state = invalidate_cells cur_state in
+      let cur_state = update_cells (invalidate_cells cur_state) in
       transl_process { cur_state with cur_cells =
         List.fold_left (fun cur_cells s ->
           FunMap.add (s, "")
@@ -1554,42 +1548,41 @@ let transl_attacker phase =
   List.iter (fun t ->
     let att_pred = Param.get_pred (Attacker(phase,t)) in
     let mess_pred = Param.get_pred (Mess(phase,t)) in
-    (* let reach_pred = Param.get_pred (Reach(phase)) in *)
+    let reach_pred = Param.get_pred (Reach(phase)) in 
     let seq_pred = Param.get_pred (Seq(phase)) in
 
     (* The initial state is reachable *)
-    (* now done via special rule (MAYBE we can safely remove it) *)
     let init_state = initial_state() in
-    (* add_rule [] (Pred (reach_pred, [get_state init_state]) ) [] (RinitState att_pred); *)
+     add_rule [] (Pred (reach_pred, [get_state init_state]) ) [] (RinitState att_pred);
 
-      (* State sequencing. *)
-    (* TODO: Move these outside the iteration over all types! *)
-    add_rule [] (Pred(seq_pred,
-        [get_state init_state; get_state init_state]))
-      [] (Rseq0 seq_pred);
-
-    (* Transitive closure of state reachability DO NOT ADD
-    (* seq(s1, s2) * seq(s2, s3) -> seq(s1, s3) THIS IS DANGEROUS *)
+    (* Transitive closure of state reachability
+        reach(s1) * seq(s1, s2) * seq(s2, s3) -> seq(s1, s3) *)
     let vs1 = new_state () in
     let vs2 = new_state () in
     let vs3 = new_state () in
-    add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
-              Pred(seq_pred, [left_state vs2; left_state vs3; right_state vs2; right_state vs3])]
-      (Pred(seq_pred, [left_state vs1; left_state vs3; right_state vs1; right_state vs3]))
-      [] (Rseq1 seq_pred); *)
+    add_rule [Pred (reach_pred, [get_state vs1]); Pred(seq_pred, [get_state vs1; get_state vs2]);
+              Pred(seq_pred, [get_state vs2; get_state vs3])]
+      (Pred(seq_pred, [get_state vs1; get_state vs3]))
+      [] (Rseq1 seq_pred); 
 
-    (* Reachability predicate reach(s1) & seq(s1, s2) -> reach(s2) *)
-    (* let vs1 = new_state () in *)
-    (* let vs2 = new_state () in *)
-    (* add_rule [Pred (reach_pred, [get_state vs1]);  *)
-    (*           Pred(seq_pred, [get_state vs1; get_state vs2])] *)
-    (*   (Pred (reach_pred, [get_state vs2])) *)
-    (*   [] (Rseq2 (reach_pred, seq_pred)); *)
+    (* Reachability predicate reach(s1) & seq(s1, s2) -> reach(s2)  *)
+    let vs1 = new_state () in
+    let vs2 = new_state () in
+    add_rule [Pred (reach_pred, [get_state vs1]);
+              Pred(seq_pred, [get_state vs1; get_state vs2])]
+      (Pred (reach_pred, [get_state vs2]))
+      [] (Rseq2 (reach_pred, seq_pred));
 
+    (* Elimination of seq *)
+    let vs1 = new_state() in
+    add_rule [Pred (reach_pred, [get_state vs1])] (Pred(seq_pred, [get_state vs1; get_state vs1]))
+      [] (Rseq3 (reach_pred, seq_pred));
+
+    (* Inheritance of knowledge *)
     let vs1 = new_state () in
     let vs2 = new_state () in
     let v1 = Terms.new_var_def t in
-    add_rule [Pred(seq_pred, [get_state vs1; get_state vs2]);
+    add_rule [Pred (reach_pred, [get_state vs1]); Pred(seq_pred, [get_state vs1; get_state vs2]);
               Pred(att_pred, [get_state vs1; v1])]
       (Pred(att_pred, [get_state vs2; v1])) [] (Rinherit(seq_pred, att_pred)); 
 

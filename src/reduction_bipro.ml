@@ -1975,7 +1975,7 @@ let rec simplify_tree first next_f tree =
 	      check_coherent factId' (concl, l1, name_params, sons)
 	| LetTag occ | TestTag occ | TestUnifTag2 occ | GetTagElse occ ->
 	    check_coherent factId' (concl, l1, name_params, sons)
-	| InputTag _ | ReadAsTag _ | GetTag _ | SequenceTag -> 
+	| InputTag _ | ReadAsTag _ | GetTag _ | SequenceTag | ReachTag -> 
 	    let f = (List.hd sons).thefact in
 	    let fact_id = HashFactId.build factId' in
 	    begin

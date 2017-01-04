@@ -432,7 +432,7 @@ let display_phase p =
   match p.p_info with
     [Attacker (n,_)] | [AttackerBin (n,_)] | [Mess (n,_)] | [MessBin (n,_)] 
   | [InputP n] | [InputPBin n] | [OutputP n] | [OutputPBin n] | [ReachBin n] | [SeqBin n] |[Table n] 
-  | [TableBin n] | [Seq n]  -> 
+  | [TableBin n] | [Seq n] | [ Reach n] -> 
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))
   | [AttackerGuess _] -> print_string " in off-line phase"
@@ -675,6 +675,14 @@ let concl upper concl tag =
               ^ plural (List.length cells) "cell " "cells "
               ^ String.concat "," (List.map (fun s -> s.f_name) cells)
               ^ " may be assigned the values ");
+            let t1 = List.map (pick_state vs1) cells in
+            term_list t1;
+            display_phase p
+	| Pred({p_info = [Reach(n)]} as p, [_; FunApp (_,vs1)]) ->
+            print_string ((if upper then "The " else "the ")
+              ^ plural (List.length cells) "cell " "cells "
+              ^ String.concat "," (List.map (fun s -> s.f_name) cells)
+              ^ " are reachable with values ");
             let t1 = List.map (pick_state vs1) cells in
             term_list t1;
             display_phase p
@@ -926,6 +934,7 @@ let display_hyp_spec = function
   | KnowledgeProgressTag o -> print_string ":="; print_string (string_of_int o)
   | ReadAsTag (o,_) -> print_string "ra"; print_string (string_of_int o)
   | SequenceTag -> print_string "seq"
+  | ReachTag -> print_string "reach"
 
 let rec display_hyp hyp tag =
 (*   Printf.printf "Entered display_hyp with tags:\n";
@@ -1891,7 +1900,8 @@ let display_output_fact = function
 let display_attacker_hyp nl hl =
   List.iter2 (fun n h ->
     match h.thefact with 
-        ((Pred({p_info = [Seq(n)]}, _))) -> ()
+      ((Pred({p_info = [Seq(n)]}, _))) -> ()
+    | ((Pred({p_info = [Reach(_)]}, _))) -> ()
       | Pred(p, [v;v']) when p == Param.testunif_pred ->
 	print_string "The terms ";
 	WithLinks.term v;
@@ -1944,8 +1954,10 @@ let rec display_hyp hyp hl tag =
   | (h, hl, OutputTag _ :: t) | (h, hl, InsertTag _ :: t)
   | (h, hl, AssignTag _ :: t) |  (_::h, hl, KnowledgeProgressTag _ :: t) 
   | (h, hl, SequenceTag ::t) -> display_hyp h hl t
-  | ((Pred({p_info = [ReachBin(n)]}, _))::h, s::hl, t) | ((Pred({p_info = [SeqBin(n)]}, _))::h, s::hl, t)
-  | ((Pred({p_info = [Seq(n)]}, _))::h, s::hl, t) ->
+  | (h, hl, ReachTag ::t) -> display_hyp h hl t
+  | ((Pred({p_info = [ReachBin(_)]}, _))::h, s::hl, t) | ((Pred({p_info = [SeqBin(_)]}, _))::h, s::hl, t)
+  | ((Pred({p_info = [Seq(_)]}, _))::h, s::hl, t)
+  | ((Pred({p_info = [Reach(_)]}, _))::h, s::hl, t)->
       display_hyp h hl t
   | (h, hl, ReplTag _ :: t) ->
       if !Param.non_interference then
@@ -2238,6 +2250,8 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
   | Rseq1(p) ->
       display_attacker_hyp hyp_num_list hl
   | Rseq2(p, p') ->
+      display_attacker_hyp hyp_num_list hl
+  | Rseq3(p, p') ->
       display_attacker_hyp hyp_num_list hl
   | Rinherit(p,p') ->
       display_attacker_hyp hyp_num_list hl

@@ -240,6 +240,11 @@ let build_pred = function
         p_type = [state_type; state_type];
         p_prop = pred_STATEFUL;
         p_info = [Seq(i)] }
+  | Reach(i) ->
+      { p_name = "reach" ^ (get_suffix i);
+        p_type = [state_type];
+        p_prop = pred_STATEFUL;
+        p_info = [Reach(i)] }
   | InputP(i) ->
       { p_name = "input" ^ (get_suffix i); 
 	p_type = [state_type; channel_type]; 

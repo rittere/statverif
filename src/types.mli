@@ -45,6 +45,7 @@ type info =
     Attacker of int * typet
   | Mess of int * typet
   | Seq of int
+  | Reach of int
   | InputP of int 
   | OutputP of int
   | AttackerBin of int * typet
@@ -216,6 +217,7 @@ type hypspec =
   | GetTagElse of occurrence
   | OpenTag of occurrence
   | SequenceTag
+  | ReachTag
   | AssignTag of occurrence * funsymb list
   | KnowledgeProgressTag of occurrence 
   | ReadAsTag of occurrence * funsymb list
@@ -236,6 +238,7 @@ type label =
   | Rseq0 of predicate
   | Rseq1 of predicate
   | Rseq2 of predicate * predicate
+  | Rseq3 of predicate * predicate
   | Rinherit of predicate * predicate
   | Rread
   | Rwrite of predicate

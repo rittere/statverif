@@ -31,6 +31,8 @@ open Terms
 
 let never_select_weight = -10000
 let always_select_weight = 10000
+let reach_weight = always_select_weight
+let seq_weight = 8000
 let match_concl_weight = -7000
 let default_add_no_unif_weight = -5000
 let default_user_no_unif_weight = -6000
@@ -280,12 +282,20 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 
 	let wnew =
 	  match p with
+	  | { p_name = "reach" } ->
+	      if !Param.debug_output then begin 
+		Printf.printf "reach_weight applied to ";
+		Display.Text.display_fact h;
+		Printf.printf "\n"
+	      end;
+	      reach_weight
 	  | { p_name = "seq" } ->
 	      if !Param.debug_output then begin 
-		Printf.printf "always_select_weight applied to ";
-		Display.Text.display_fact h
+		Printf.printf "seq_weight applied to ";
+		Display.Text.display_fact h;
+		Printf.printf "\n";
 	      end;
-	      always_select_weight
+	      seq_weight
 	  | _ ->
 	    if matchafactstrict concl h then match_concl_weight else 
 	      let wtmp = find_same_format (p,lp) (!no_unif_set) in
@@ -355,7 +365,7 @@ let selection_fun ((hyp,concl,hist,constra) as rule) =
       end
     else r
   in
-  let r =
+ let r =
     if r = -1 then Noninterf.selfun rule else r
   in
   if r = -1 then Weaksecr.selfun rule else r

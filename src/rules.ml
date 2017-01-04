@@ -558,7 +558,7 @@ let check_fact_fail = function
 	      List.iter check_top_fail l
 	| [PolymPred _] (* user-defined *) | [] (* user-defined + plus a few others *)
 	| [Equal _] (* equal; used in user-defined clauses *)
-	| [Mess _ | InputP _ | OutputP _ | MessBin _ | InputPBin _ | Seq _ | ReachBin _ | SeqBin _
+	| [Mess _ | InputP _ | OutputP _ | MessBin _ | InputPBin _ | Seq _ | Reach _ | ReachBin _ | SeqBin _
 	   | OutputPBin _ | Table _ | TableBin _ | Compromise _ ] ->
 	    List.iter check_no_fail l
 	| _ -> Parsing_helper.internal_error "Terms.check_rule: unexpected predicate info"
@@ -582,6 +582,8 @@ let check_rule ((hyp, concl, hist, constra) as r) =
    in the second case. *)
 
 let rule_queue = Queue.new_queue()
+let reach_queue = Queue.new_queue()
+let seq_queue = Queue.new_queue()
 
 let rule_count = ref 0
 
@@ -594,7 +596,7 @@ let rule_base_sel = ref ([] : (reduction * int) list)
 (* [add_rule] adds the rule in the rule base.
    It also eliminates subsumed rules. *)
 
-let add_rule ?(insertAtBeginning=false) rule = 
+let add_rule rule = 
   (* Check that the rule is not already in the rule base or in the queue *)
   if !Param.debug_output then begin
     Printf.printf "Add-rule entered for rule:\n";
@@ -614,10 +616,7 @@ let add_rule ?(insertAtBeginning=false) rule =
 	   (function (r,_) -> not (implies rule r)) (!rule_base_sel);
       Queue.filter rule_queue test_impl;
       check_rule rule;
-      if insertAtBeginning then
-	  Queue.addBeginning rule_queue rule
-      else
-	Queue.add rule_queue rule;
+      Queue.add rule_queue rule;
       Debug.debug_print "Added rule to rule queue.\n";
     end
 
@@ -1065,13 +1064,13 @@ let simplify_rule_constra_normal next_stage r =
     simplify_rule_constra next_stage r
   end
 
-let rec normal_rule ?(insertAtBeginning=false) r = 
+let rec normal_rule r = 
   assert (!Terms.current_bound_vars == []);
   decompose_hyp_tuples2 (simp_eq_rule 
     (elim_not (Weaksecr.simplify (Noninterf.simplify 
     (decompose_concl_tuples (elim_taut (elim_any_x2 
     (simplify_rule_constra_normal (elem_simplif (elem_simplif2
-    (elim_redundant_hyp (fun r -> add_rule ~insertAtBeginning:insertAtBeginning (limit_depth_rule r)) normal_rule) 
+    (elim_redundant_hyp (fun r -> add_rule (limit_depth_rule r)) normal_rule) 
        normal_rule) normal_rule) ))))
        normal_rule) normal_rule)) normal_rule) r
   
@@ -1232,11 +1231,10 @@ let redundant_res res_list =
 
 (* Saturates the rule base, by repeatedly applying the composition [compos] *)
 
-  let complete_rules () = 
-    let rec compl_rules () = 
+  let rec complete_rules () = 
       let rule = Queue.get rule_queue in
 	match rule with
-     None -> ()
+     None -> !rule_base_ns
    | Some rule -> 
        if !Param.debug_output then begin
 	 print_string "COMPOSING ";
@@ -1299,12 +1297,7 @@ let redundant_res res_list =
 	       Display.Text.newline()
 	     end
 	 end;
-       compl_rules () in 
-      List.iter (normal_rule ~insertAtBeginning:true)(!current_states);
-      compl_rules ();
-      List.iter (normal_rule ~insertAtBeginning:true)(!assignment_rules);
-      compl_rules ();
-  !rule_base_ns
+       complete_rules () 
     
 
 

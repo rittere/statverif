@@ -2426,7 +2426,7 @@ let rec simplify_tree first recheck next_f tree =
 	    (* the session identifier is part of the fact id *)
 	    check_coherent ((HashFactId.Term (List.nth name_params count_params)) :: factId') 
 	      (concl, l1, name_params, sons) 
-	| OutputTag _ | InsertTag _ | InputPTag _ | OutputPTag _ | BeginEvent _ | AssignTag (_, _) | SequenceTag ->
+	| OutputTag _ | InsertTag _ | InputPTag _ | OutputPTag _ | BeginEvent _ | AssignTag (_, _) | SequenceTag | ReachTag ->
 	    if l1 == [] then
 	      (* I'm reaching the conclusion *)
 	      let fact_id = HashFactId.build factId' in

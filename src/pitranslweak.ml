@@ -163,6 +163,7 @@ let add_rule hyp concl constra tags =
         let constra' = TermsEq.simplify_constra_list (concl::hyp) constra in
       	let rule = (hyp, concl, Rule (!nrule, tags, hyp, concl, constra'), constra') in
 	match tags with 
+(* needs changing - use current_states and assignment_rules in a different way now *)
 	  RinitState _ -> 
 	    Rules.current_states  := rule::!Rules.current_states
 	| ProcessRule ((AssignTag _)::_, _) ->
