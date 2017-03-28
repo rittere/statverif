@@ -206,6 +206,8 @@ type 'a reduc_state =
       previous_state : ('a reduc_state) option; (* previous semantic state *)
    
       hyp_not_matched : fact list;
+
+      mutable_state: fact
       current_phase : int;
       comment : reduc_type  (* type of the reduction *)
     }

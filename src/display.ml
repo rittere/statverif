@@ -1932,13 +1932,13 @@ let display_hyp_basic nl hl =
     newline()) nl hl
 
 let rec display_hyp hyp hl tag =
-(*    Debug.debug_print "Entered display_hyp with tags:\n";
-  display_list display_hyp_spec " " tag;
+  Debug.debug_print "Entered display_hyp with tags:\n";
+  if !Param.debug_output then display_list display_hyp_spec " " tag;
   Debug.debug_print "\n";
   Debug.debug_print "The hypotheses are:\n";
-  List.iter (fun h -> display_fact h; Debug.debug_print "\n\n") hyp;
-  Debug.debug_print "Have %d hypotheses \n" (List.length hyp); 
-  Debug.debug_print "have %d hl's \n" (List.length hl); *)
+  List.iter (fun h -> if !Param.debug_output then display_fact h; Debug.debug_print "\n\n") hyp;
+  Debug.debug_print (Printf.sprintf "Have %d hypotheses \n" (List.length hyp)); 
+  Debug.debug_print (Printf.sprintf "have %d hl's \n" (List.length hl)); 
   match (hyp, hl, tag) with
     (Pred(p,[v;v'])::h, _::hl', TestUnifTag _ :: t) ->
       display_hyp h hl' t;
@@ -2136,7 +2136,10 @@ let display_constra_list c =
       newline()
     end
 
-
+let display_state fact =
+  display_attacker_fact fact
+    
+      
 let display_clause_explain n lbl hyp_num_list hl constra concl =
   Debug.debug_print "Called display_clause_explain\n";
   Debug.debug_print "\n";
@@ -2243,18 +2246,32 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_attacker_hyp hyp_num_list hl;
       print_string "So the attacker may trigger an output on this channel.";
       newline()
-  | RinitState(p) -> 
-      display_attacker_hyp hyp_num_list hl
-  | Rseq0(p) ->
-      display_attacker_hyp hyp_num_list hl
-  | Rseq1(p) ->
-      display_attacker_hyp hyp_num_list hl
-  | Rseq2(p, p') ->
-      display_attacker_hyp hyp_num_list hl
-  | Rseq3(p, p') ->
-      display_attacker_hyp hyp_num_list hl
-  | Rinherit(p,p') ->
-      display_attacker_hyp hyp_num_list hl
+  | RinitState(p) -> begin
+    print_string "The initial state is ";
+    match concl with
+      Pred({p_info = [Reach(n)]} as p, [_; FunApp (_,vs1)]) ->
+	display_state concl
+  end
+  | Rseq0(p) -> begin
+    print_string "Old initial state used\n";
+    display_attacker_hyp hyp_num_list hl
+  end
+  | Rseq1(p) -> begin
+    print_string "Applied transitive closure\n";
+    display_attacker_hyp hyp_num_list hl
+  end
+  | Rseq2(p, p') -> begin
+    print_string "Applied reachability progression\n";
+    display_attacker_hyp hyp_num_list hl
+  end
+  | Rseq3(p, p') -> begin
+    print_string "Eliminated seq-predicate\n";
+    display_attacker_hyp hyp_num_list hl
+  end
+  | Rinherit(p,p') -> begin
+     print_string "Inherited knowledge\n";
+    display_attacker_hyp hyp_num_list hl
+  end
   | Rfail(p) ->
       display_attacker_hyp hyp_num_list hl;
       print_string "So the attacker may test the failure of this term, which may allow it to distinguish cases.";
@@ -2435,7 +2452,7 @@ let explain_history_tree tree =
 	(!count)
     | FRule(n, descr, constra, hl) -> 
 	match descr with
-	  Elem _ | TestUnif | RinitState _ -> 
+	  Elem _ | TestUnif  -> 
 	    (* Do not display clauses that conclude member, testunif *)
 	    seen_list := (-1, tree.thefact) :: (!seen_list);
 	    -1
