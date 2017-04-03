@@ -1,0 +1,19 @@
+free c.
+free init.
+
+private free k.
+
+query attacker:k.
+
+cell s := (init,init).
+cell t := (init,init).
+
+let T =
+read s as x:bitstring;
+read t as y:bitstring;
+out (c, x);
+out (c, y).
+
+
+
+process T
