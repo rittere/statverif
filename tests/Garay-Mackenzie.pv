@@ -1,0 +1,260 @@
+(* Two-party instance of the Garay and Mackenzie contract signing protocol. *)
+
+(* set verboseClauses = short. *)
+set verboseCompleted = true.
+
+(* set profilingSubsumption = true. *)
+ set debugOutput = true.
+
+type key.
+
+(* Public channel. *)
+channel Internet.
+
+(* Value used for initial states. *)
+free Init:bitstring.
+
+(* Commands. *)
+free Abort:bitstring.
+free Resolve_1:bitstring.
+free Resolve_2:bitstring.
+
+(* Trusted party states. *)
+free Aborted:bitstring.
+free Resolved_2:bitstring.
+free Resolved_1:bitstring.
+
+(* Contract for which the security properties are verified. *)
+free Witnessing_Contract:bitstring.
+
+(* Trusted party's secret key. *)
+free Trusted_Party_Secret_Key: key [private].
+
+(* Secret keys. *)
+free Secret_Key_1: key.
+free Secret_Key_2: key.
+
+(* Cryptography. *)
+fun Public_Key(key):key.
+fun Sign(key,bitstring):bitstring.
+fun PCS(key,key,key,bitstring):bitstring.
+
+reduc forall Secret_Key:key, Message:bitstring;
+      Check_Get_Message (Public_Key (Secret_Key), Sign (Secret_Key, Message))
+        = Message.
+
+fun OK():bitstring.
+
+(* Check private contract signature. *)
+reduc forall Contract:bitstring, Secret_Key_X:key, Public_Key_Y:key, Public_Key_Z:key; Check_PCS (Contract,
+                 Public_Key (Secret_Key_X),
+                 Public_Key_Y,
+                 Public_Key_Z,
+                 PCS (Secret_Key_X,
+                      Public_Key_Y,
+                      Public_Key_Z,
+                      Contract))
+        = OK.
+
+(* Convert a private contract signature to a signature. *)
+reduc forall Secret_Key_X: key, Public_Key_Y:key, Secret_Key_Z:key, Contract:bitstring; Convert_PCS (Secret_Key_Z,  (* BUG: Secret key !! *)
+                   PCS (Secret_Key_X,
+                        Public_Key_Y,
+                        Public_Key (Secret_Key_Z),
+                        Contract))
+        = Sign (Secret_Key_X, Contract).
+
+(* State of the trusted party. (mode, signatures) pair. *)
+cell Trusted_Party_State := (Init, Init).
+
+
+query attacker((Sign (Trusted_Party_Secret_Key,
+                       ( ( Witnessing_Contract,
+                           ( Public_Key (Secret_Key_1),
+                             Public_Key (Secret_Key_2) )),
+                         Sign (Secret_Key_1,
+                               ( Witnessing_Contract,
+                                 ( Public_Key (Secret_Key_1),
+                                   Public_Key (Secret_Key_2) ))))),
+                 Sign (Trusted_Party_Secret_Key,
+                       ( Sign (Secret_Key_1, Witnessing_Contract),
+                         Sign (Secret_Key_2, Witnessing_Contract))))) .
+
+
+let Abort_1_Process (Public_Key_1:key, Public_Key_2:key) =
+  in (Internet, ( Command:bitstring,
+                  ( ( Contract:bitstring, Parties:bitstring ),
+                    Signature:bitstring )));
+  if Command = Abort then
+    if Parties = ( Public_Key_1, Public_Key_2 ) then
+      if Contract = Witnessing_Contract then
+        if Check_Get_Message (Public_Key_1, Signature)
+          = ( Contract, Parties )
+        then
+          lock Trusted_Party_State;
+          read Trusted_Party_State as
+            ( Current_State:bitstring, Current_Signatures:bitstring );
+          if Current_State = Aborted then
+            unlock Trusted_Party_State;
+            out (Internet, Current_Signatures)
+          else if Current_State = Init then
+            let TP_Signature = Sign (Trusted_Party_Secret_Key,
+                                  ( ( Contract, Parties ),
+                                    Signature )) in
+            Trusted_Party_State := ( Aborted, TP_Signature );
+            unlock Trusted_Party_State;
+            out (Internet, TP_Signature) .
+
+let Resolve_2_Process (Public_Key_1: key, Public_Key_2:key) =
+  in (Internet, ( Command:bitstring,
+                  ( PCS_1:bitstring, Signature_2:bitstring )));
+  let Contract = Check_Get_Message (Public_Key_2, Signature_2) in
+  if Contract = Witnessing_Contract then
+    if Check_PCS (Contract,
+                  Public_Key_1,
+                  Public_Key_2,
+                  Public_Key (Trusted_Party_Secret_Key),
+                  PCS_1) = OK
+    then
+      lock Trusted_Party_State;
+      read Trusted_Party_State as ( Current_Status:bitstring, Current_Signatures:bitstring );
+      if Current_Status = Resolved_2 then
+        unlock Trusted_Party_State;
+        out (Internet, Current_Signatures)
+      else if Current_Status = Init then
+        let Signature_1 = Convert_PCS (Trusted_Party_Secret_Key, PCS_1) in
+        let TP_Signature = Sign (Trusted_Party_Secret_Key,
+                              ( Signature_1, Signature_2 )) in
+        Trusted_Party_State := ( Resolved_2, TP_Signature );
+        unlock Trusted_Party_State;
+        out (Internet, TP_Signature) .
+
+let Resolve_1_Process (Public_Key_1:key, Public_Key_2:key) =
+  in (Internet, ( Command:bitstring,
+                  ( Signature_1:bitstring, PCS_2:bitstring )));
+  let Contract = Check_Get_Message (Public_Key_1, Signature_1) in
+  if Contract = Witnessing_Contract then
+    if Check_PCS (Contract,
+                  Public_Key_2,
+                  Public_Key_1,
+                  Public_Key (Trusted_Party_Secret_Key),
+                  PCS_2) = OK
+    then
+      lock Trusted_Party_State;
+      read Trusted_Party_State as ( Current_Status:bitstring, Current_Signatures:bitstring );
+      if Current_Status = Resolved_1 then
+        unlock Trusted_Party_State;
+        out (Internet, Current_Signatures)
+      else if Current_Status = Init then
+        let Signature_2 = Convert_PCS (Trusted_Party_Secret_Key, PCS_2) in
+        let TP_Signature = Sign (Trusted_Party_Secret_Key,
+                              ( Signature_1, Signature_2 )) in
+        Trusted_Party_State := ( Resolved_1, TP_Signature );
+        unlock Trusted_Party_State;
+        out (Internet, TP_Signature) .
+
+let Stateless_Abort_1_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public_Key_2:key) =
+  in (Internet, ( Command:bitstring,
+                  ( ( Contract:bitstring, Parties:bitstring ),
+                    Signature:bitstring )));
+  if Command = Abort then
+    if Parties = ( Public_Key_1, Public_Key_2 ) then
+      if Contract = Bogus_Contract then
+        if Check_Get_Message (Public_Key_1, Signature)
+          = ( Contract, Parties )
+        then
+          lock Trusted_Party_State;
+(*        read Trusted_Party_State as              *)   (* BUG: removed the state from *)
+(*          ( Current_State, Current_Signatures ); *)   (*      the stateless process. *)
+(*        if Current_State = Aborted then          *)   (* NOTE: lock and unkock kept  *)
+(*          unlock (Trusted_Party_State);          *)   (*       as in the paper.      *)
+(*          out (Internet, Current_Signatures)     *)
+(*        else if Current_State = Init then        *)
+            let TP_Signature = Sign (Trusted_Party_Secret_Key,
+                                  ( ( Contract, Parties ),
+                                    Signature )) in
+(*          Trusted_Party_State := ( Aborted, TP_Signature ); *)   (* BUG: idem. *)
+            unlock Trusted_Party_State;
+            out (Internet, TP_Signature) .
+
+let Stateless_Resolve_2_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public_Key_2:key) =
+  in (Internet, ( Command:bitstring,
+                  ( PCS_1:bitstring, Signature_2:bitstring )));
+  let Contract = Check_Get_Message (Public_Key_2, Signature_2) in
+  if Contract = Bogus_Contract then
+    if Check_PCS (Contract,
+                  Public_Key_1,
+                  Public_Key_2,
+                  Public_Key (Trusted_Party_Secret_Key),
+                  PCS_1) = OK
+    then
+      lock Trusted_Party_State;
+(*    read Trusted_Party_State as ( Current_Status, Current_Signatures ); *)
+(*    if Current_Status = Resolved_2 then                                 *)
+(*      unlock (Trusted_Party_State);                                     *)
+(*      out (Internet, Current_Signatures)                                *)
+(*    else if Current_Status = Init then                                  *)
+        let Signature_1 = Convert_PCS (Trusted_Party_Secret_Key, PCS_1) in
+        let TP_Signature = Sign (Trusted_Party_Secret_Key,
+                              ( Signature_1, Signature_2 )) in
+(*      Trusted_Party_State := ( Resolved_2, TP_Signature ); *)
+        unlock Trusted_Party_State;
+        out (Internet, TP_Signature) .
+
+let Stateless_Resolve_1_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public_Key_2:key) =
+  in (Internet, ( Command:bitstring,
+                  ( Signature_1:bitstring, PCS_2:bitstring )));
+  let Contract = Check_Get_Message (Public_Key_1, Signature_1) in
+  if Contract = Bogus_Contract then
+    if Check_PCS (Contract,
+                  Public_Key_2,
+                  Public_Key_1,
+                  Public_Key (Trusted_Party_Secret_Key),
+                  PCS_2) = OK
+    then
+      lock Trusted_Party_State;
+(*    read Trusted_Party_State as ( Current_Status, Current_Signatures ); *)
+(*    if Current_Status = Resolved_1 then                                 *)
+(*      unlock (Trusted_Party_State);                                     *)
+(*      out (Internet, Current_Signatures)                                *)
+(*    else if Current_Status = Init then                                  *)
+        let Signature_2 = Convert_PCS (Trusted_Party_Secret_Key, PCS_2) in
+        let TP_Signature = Sign (Trusted_Party_Secret_Key,
+                              ( Signature_1, Signature_2 )) in
+(*      Trusted_Party_State := ( Resolved_1, TP_Signature ); *)
+        unlock Trusted_Party_State;
+        out (Internet, TP_Signature) .
+	
+(* Approximate, stateless model of the trusted party for contracts other than
+   the witnessing contract. *)
+
+let Stateless_Trusted_Party =
+  new Bogus_Contract:bitstring;
+  out (Internet, Bogus_Contract);
+  in (Internet, Public_Key_1:key);
+  in (Internet, Public_Key_2:key);
+  ( ! Stateless_Abort_1_Process(Bogus_Contract, Public_Key_1, Public_Key_2)
+  | ! Stateless_Resolve_2_Process(Bogus_Contract, Public_Key_1, Public_Key_2)
+  | ! Stateless_Resolve_1_Process(Bogus_Contract, Public_Key_1, Public_Key_2)) .
+
+
+(* Precise model of the trusted party for the witnessing contract. *)
+
+let Trusted_Party =
+  (* Contract for which the security properties will
+     be verified. *)
+  (* new Witnessing_Contract;  --  BUG : multiply defined    *)
+
+  out (Internet, Witnessing_Contract);
+  let Public_Key_1 = Public_Key (Secret_Key_1) in
+  let Public_Key_2 = Public_Key (Secret_Key_2) in
+  ( ! Abort_1_Process (Public_Key_1, Public_Key_2) 
+  | ! Resolve_2_Process (Public_Key_1, Public_Key_2)
+  | ! Resolve_1_Process (Public_Key_1, Public_Key_2)) .
+
+let T' =
+  out (Internet, Public_Key (Trusted_Party_Secret_Key));
+  Trusted_Party | ! Stateless_Trusted_Party .
+
+process (* Trusted_Party  --  BUG ! should be T' instead. *)
+        T'
