@@ -48,10 +48,10 @@ let Abort1 =
             lock (s); 
             read s as ys;
           let ystatus = projl(ys) in
-          ((if ystatus = aborted then
-            let ysigs = projr(ys) in
+          (if ystatus = aborted then
+            (let ysigs = projr(ys) in
             unlock (s); out(c, ysigs))
-	  | (if ystatus = init then
+	  else (if ystatus = init then
             s := pair(aborted, sign(skT, y));
 	    unlock (s);
             out(c, sign(skT, y)))).
@@ -70,11 +70,11 @@ let Resolve2 =
         lock (s);
 	read s as ys;
         let ystatus = projl(ys) in
-        ((if ystatus = resolved2 then
-          let ysigs = projr(ys) in
+        (if ystatus = resolved2 then
+          (let ysigs = projr(ys) in
 	  unlock (s);
 	  out(c, ysigs))
-        | (if ystatus = init then
+        else (if ystatus = init then
           let ysig1 = convertpcs(skT, ypcs1) in
           s := pair(resolved2, sign(skT, pair(ysig1, ysig2)));
 	  unlock (s); 
@@ -94,14 +94,14 @@ let Resolve1 =
         lock(s);
         read s as ys;
         let ystatus = projl(ys) in
-        ((if ystatus = resolved1 then
-          let ysigs = projr(ys) in
+        (if ystatus = resolved1 then
+          (let ysigs = projr(ys) in
 	  out(c, ysigs); unlock(s))
-        | (if ystatus = init then
+        else (if ystatus = init then
           let ysig2 = convertpcs(skT, ypcs2) in
           s := pair(resolved1, sign(skT, pair(ysig1, ysig2)));
 	  unlock(s);
-          out(c, sign(skT, pair(ysig1, ysig2)))))	.
+          out(c, sign(skT, pair(ysig1, ysig2))))).
 
 let C' =
   new ct'; out(c, ct'); in(c, xpk1); in(c, xpk2);
