@@ -94,20 +94,21 @@ let Abort_1_Process (Public_Key_1:key, Public_Key_2:key) =
           lock Trusted_Party_State;
           read Trusted_Party_State as
             ( Current_State:bitstring, Current_Signatures:bitstring );
-          if Current_State = Aborted then
-            unlock Trusted_Party_State;
-            out (Internet, Current_Signatures)
-          else if Current_State = Init then
+          (if Current_State = Aborted then
+            (unlock Trusted_Party_State;
+            out (Internet, Current_Signatures))
+          else (if Current_State = Init then
             let TP_Signature = Sign (Trusted_Party_Secret_Key,
                                   ( ( Contract, Parties ),
                                     Signature )) in
             Trusted_Party_State := ( Aborted, TP_Signature );
             unlock Trusted_Party_State;
-            out (Internet, TP_Signature) .
+            out (Internet, TP_Signature))) .
 
 let Resolve_2_Process (Public_Key_1: key, Public_Key_2:key) =
   in (Internet, ( Command:bitstring,
                   ( PCS_1:bitstring, Signature_2:bitstring )));
+  if Command = Resolve_2 then		  
   let Contract = Check_Get_Message (Public_Key_2, Signature_2) in
   if Contract = Witnessing_Contract then
     if Check_PCS (Contract,
@@ -118,20 +119,21 @@ let Resolve_2_Process (Public_Key_1: key, Public_Key_2:key) =
     then
       lock Trusted_Party_State;
       read Trusted_Party_State as ( Current_Status:bitstring, Current_Signatures:bitstring );
-      if Current_Status = Resolved_2 then
-        unlock Trusted_Party_State;
-        out (Internet, Current_Signatures)
-      else if Current_Status = Init then
+      (if Current_Status = Resolved_2 then
+        (unlock Trusted_Party_State;
+        out (Internet, Current_Signatures))
+      else (if Current_Status = Init then
         let Signature_1 = Convert_PCS (Trusted_Party_Secret_Key, PCS_1) in
         let TP_Signature = Sign (Trusted_Party_Secret_Key,
                               ( Signature_1, Signature_2 )) in
         Trusted_Party_State := ( Resolved_2, TP_Signature );
         unlock Trusted_Party_State;
-        out (Internet, TP_Signature) .
+        out (Internet, TP_Signature))) .
 
 let Resolve_1_Process (Public_Key_1:key, Public_Key_2:key) =
   in (Internet, ( Command:bitstring,
                   ( Signature_1:bitstring, PCS_2:bitstring )));
+  if Command = Resolve_1 then
   let Contract = Check_Get_Message (Public_Key_1, Signature_1) in
   if Contract = Witnessing_Contract then
     if Check_PCS (Contract,
@@ -142,16 +144,16 @@ let Resolve_1_Process (Public_Key_1:key, Public_Key_2:key) =
     then
       lock Trusted_Party_State;
       read Trusted_Party_State as ( Current_Status:bitstring, Current_Signatures:bitstring );
-      if Current_Status = Resolved_1 then
-        unlock Trusted_Party_State;
-        out (Internet, Current_Signatures)
-      else if Current_Status = Init then
+      (if Current_Status = Resolved_1 then
+        (unlock Trusted_Party_State;
+        out (Internet, Current_Signatures))
+      else (if Current_Status = Init then
         let Signature_2 = Convert_PCS (Trusted_Party_Secret_Key, PCS_2) in
         let TP_Signature = Sign (Trusted_Party_Secret_Key,
                               ( Signature_1, Signature_2 )) in
         Trusted_Party_State := ( Resolved_1, TP_Signature );
         unlock Trusted_Party_State;
-        out (Internet, TP_Signature) .
+        out (Internet, TP_Signature))).
 
 let Stateless_Abort_1_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public_Key_2:key) =
   in (Internet, ( Command:bitstring,
@@ -180,6 +182,7 @@ let Stateless_Abort_1_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public
 let Stateless_Resolve_2_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public_Key_2:key) =
   in (Internet, ( Command:bitstring,
                   ( PCS_1:bitstring, Signature_2:bitstring )));
+  if Command = Resolve_2 then
   let Contract = Check_Get_Message (Public_Key_2, Signature_2) in
   if Contract = Bogus_Contract then
     if Check_PCS (Contract,
@@ -204,6 +207,7 @@ let Stateless_Resolve_2_Process(Bogus_Contract:bitstring, Public_Key_1:key, Publ
 let Stateless_Resolve_1_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public_Key_2:key) =
   in (Internet, ( Command:bitstring,
                   ( Signature_1:bitstring, PCS_2:bitstring )));
+  if Command = Resolve_1 then 
   let Contract = Check_Get_Message (Public_Key_1, Signature_1) in
   if Contract = Bogus_Contract then
     if Check_PCS (Contract,
