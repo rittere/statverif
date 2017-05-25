@@ -48,13 +48,13 @@ let Abort1 =
             lock (s); 
             read s as ys;
           let ystatus = projl(ys) in
-          if ystatus = aborted then
+          (if ystatus = aborted then
             let ysigs = projr(ys) in
             unlock (s); out(c, ysigs)
-	  else if ystatus = init then
+	  else (if ystatus = init then
             s := pair(aborted, sign(skT, y));
 	    unlock (s);
-            out(c, sign(skT, y)).
+            out(c, sign(skT, y)))).
 
 let Resolve2 =
   in(c, x);
