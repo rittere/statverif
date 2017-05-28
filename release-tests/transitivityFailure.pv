@@ -1,0 +1,29 @@
+free c:channel.
+free zero:bitstring.
+free one:bitstring.
+free two:bitstring.
+free three:bitstring.
+
+free k:bitstring[private].
+
+query attacker(k).
+
+cell s:= zero.
+
+let S =
+read s as x;
+if x = one then
+s:= two;
+read s as x;
+if x = two then
+s := three.
+
+let T =
+read s as x;
+if x = zero then
+s:= one;
+read s as x;
+if x = three then
+out (c, k).
+
+process S | T

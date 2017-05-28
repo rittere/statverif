@@ -1,11 +1,8 @@
 (* Two-party instance of the Garay and Mackenzie contract signing protocol. *)
 
  set verboseClauses = explained. 
-(* set verboseCompleted = true. *)
-
-(* set profilingSubsumption = true. *)
-(* set debugOutput = true. *)
-
+ set verboseCompleted = true.
+ 
 type key.
 
 (* Public channel. *)
