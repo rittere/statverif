@@ -1851,13 +1851,17 @@ let transl p =
 	let w = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (Attacker(i-1,t)) in
 	let state_var = new_state () in 
-	add_rule [Pred(att_im1, [get_state state_var; w])] (Pred(att_i, [get_state state_var; w])) [] PhaseChange
-	  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
-    if i > 0 then
+	add_rule [Pred(att_im1, [get_state state_var; w])] (Pred(att_i, [get_state state_var; w])) [] PhaseChange) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+    if i > 0 then begin
       let tbl_i = Param.get_pred (Table(i)) in
       let tbl_im1 = Param.get_pred (Table(i-1)) in
       let w = Terms.new_var_def Param.table_type in
-      add_rule [Pred(tbl_im1, [w])] (Pred(tbl_i, [w])) [] TblPhaseChange
+      add_rule [Pred(tbl_im1, [w])] (Pred(tbl_i, [w])) [] TblPhaseChange;
+      let state_var = new_state () in
+      let old_reach_pred = Param.get_pred (Reach(i-1)) in
+      let new_reach_pred = Param.get_pred (Reach(i))in
+      add_rule [Pred(old_reach_pred, [get_state state_var])] (Pred(new_reach_pred, [get_state state_var])) [] PhaseChangeReach
+    end
   done;
 
    (* Knowing the free names and creating new names is necessary only in phase 0.

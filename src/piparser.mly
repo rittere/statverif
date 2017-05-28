@@ -88,6 +88,13 @@ exception Syntax
 %token FAIL
 %token WHERE
 %token OTHERWISE
+%token ASSIGN
+%token READ
+%token AS
+%token CELL
+%token LOCK
+%token UNLOCK
+
 
 /* Untyped front-end only */
 %token DATA
@@ -151,9 +158,19 @@ lib:
         { (Free($3,$1)) :: $5 }
 |       CLAUSES clauses lib
         { (Clauses($2)) :: $3 }
+|       CELL neidentseq optinit DOT lib
+        { (List.map (fun x -> Cell(x, $3)) $2) @ $5 }
+
 |	
-	{ [] }
-	 
+        { [] }
+      
+optinit:
+|       /* empty */
+        { None }
+|       ASSIGN term
+        { Some $2 }
+
+	  
 all: 
 |       lib PROCESS process EOF
 	{ $1, $3 }
@@ -487,6 +504,15 @@ process:
         { PEvent($2, $4, $6) }
 |       PHASE INT optprocess
         { PPhase($2, $3) }
+|       LOCK LPAREN neidentseq RPAREN optprocess
+        { PLock($3, $5) }
+|       UNLOCK LPAREN neidentseq RPAREN optprocess
+        { PUnlock($3, $5) }
+|       READ neidentseq AS patternseq optprocess
+        { PReadAs((List.combine $2 $4), $5) }
+|       neidentseq ASSIGN netermseq optprocess
+        { PAssign((List.combine $1 $3), $4) }
+	    
 
 optprocess:
         SEMI process

@@ -173,7 +173,7 @@ let seen_fact hf =
     TreeHashtbl.find tree_hashtbl hf
   else
   match hf.HashFact.fact with
-    Pred(p,_) when p.p_prop land Param.pred_ATTACKER != 0 ->
+    Pred(p,_) when (p.p_prop land Param.pred_ATTACKER != 0) || p.p_name = "seq" || p.p_name = "reach" ->
       TreeHashtbl.find tree_hashtbl hf
   | _ -> raise Not_found 
                (* Remove proofs of the same fact only for attacker facts,

@@ -98,6 +98,8 @@ let reconstruct_trace = ref true
 let trace_backtracking = ref true
 
 let debug_output = ref false
+let profiling_subsumption = ref false
+let execution_time = ref 0.0
 
 (* For trace reconstruction, to disable display of initial state when 
    backtracking is forbidden and the trace is displayed as it is build. *)
@@ -176,6 +178,7 @@ let common_parameters p ext v =
   | "simplifyDerivation", _ -> boolean_param simplify_derivation p ext v
   | "displayDerivation", _ -> boolean_param display_derivation p ext v
   | "abbreviateDerivation", _ -> boolean_param abbreviate_derivation p ext v
+  | "executionTime", I s -> execution_time := float_of_int s
   | _, _ -> Parsing_helper.input_error ("Bad parameter " ^ p ^ "=" ^ 
 			 (match v with S (s,_) -> s | I n -> string_of_int n)) ext
 

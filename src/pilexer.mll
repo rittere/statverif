@@ -71,7 +71,12 @@ let keyword_table =
   "otherwise", OTHERWISE;
   "can", CANTEXT;
   "fail", FAIL;
-  "where", WHERE]
+  "where", WHERE;
+  "read", READ;
+  "as", AS;
+  "cell", CELL;
+  "lock", LOCK;
+  "unlock", UNLOCK]
 
 }
 
@@ -114,6 +119,7 @@ rule token = parse
 | ':' { COLON }
 | '&' { WEDGE }
 | "->" { RED } 
+| ":=" { ASSIGN }
 | "<->" { EQUIV } 
 | "<=>" { EQUIVEQ } 
 | "<>" { DIFF }

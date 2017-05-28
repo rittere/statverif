@@ -116,8 +116,42 @@ let f_eq_tuple f ext =
 
 let f_any f ext = ()
 
-(* Check messages *)
+(* cells *)  
 
+let rec check_cell_term f_allowed env  (term, ext) =
+    match term with
+    | PFail -> input_error "The constant fail should not appear in this term" ext
+    | (PIdent (s,ext)) -> 
+      let t = 
+        try 
+	  match Hashtbl.find env s with
+	    | EVar v when v.unfailing -> 
+		input_error ("The may-fail variable " ^ s ^ " cannot be used in this term.") ext
+	    | EVar v -> Var v
+	    | EFun f -> 
+	    	if fst f.f_type <> [] then 
+		  input_error ("function " ^ s ^ " expects " ^ 
+		    (string_of_int (List.length (fst f.f_type))) ^
+		    " arguments but is used without arguments") ext;
+	      f_allowed f ext;
+	      FunApp(f, [])
+	    | EName r ->
+	       f_allowed r ext;
+	      FunApp (r, [])
+	    | _ -> input_error ("identifier " ^ s ^ " should be a function, a variable, or a name") ext
+	with Not_found -> 
+	  input_error ("identifier " ^ s ^ " not defined") ext
+      in t
+    | (PFunApp (fi, tlist)) ->
+       let f = get_fun fi (List.length tlist) in
+       f_allowed f ext;
+       FunApp(f, List.map (check_cell_term f_allowed env) tlist)
+  | (PTuple tlist) ->
+      FunApp (Terms.get_tuple_fun (List.map (fun _ -> Param.any_type) tlist), 
+              List.map (check_cell_term f_allowed env) tlist)
+
+(* Check messages *)
+	
 let rec check_eq_term f_allowed fail_allowed_top fail_allowed_all varenv (term,ext) = 
   match term with
     | PFail -> input_error "The constant fail should not appear in this term" ext
@@ -409,9 +443,9 @@ let check_clause (cl, may_fail_env) =
    May contain function symbols, names and variables.
    Is a map from strings to the description of the ident *)
 
-type envElement = EFun of funsymb
+(*type envElement = EFun of funsymb
                 | EVar of binder
-                | EName of funsymb
+  | EName of funsymb *)
 
 let glob_table = Hashtbl.create 7
 
@@ -549,6 +583,12 @@ let get_fun (s,ext) arity env =
     input_error ("function " ^ s ^ " not defined") ext
 
 
+let get_cell_from_ident (s,ext) =
+  try
+    fst (List.find (fun r -> ((fst r).f_name = s)) !Param.cells)
+   with Not_found -> 
+    input_error ("Variable, function, or name " ^ s ^ " not declared") ext
+
 let rec check_term env (term, ext) =
   match term with 
   | PFail -> input_error "The constant fail should not appear in this term" ext
@@ -593,8 +633,9 @@ and check_pat_list old_env env = function
     let (a',env') = check_pat old_env env a in
     let (l',env'') = check_pat_list old_env env' l in
     (a'::l', env'')
-	
 
+
+      
 let event_fun_table = Hashtbl.create 7
 
 let get_event_fun s arity ext =
@@ -615,6 +656,26 @@ let get_event_fun s arity ext =
               f_options = 0 } in
     Hashtbl.add event_fun_table s p;
     p
+
+(* Cell handling *)
+let add_cell (s,ext) opt_init env =
+  try
+    match Hashtbl.find env s with
+      ECell r -> if r.f_name =s then
+	  input_error ("identifier " ^ s ^ " already declared (as a free name, a cell, a function, a predicate or a type)") ext
+    | _ -> ()
+  with Not_found -> ();
+  let opt_init = match opt_init with
+    | Some init ->
+      let init' = check_cell_term f_any env init in
+      Some init'
+    | None -> None
+  in
+  let cell_type = Param.any_type in
+  let r = Terms.create_name s ([],cell_type) (*private =>*)true in
+  Param.add_cell r opt_init
+
+       
 
 let rec check_process env = function 
     PNil -> Nil
@@ -702,6 +763,29 @@ let rec check_process env = function
   | PPhase(n, p) ->
       let occ' = Terms.new_occurrence() in
       Phase(n, check_process env p, occ')
+   | PLock(st,p) ->
+       Lock(List.map get_cell_from_ident st,
+         check_process env p, Terms.new_occurrence())
+   | PUnlock(st,p) ->
+       Unlock(List.map get_cell_from_ident  st,
+         check_process env p, Terms.new_occurrence())
+
+   | POpen(st,p) ->
+       Open(List.map get_cell_from_ident st,
+         check_process env p, Terms.new_occurrence())
+
+   | PReadAs(pairs,p) ->
+       let ids, patterns = List.split pairs in
+       let cells = List.map get_cell_from_ident ids in
+       let (pats',env') = check_pat_list env env patterns in
+       ReadAs(List.combine cells pats', check_process env' p, Terms.new_occurrence())
+       
+   | PAssign(pairs,p) ->
+       let ids, terms = List.split pairs in
+       let cells = List.map get_cell_from_ident ids in
+       let terms' = List.map (fun t -> check_term env t) terms in
+       let pairs' = List.combine cells terms' in 
+         Assign(pairs', check_process env p, Terms.new_occurrence())
 
 let get_non_interf (id, lopt) =
   (get_non_interf_name id, 
@@ -856,7 +940,11 @@ let rec check_one = function
 	  input_error ("free name " ^ i ^ " already declared") ext;
 	ignore(add_free_name (not b) i)) il
   | (Clauses c) ->
-      List.iter check_clause c
+     List.iter check_clause c
+  | Cell(name, opt_init) ->
+     if (List.exists (fun r -> (fst r).f_name = (fst name)) !Param.cells) then
+       input_error ("cell " ^ (fst name) ^ " already declared") (snd name);
+     add_cell name opt_init glob_table
   | (Param((p,ext),v)) -> 
       begin
 	match (p,v) with
@@ -876,6 +964,7 @@ let rec check_one = function
 	| "reconstructTrace", _ -> Param.boolean_param Param.reconstruct_trace p ext v
 	| "traceBacktracking", _ -> Param.boolean_param Param.trace_backtracking p ext v
 	| "debugOutput", _ -> Param.boolean_param Param.debug_output p ext v
+	| "profilingSubsumption", _ -> Param.boolean_param Param.profiling_subsumption p ext v
 	| "unifyDerivation", _ -> Param.boolean_param Param.unify_derivation p ext v
 	| "traceDisplay", S ("none",_) -> Param.trace_display := Param.NoDisplay
 	| "traceDisplay", S ("short",_) -> Param.trace_display := Param.ShortDisplay
@@ -902,6 +991,8 @@ let rec set_max_used_phase = function
       if n > !Param.max_used_phase then
 	Param.max_used_phase := n;
       set_max_used_phase p
+  | Lock(_,p,_) | Unlock(_,p,_)
+  | Assign(_,p,_) | ReadAs(_,p,_) -> set_max_used_phase p
 
       
       

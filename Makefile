@@ -6,6 +6,7 @@ OCAML ?= ocamlc
 OCAMLDEP ?= ocamldep
 PATHFLAGS = -I $(SRCDIR)
 OCAMLFLAGS ?= -g -w p -annot
+OCAMLLIBS=unix.cma
 
 SRCDIR = src
 
@@ -37,7 +38,7 @@ all: proverif proveriftotex
 proverif_CMI := $(patsubst %.mli,%.cmi,$(filter %.mli,$(proverif_SOURCES)))
 proverif_OBJECTS := $(patsubst %.ml,%.cmo,$(filter %.ml,$(proverif_SOURCES)))
 proverif: $(proverif_CMI) $(proverif_OBJECTS)
-	$(OCAML) $(PATHFLAGS) $(OCAMLFLAGS) -o $@ $(proverif_OBJECTS)
+	$(OCAML) $(PATHFLAGS) $(OCAMLFLAGS) -o $@ $(OCAMLLIBS) $(proverif_OBJECTS)
 
 proveriftotex_CMI := $(patsubst %.mli,%.cmi,$(filter %.mli,$(proveriftotex_SOURCES)))
 proveriftotex_OBJECTS := $(patsubst %.ml,%.cmo,$(filter %.ml,$(proveriftotex_SOURCES)))

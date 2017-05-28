@@ -33,6 +33,8 @@ open Selfun
 
 let display_debug = ref false
 
+let default_time = Unix.times()
+
 (* let resol_step = ref 0 *)
 
 let sound_mode = ref false
@@ -199,14 +201,14 @@ let rec is_name_proj n s =
 let is_exempt_from_dectuple (_,_,h,_) =
   match h with
     Rule (_,Apply(f,p),_,_,_) -> begin
-      (* rules that apply constructors ... *)
+	(* rules that apply constructors ... *)
       (f.f_cat = Tuple) || 
-      (* or their projections *)
-      (is_name_proj 0 f.f_name)
+	  (* or their projections *)
+	(is_name_proj 0 f.f_name)
     end
   | Rule (_,LblEquiv,_,_,_) -> true
   | _ -> false
-
+	
 let rec find_f_dectuple l0 lbool = 
   match (l0,lbool) with
   | (_::l1,false::lbool1) -> find_f_dectuple l1 lbool1
@@ -464,9 +466,17 @@ let rec find_noelim_fact hyp1 hyp2 =
 
 (* 3. The final function for subsumption test *)
 
-let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r) =
-  if List.length hyp1 > List.length hyp2 then false else
-(*  let t0 = Unix.times() in *)
+let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r2) =
+  if List.length hyp1 > List.length hyp2 then false else begin
+  if !Param.profiling_subsumption then begin
+    print_string "starting to testing implication ";
+    Display.Text.display_rule r1;
+    print_string "=> ";
+    Display.Text.display_rule r2;
+    end;
+    let t0 =
+      if !Param.profiling_subsumption then Unix.times()
+      else default_time in 
   try 
     Terms.auto_cleanup (fun () ->
       begin
@@ -478,42 +488,51 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r)
 	(TermsEq.implies_constra_list (concl2 :: hyp2) constr2 constr1)
   	(reorder hyp1) hyp2;
       find_noelim_fact hyp1 hyp2;
-(*      let t1 = Unix.times() in
-      if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
-       begin
-	 print_string "testing implication ";
-	 Display.Text.display_rule r1;
-	 print_string "=> ";
-	 Display.Text.display_rule r2;
-	 print_string "implication true, took ";
-	 print_float (t1.Unix.tms_utime -. t0.Unix.tms_utime);
-	 print_string " seconds.";
-	 Display.Text.newline()
-       end; *)
+      if !Param.profiling_subsumption then begin 
+	let t1 = Unix.times() in
+	if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
+	  begin
+	    print_string "testing implication ";
+	    Display.Text.display_rule r1;
+	    print_string "=> ";
+	    Display.Text.display_rule r2;
+	    print_string "implication true, took ";
+	    print_float (t1.Unix.tms_utime -. t0.Unix.tms_utime);
+	    print_string " seconds.";
+	    Display.Text.newline()
+	  end
+      end;
 
       if !Param.debug_output then begin 
 	Printf.printf "Superfluous rule found: ";
-	Display.Text.display_rule r;
+	Display.Text.display_rule r2;
 	Printf.printf " is subsumed by ";
 	Display.Text.display_rule r1
       end;
       true
 	)
-  with NoMatch -> 
-     (* let t1 = Unix.times() in
-     if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
-       begin
-	 print_string "testing implication ";
-	 Display.Text.display_rule r1;
-	 print_string "=> ";
-	 Display.Text.display_rule r2;
-	 print_string "implication false, took ";
-	 print_float (t1.Unix.tms_utime -. t0.Unix.tms_utime);
-	 print_string " seconds.";
-	 Display.Text.newline()
-       end; *)
-      false
-(* let implies = Profile.f2 "implies" implies *)
+  with NoMatch ->
+     if !Param.profiling_subsumption then begin
+       let t1 = Unix.times() in
+       if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
+	 begin
+	   print_string "testing implication ";
+	   Display.Text.display_rule r1;
+	   print_string "=> ";
+	   Display.Text.display_rule r2;
+	   print_string "implication false, took ";
+	   print_float (t1.Unix.tms_utime -. t0.Unix.tms_utime);
+	   print_string " seconds.";
+	   Display.Text.newline()
+	 end
+     end;
+    false
+end
+      
+(* let implies =
+  if !Param.profiling_subsumption
+  then Profile.f2 "implies" implies
+   else implies *)
 
 (********************************************
 Check usage of may-fail variables and fail
@@ -1273,12 +1292,20 @@ let redundant_res res_list =
 (* 	   List.iter (fun rule2 -> compos normal_rule rule2 rule_sel) (!rule_base_ns) *)
 	 end;
 
-       if !Param.debug_output then 
+       if !Param.debug_output then
 	 Printf.printf "#rule_base_ns = %d, rule_base_sel = %d, #rules in queue = %d\n" 
 	   (List.length !rule_base_ns)
 	   (List.length !rule_base_sel)
            (Queue.length rule_queue);
-
+       if !Param.execution_time > 0.0  then begin
+	 let current_time = Unix.times() in
+	 let time_used =  current_time.Unix.tms_utime -. default_time.Unix.tms_utime in
+		Printf.printf "Currently used time: %f seconds\n" time_used;
+		if time_used > !Param.execution_time then begin
+		  print_string "execution terminated because of timeout\n";
+		  exit 0
+		end
+       end; 
        (* display the rule *)
        if !Param.verbose_rules then
          Display.Text.display_rule rule

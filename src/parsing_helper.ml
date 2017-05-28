@@ -28,7 +28,7 @@
 open Lexing
 
 let internal_error mess =
-  print_string ("Internal error: " ^ mess ^ "\nPlease report bug to j.phillips@cs.bham.ac.uk, including input file and output\n");
+  print_string ("Internal error: " ^ mess ^ "\nPlease report bug to E.Ritter@cs.bham.ac.uk, including input file and output\n");
   exit 3
 
 (* extent, for error messages *)

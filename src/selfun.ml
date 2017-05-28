@@ -282,20 +282,20 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 
 	let wnew =
 	  match p with
-	  | { p_name = "reach" } ->
-	      if !Param.debug_output then begin 
-		Printf.printf "reach_weight applied to ";
-		Display.Text.display_fact h;
-		Printf.printf "\n"
+	  | { p_name = "reach" } -> 
+	      if !Param.debug_output then begin
+	  	Printf.printf "reach_weight applied to ";
+	  	Display.Text.display_fact h;
+	  	Printf.printf "\n"
 	      end;
 	      reach_weight
-	  | { p_name = "seq" } ->
-	      if !Param.debug_output then begin 
-		Printf.printf "seq_weight applied to ";
-		Display.Text.display_fact h;
-		Printf.printf "\n";
-	      end;
-	      seq_weight
+	  (* | { p_name = "seq" } -> *)
+	  (*     if !Param.debug_output then begin  *)
+	  (* 	Printf.printf "seq_weight applied to "; *)
+	  (* 	Display.Text.display_fact h; *)
+	  (* 	Printf.printf "\n"; *)
+	  (*     end; *)
+	  (*     seq_weight *)
 	  | _ ->
 	    if matchafactstrict concl h then match_concl_weight else 
 	      let wtmp = find_same_format (p,lp) (!no_unif_set) in

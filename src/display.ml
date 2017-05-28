@@ -946,6 +946,9 @@ let rec display_hyp hyp tag =
   | (h, LetTag _ :: t) | (h, InputPTag _ :: t) | (h, OutputPTag _ :: t) 
   | (h, OutputTag _ :: t) | (h, InsertTag _ :: t) | (h, LetFilterTag _ :: t)
   | (h, BeginEvent _ :: t) | (h, AssignTag _ :: t) | (_::h, KnowledgeProgressTag _ :: t )-> 
+     display_hyp h t
+  | (h, SequenceTag :: t) |  (h, ReachTag :: t) -> display_hyp h t
+  | ((Pred({p_info = [Reach(n)]}, _))::h, t)  | ((Pred({p_info = [Seq(n)]}, _))::h, t) ->
       display_hyp h t
   | ((Pred({p_info = [ReachBin(n)]}, _))::h, t)  | ((Pred({p_info = [SeqBin(n)]}, _))::h, t) ->
       display_hyp h t
@@ -1111,6 +1114,7 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	    Rn _ -> print_string "(The attacker can create new names.)"
 	  | Init -> print_string "(Initial knowledge of the attacker.)"
 	  | PhaseChange -> print_string "(Knowledge is communicated from one phase to the next.)"
+	  | PhaseChangeReach -> print_string "(States are also reachable in the next phase.)"
 	  | TblPhaseChange -> print_string "(Tables are communicated from one phase to the next.)"
 	  | TestDeterministic(f) ->
 	      print_string ("(The destructor ");
@@ -1160,11 +1164,15 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      display_phase p;
 	      print_string ".)"
 	  | Rseq1(p) ->
-	      print_string "(State reachability is transitive";
+	      print_string "(State transition is transitive";
 	      display_phase p;
 	      print_string ".)"
 	  | Rseq2(p,p') ->
 	      print_string "(Sequencing preserves reachability";
+	      display_phase p;
+	      print_string ".)"
+	  | Rseq3(p,p') ->
+	      print_string "(State transition is reflexive";
 	      display_phase p;
 	      print_string ".)"
 	  | Rinherit(p,p') ->
@@ -2137,12 +2145,12 @@ let display_constra_list c =
     end
 
 let display_state fact =
-  display_attacker_fact fact
+  (*  display_fact fact *)
+  () 
     
       
 let display_clause_explain n lbl hyp_num_list hl constra concl =
-  Debug.debug_print "Called display_clause_explain\n";
-  Debug.debug_print "\n";
+  Debug.debug_print (Printf.sprintf "Called display_clause_explain with n=%d \n" n);
   match lbl with
     Rn _ -> 
       print_string "The attacker creates the new name ";
@@ -2160,6 +2168,10 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_attacker_fact concl;
       print_string ".";
       newline()
+  | PhaseChangeReach -> 
+      display_attacker_hyp hyp_num_list hl;
+    print_string "Hence we have also ";
+    newline()
   | TblPhaseChange -> 
       display_tbl_hyp hyp_num_list hl;
       print_string "So a table may contain the entry ";
@@ -2247,10 +2259,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       print_string "So the attacker may trigger an output on this channel.";
       newline()
   | RinitState(p) -> begin
-    print_string "The initial state is ";
-    match concl with
-      Pred({p_info = [Reach(n)]} as p, [_; FunApp (_,vs1)]) ->
-	display_state concl
+    print_string "The initial state is \n";
   end
   | Rseq0(p) -> begin
     print_string "Old initial state used\n";
@@ -2261,16 +2270,16 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
     display_attacker_hyp hyp_num_list hl
   end
   | Rseq2(p, p') -> begin
-    print_string "Applied reachability progression\n";
-    display_attacker_hyp hyp_num_list hl
-  end
+    display_attacker_hyp hyp_num_list hl;
+    print_string "Applied reachability progression\n"
+     end
   | Rseq3(p, p') -> begin
-    print_string "Eliminated seq-predicate\n";
-    display_attacker_hyp hyp_num_list hl
+    display_attacker_hyp hyp_num_list hl;
+    print_string "Eliminated seq-predicate\n"
   end
   | Rinherit(p,p') -> begin
-     print_string "Inherited knowledge\n";
-    display_attacker_hyp hyp_num_list hl
+    display_attacker_hyp hyp_num_list hl;
+    print_string "Inherited knowledge\n"
   end
   | Rfail(p) ->
       display_attacker_hyp hyp_num_list hl;

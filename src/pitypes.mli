@@ -207,7 +207,6 @@ type 'a reduc_state =
    
       hyp_not_matched : fact list;
 
-      mutable_state: fact
       current_phase : int;
       comment : reduc_type  (* type of the reduction *)
     }

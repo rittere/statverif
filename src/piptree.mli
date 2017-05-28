@@ -127,6 +127,11 @@ type process =
   | PLetFilter of ident list * fact_e * process * process
   | PEvent of ident * term_e list * process
   | PPhase of int * process
+  | PLock of ident list * process
+  | PUnlock of ident list * process
+  | POpen of ident list * process
+  | PReadAs of (ident * pattern) list * process
+  | PAssign of (ident * term_e) list * process
 
 
 (* Declarations *)
@@ -147,5 +152,6 @@ type decl =
   | Not of (gfact_e * int) * (ident * gterm_e) list
   | Elimtrue of fact_e * ident list
   | Free of ident list * bool
+  | Cell of ident * term_e option
   | Clauses of (clause * ident list) list
 

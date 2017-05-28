@@ -120,7 +120,8 @@ val reconstruct_trace : bool ref
 val trace_backtracking : bool ref
 val display_init_state : bool ref
 val debug_output : bool ref
-
+val profiling_subsumption : bool ref
+val execution_time: float ref
 
 type sel_type = NounifsetMaxsize | Nounifset | Term | TermMaxsize
 val select_fun : sel_type ref

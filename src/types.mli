@@ -250,6 +250,7 @@ type label =
   | Rn of predicate
   | Init
   | PhaseChange
+  | PhaseChangeReach
   | TblPhaseChange
   | LblComp
   | LblNone

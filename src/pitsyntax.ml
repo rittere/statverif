@@ -2256,6 +2256,7 @@ let parse_file s =
 	  | "reconstructTrace", _ -> Param.boolean_param Param.reconstruct_trace p ext v
 	  | "traceBacktracking", _ -> Param.boolean_param Param.trace_backtracking p ext v
 	  | "debugOutput", _ -> Param.boolean_param Param.debug_output p ext v
+	  | "profilingSubsumption", _ -> Param.boolean_param Param.profiling_subsumption p ext v
 	  | "unifyDerivation", _ -> Param.boolean_param Param.unify_derivation p ext v
 	  | "traceDisplay", S ("none",_) -> Param.trace_display := Param.NoDisplay
 	  | "traceDisplay", S ("short",_) -> Param.trace_display := Param.ShortDisplay
