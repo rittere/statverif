@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -92,7 +92,7 @@ type pterm =
     PPIdent of ident
   | PPFunApp of ident * pterm_e list
   | PPTuple of pterm_e list
-  | PPRestr of ident * ident(*type*) * pterm_e
+  | PPRestr of ident * ident list option(*variables to include as arguments*) * ident(*type*) * pterm_e
   | PPTest of pterm_e * pterm_e * pterm_e option
   | PPLet of tpattern * pterm_e * pterm_e * pterm_e option 
   | PPLetFilter of (ident * ident(*type*)) list * pterm_e * pterm_e * pterm_e option
@@ -109,15 +109,16 @@ type tprocess =
     PNil
   | PPar of tprocess * tprocess
   | PRepl of tprocess
-  | PRestr of ident * ident(*type*) * tprocess 
+  | PRestr of ident * ident list option(*variables to include as arguments*) * ident(*type*) * tprocess 
   | PLetDef of ident * pterm_e list
   | PTest of pterm_e * tprocess * tprocess
   | PInput of pterm_e * tpattern * tprocess
   | POutput of pterm_e * pterm_e * tprocess
   | PLet of tpattern * pterm_e * tprocess * tprocess
   | PLetFilter of (ident * ident(*type*)) list * pterm_e * tprocess * tprocess
-  | PEvent of ident * pterm_e list * tprocess
+  | PEvent of ident * pterm_e list * ident list option(*variables to include in environment for injective events*) * tprocess
   | PPhase of int * tprocess
+  | PBarrier of int * ident option * tprocess
   | PInsert of ident * pterm_e list * tprocess
   | PGet of ident * tpattern list * pterm_e option * tprocess * tprocess
   | PLock of ident list * tprocess
@@ -138,11 +139,11 @@ type tdecl =
   | TConstDecl of ident * ident(*type*) * ident list(*options*)
   | TReduc of (envdecl * term_e * term_e) list * ident list(*options*)
   | TReducFail of ident * ident list * ident * (may_fail_env_decl * term_e * term_e) list * ident list(*options*)
-  | TEquation of envdecl * term_e * term_e
+  | TEquation of (envdecl * term_e * term_e) list * ident list(*options*)
   | TPredDecl of ident * ident list(*argument types*) * ident list(*options*)
   | TTableDecl of ident * ident list(*argument types*)
   | TSet of ident * Ptree.pval
-  | TPDef of ident * envdecl * tprocess
+  | TPDef of ident * may_fail_env_decl * tprocess
   | TQuery of envdecl * tquery list
   | TNoninterf of envdecl * (ident * term_e list option) list
   | TWeaksecret of ident
@@ -153,7 +154,7 @@ type tdecl =
   | TClauses of (may_fail_env_decl * tclause) list
   | TDefine of ident * ident list * tdecl list
   | TExpand of ident * ident list
-  | TLetFun of ident * envdecl * pterm_e
+  | TLetFun of ident * may_fail_env_decl * pterm_e
   | TCell of ident * ident option(*type*) * term_e option(*initial value*)
 
 

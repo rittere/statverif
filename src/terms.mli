@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -31,11 +31,15 @@ open Types
 
 val tuple_table : (typet list, funsymb) Hashtbl.t
 
-(* [get_tuple_fun n] returns the function symbol corresponding
-   to tuples of arity [n] *)
+(* [get_tuple_fun tl] returns the function symbol corresponding
+   to tuples with arguments of types [tl] *)
 val get_tuple_fun : typet list -> funsymb
 val get_term_type : term -> typet
 val get_pat_type : pattern -> typet
+
+val is_var : term -> bool
+
+val equal_types : typet -> typet -> bool
 
 val term_of_pattern_variable : pattern -> term
 
@@ -43,7 +47,8 @@ val get_format_type : format -> typet
 val copy_n : int -> 'a -> 'a list
 val tl_to_string : string -> typet list -> string
 
-(* [eq_lists l1 l2] tests the physical equality between the elements of [t1] and [t2] *)
+(* [eq_lists l1 l2] tests the physical equality between 
+   the elements of [l1] and [l2] *)
 val eq_lists : 'a list -> 'a list -> bool 
 
 (* Creates and returns a new identifier or variable *)
@@ -67,6 +72,13 @@ val new_unfailing_var : string -> typet -> binder
    be displayed. *)
 val new_var_noren : string -> typet -> binder
 
+(* [new_var_noren_with_fail s t may_fail] creates a fresh variable with 
+   name [s], type [t], and may_fail value [may_fail].
+   The name of this variable is exactly [s], without renaming it to
+   a fresh name even if s is already used. Such variables should never
+   be displayed. *)
+val new_var_noren_with_fail : string -> typet -> bool -> binder
+
 (* [copy_var v] creates a fresh variable with the same sname and type as [v]  *)
 val copy_var : binder -> binder
 
@@ -85,6 +97,12 @@ val var_gen : typet list -> term list
 
 (* [is_may_fail_term t] returns true if [t] is the constant [fail] or a may-fail variable *)
 val is_may_fail_term : term -> bool
+
+(* [is_unfailing_var t] returns true if [t] is the constant [fail] or a may-fail variable *)
+val is_unfailing_var : term -> bool
+
+(* [is_failure t] returns true if [t] is the constant [fail] or a may-fail variable *)
+val is_failure : term -> bool
 
 (* [occurs_var v t] returns true when variable [v] occurs in [t] *)
 val occurs_var : binder -> term -> bool
@@ -219,13 +237,16 @@ val false_term : term
 
 (* Functions *)
 
-val is_true_fun : funsymb
+val is_true_fun : unit -> funsymb
 
 val equal_fun : typet -> funsymb
 val diff_fun : typet -> funsymb
-val or_fun : funsymb
-val and_fun : funsymb
-val not_fun : funsymb
+val or_fun : unit -> funsymb
+val and_fun : unit -> funsymb
+val not_fun : unit -> funsymb
+val make_not : term -> term
+val and_list : term list -> term
+val or_not_list : term list -> term
 val new_name_fun : typet -> funsymb
 
 val glet_constant_fun : typet -> funsymb
@@ -235,7 +256,6 @@ val glet_fun : typet -> funsymb
 val gtest_fun : typet -> funsymb
 val success_fun : typet -> funsymb
 val not_caught_fail_fun : typet -> funsymb
-
 
 val complete_semantics_constructors : typet list -> typet -> rewrite_rules
 val red_rules_fun : funsymb -> rewrite_rules
@@ -261,7 +281,8 @@ val get_all_projection_fun : funsymb -> funsymb list
 
 val reset_occurrence : unit -> unit
 val new_occurrence : unit -> int
-
+val put_lets : process -> (binder * term) list -> process
+    
 val create_name : string -> typet list * typet -> bool -> funsymb
 
 exception False_inequality

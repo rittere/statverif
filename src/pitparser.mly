@@ -3,9 +3,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -49,6 +49,7 @@ exception Syntax
 %token OUT
 %token IN
 %token <Pitptree.ident> IDENT
+%token <Pitptree.ident> ATIDENT
 %token <Pitptree.ident> STRING
 %token <int> INT
 %token REPL
@@ -83,11 +84,13 @@ exception Syntax
 %token COLON
 %token NOUNIF
 %token PHASE
+%token BARRIER
 %token AMONG
 %token WEAKSECRET
 %token PARAM
 %token ORTEXT
 %token FAIL
+%token GREATER
 
 /* Typed front-end only */
 %token TYPE
@@ -128,6 +131,7 @@ exception Syntax
 %right WEDGE 
 %nonassoc EQUAL
 %nonassoc DIFF
+%nonassoc REPL
 
 %start all
 %type <Pitptree.tdecl list * Pitptree.tprocess * Pitptree.tprocess option> all
@@ -135,6 +139,11 @@ exception Syntax
 %start lib
 %type <Pitptree.tdecl list> lib
 
+%start permut
+%type <Pitptree.ident list list> permut
+
+%start order
+%type <Pitptree.ident list> order
 %%
 
 /*** Typed front-end ***/
@@ -155,8 +164,8 @@ lib:
 	
 |       CONST neidentseq COLON typeid options DOT lib
         { (List.map (fun x -> TConstDecl(x, $4, $5)) $2) @ $7 }
-|	EQUATION forallvartype term EQUAL term DOT lib
-	{ (TEquation($2, $3, $5)) :: $7 }
+|	EQUATION eqlist options DOT lib
+	{ (TEquation($2, $3)) :: $5 }
 |       EVENT IDENT DOT lib
         { (TEventDecl($2, [])) :: $4 }
 |       EVENT IDENT LPAREN typeidseq RPAREN DOT lib
@@ -169,13 +178,15 @@ lib:
         { (TTableDecl($2, $4)) :: $7 }
 |	LET IDENT EQUAL tprocess DOT lib
 	{ (TPDef($2,[],$4)) :: $6 }
-|       LET IDENT LPAREN vartype RPAREN EQUAL tprocess DOT lib
+|       LET IDENT LPAREN mayfailvartypeseq RPAREN EQUAL tprocess DOT lib
         { (TPDef($2,$4,$7)) :: $9 }
 |       LETFUN IDENT EQUAL pterm DOT lib
         { (TLetFun($2,[],$4)) :: $6 }
-|       LETFUN IDENT LPAREN vartype RPAREN EQUAL pterm DOT lib
+|       LETFUN IDENT LPAREN mayfailvartypeseq RPAREN EQUAL pterm DOT lib
         { (TLetFun($2,$4,$7)) :: $9 }
 |       SET IDENT EQUAL IDENT DOT lib
+        { (TSet($2,S $4)) :: $6 }
+|       SET IDENT EQUAL STRING DOT lib
         { (TSet($2,S $4)) :: $6 }
 |       SET IDENT EQUAL INT DOT lib
         { (TSet($2,I $4)) :: $6 }
@@ -206,7 +217,7 @@ lib:
 |       PROOF LBRACE proof RBRACE lib
         { (* Supported for compatility with CryptoVerif only *)
           $5 }
-|       ELIMTRUE mayfailvartypeseq SEMI term DOT lib
+|       ELIMTRUE nemayfailvartypeseq SEMI term DOT lib
         { (TElimtrue ($2,$4)) :: $6 } 
 |       ELIMTRUE term DOT lib
         { (TElimtrue ([],$2)) :: $4 } 
@@ -289,18 +300,20 @@ neidentseq:
 | IDENT
     { [$1] }
 
+newarg:
+  
+    { None }
+| LBRACKET RBRACKET
+    { Some [] }
+| LBRACKET neidentseq RBRACKET
+    { Some ($2) }
+
 nevartype:
         IDENT COLON typeid COMMA nevartype
         { ($1,$3)::$5 }
 |
         IDENT COLON typeid
         { [($1,$3)] }
-
-vartype:
-        nevartype
-        { $1 }
-| 
-        { [] }
 
 opttype:
         COLON typeid
@@ -410,6 +423,8 @@ gterm:
 	{ PGIdent ($1), parse_extent() }
 |       IDENT LPAREN gtermseq RPAREN PHASE INT
         { PGPhase($1, $3, $6), parse_extent() }
+|       TABLE LPAREN gterm RPAREN PHASE INT
+        { PGPhase(("table", parse_extent()), [$3], $6), parse_extent() }
 |       gterm EQUAL gterm
         { PGFunApp(("=", parse_extent()), [$1; $3]), parse_extent() }
 |       gterm DIFF gterm
@@ -426,6 +441,8 @@ gterm:
         { PGFunApp(("event",parse_extent()), $3), parse_extent() }
 |       INJEVENT LPAREN gtermseq RPAREN
         { PGFunApp(("inj-event",parse_extent()), $3), parse_extent() }
+|       TABLE LPAREN gterm RPAREN
+        { PGFunApp(("table",parse_extent()), [$3]), parse_extent() }
 |       gterm BEFORE gterm
         { PGFunApp(("==>", parse_extent()), [$1;$3]), parse_extent() }
 |	LPAREN gtermseq RPAREN
@@ -478,6 +495,8 @@ tfnebindingseq:
         { BFNoUnif(($1,$3,$5), $6) }
 |       IDENT optint
         { BFNoUnif(($1,[],-1),$2) }
+|       TABLE LPAREN gformatseq RPAREN optphase optint
+        { BFNoUnif((("table", parse_extent()),$3,$5), $6) }
 
 optphase:
     PHASE INT
@@ -551,15 +570,21 @@ mayfailvartype:
 	IDENT COLON typeid ORTEXT FAIL
 	{ ($1,$3, true) }
 	
-mayfailvartypeseq:
-	mayfailvartype COMMA mayfailvartypeseq
+nemayfailvartypeseq:
+	mayfailvartype COMMA nemayfailvartypeseq
 	{ $1::$3 }
 |
 	mayfailvartype
 	{ [$1] }
-	
+
+mayfailvartypeseq:
+        nemayfailvartypeseq
+        { $1 }
+|
+        { [] }
+    
 forallmayfailvartype:
-	FORALL mayfailvartypeseq SEMI
+	FORALL nemayfailvartypeseq SEMI
 	{ $2 }
 |
 	{ [] }
@@ -583,6 +608,14 @@ treduc:
 |	forallvartype term EQUAL term
 	{ [$1,$2,$4] }	
 	
+/* Equations */
+
+eqlist:
+    forallvartype term EQUAL term 
+    { [($1, $2, $4)] }
+|   forallvartype term EQUAL term SEMI eqlist
+    { ($1, $2, $4)::$6 }
+
 /* Clauses */
 
 tclause: 
@@ -610,9 +643,9 @@ tprocess:
 	{ PLetDef ($1,[]) }
 |       IDENT LPAREN ptermseq RPAREN
         { PLetDef ($1, $3) }
-|	REPL tprocess
+|	REPL tprocess %prec REPL
 	{ PRepl $2 }
-|	REPL IDENT LEQ IDENT tprocess 
+|	REPL IDENT LEQ IDENT tprocess %prec REPL
 	{ (* For convergence with CryptoVerif, we allow an identifier (bound on the number of copies) after a replication; it is simply ignored in ProVerif. *)
           PRepl $5 }
 |	INT 
@@ -622,8 +655,8 @@ tprocess:
 |       YIELD  
         { (* For convergence with CryptoVerif, we allow yield instead of 0 *)
           PNil }
-| 	NEW IDENT COLON typeid opttprocess
-	{ PRestr($2, $4, $5) }
+| 	NEW IDENT newarg COLON typeid opttprocess
+	{ PRestr($2, $3, $5, $6) }
 |	IF pterm THEN tprocess optelseprocess
 	{ PTest($2,$4,$5) }
 |	IN LPAREN pterm COMMA tpattern RPAREN opttprocess
@@ -648,12 +681,24 @@ tprocess:
         { PGet($2, $4, Some $7, $8, $9) }
 |	tprocess BAR tprocess
 	{ PPar($1,$3) }
-|       EVENT IDENT LPAREN ptermseq RPAREN opttprocess
-        { PEvent($2, $4, $6) }
-|       EVENT IDENT opttprocess
-        { PEvent($2, [], $3) }
+|       EVENT IDENT LPAREN ptermseq RPAREN newarg opttprocess
+        { PEvent($2, $4, $6, $7) }
+|       EVENT IDENT newarg opttprocess
+        { PEvent($2, [], $3, $4) }
 |       PHASE INT opttprocess
-        { PPhase($2, $3) }
+        { if ($2) <= 0 then
+	    input_error "Phases should be positive integers in processes" (parse_extent());
+          PPhase($2, $3) }
+|       BARRIER INT opttprocess
+        { if ($2) <= 0 then
+	    input_error "Sync numbers should be positive integers" (parse_extent());
+          Param.has_barrier := true;
+	  PBarrier($2, None, $3) }
+|       BARRIER INT LBRACKET IDENT RBRACKET opttprocess
+        { if ($2) <= 0 then
+	    input_error "Sync numbers should be positive integers" (parse_extent());
+          Param.has_barrier := true;
+	  PBarrier($2, Some $4, $6) }
 |       LOCK neidentseq opttprocess
         { PLock($2, $3) }
 |       UNLOCK neidentseq opttprocess
@@ -730,8 +775,8 @@ pterm:
         { PPFunApp(("||", parse_extent()), [$1; $3]), parse_extent() }
 |       pterm WEDGE pterm
         { PPFunApp(("&&", parse_extent()), [$1; $3]), parse_extent() }
-| 	NEW IDENT COLON typeid SEMI pterm
-	{ PPRestr($2, $4, $6), parse_extent() }
+| 	NEW IDENT newarg COLON typeid SEMI pterm
+	{ PPRestr($2, $3, $5, $7), parse_extent() }
 |	IF pterm THEN pterm
 	{ PPTest($2,$4,None), parse_extent() }
 |	IF pterm THEN pterm ELSE pterm
@@ -762,3 +807,34 @@ ptermseq:
 | 
         { [] }
 
+/* Permutations, to manually specify swappings */
+
+tag:
+    IDENT
+    { $1 }
+|   ATIDENT
+    { $1 }
+
+onepermut:
+    tag RED tag
+    { [$1;$3] }
+|   tag RED onepermut
+    { $1 :: $3 }
+
+permut:
+    
+    { [] }
+|   onepermut
+    { [$1] }
+|   onepermut SEMI permut
+    { $1 :: $3 }
+
+    
+/* Ordering of function symbols, to prove termination of rewrite rules 
+   coming from equations */
+
+order:
+    IDENT GREATER order
+    { $1 :: $3 }
+  | IDENT
+    { [$1] }

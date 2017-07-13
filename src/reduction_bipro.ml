@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -25,10 +25,9 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
-(* Trace reconstruction by Xavier Allamigeon and Bruno Blanchet
+(* Trace reconstruction 
    This version of the trace reconstruction does not exploit the
-   order of nodes in the derivation tree. It is the main
-   algorithm presented in [CSFW'05].
+   order of nodes in the derivation tree. 
  *)
 (* TO DO Test phases
    Should I use evaluated terms in the "comment" field?
@@ -53,12 +52,6 @@ let debug_print s = ()
    is taken. In this case, we try delaying the inserts. *)
 let has_backtrack_get = ref false
 
-let extract_name_params_noneed l = 
-  List.map (function 
-      | Always(s,t) -> t
-      | _ -> Parsing_helper.internal_error "expected name_params"
-   ) l
-
 exception No_result
 (* We use the exception Unify for local failure *)
 
@@ -67,7 +60,7 @@ exception FailOneSideOnly
 let make_choice t1 t2 =
   let ty1 = Terms.get_term_type t1
   and ty2 = Terms.get_term_type t2 in
-  if (!Param.ignore_types) || (ty1 == ty2) then 
+  if (Param.get_ignore_types()) || (ty1 == ty2) then 
     FunApp(Param.choice_fun (Terms.get_term_type t1), [t1;t2])
   else
     Parsing_helper.internal_error "[Reduction_bipro.make_choice] This should be the same type"
@@ -200,6 +193,10 @@ let find_io_rule next_f hypspeclist hyplist name_params var_list io_rules =
         begin
 	  let sons3 = skip (lh2-lh) sons in
 	  try 
+	    let name_params2 = skip (lnp2-lnp) name_params' in
+	    if not (Param.get_ignore_types()) &&
+	      (List.exists2 (fun t1 t2 -> Terms.get_term_type t1 != Terms.get_term_type t2) name_params1 name_params2) then
+	      raise Unify;
 	    auto_cleanup (fun () ->
 	      match_modulo_list (fun () ->
 	        match_equiv_list (fun () -> 
@@ -216,7 +213,7 @@ let find_io_rule next_f hypspeclist hyplist name_params var_list io_rules =
 			Display.Text.newline())
 		    end;
 	          next_f new_found) sons3 hyplist 
-                  ) name_params1 (skip (lnp2-lnp) name_params')
+                  ) name_params1 name_params2
 		)
           with Unify -> find_io_rule_aux io_rules
         end
@@ -310,7 +307,7 @@ let term_evaluation_name_params occ t name_params =
   let may_have_several_patterns = reduction_check_several_patterns occ in
   let t' = bi_action (term_evaluation_fail t) in
   if may_have_several_patterns then
-    t', (Always("",make_bi_choice t') :: name_params)
+    t', ((MUnknown,make_bi_choice t',Always) :: name_params)
   else
     t', name_params
 
@@ -325,7 +322,7 @@ let term_evaluation_name_params_true occ t name_params =
   let may_have_several_patterns = reduction_check_several_patterns occ in
   let t' = bi_action (term_evaluation_to_true t) in
   if may_have_several_patterns then
-    (Always("",make_bi_choice t') :: name_params)
+    ((MUnknown,make_bi_choice t',Always) :: name_params)
   else
     name_params
 
@@ -379,21 +376,9 @@ let term_evaluation_name_params_and_match pat occ t name_params =
     t')
   in
   if may_have_several_patterns then
-    (Always("",make_bi_choice t'') :: name_params)
+    ((MUnknown,make_bi_choice t'',Always) :: name_params)
   else
     name_params
-
-let rec update_name_params name_params = function
-  PatVar b -> 
-    let t = copy_closed_remove_syntactic (Var b) in
-    Always(b.sname, t) :: name_params
-| PatTuple(f,l) -> update_name_params_list name_params l
-| PatEqual _ -> name_params
-
-and update_name_params_list name_params = function
-  [] -> name_params
-| (a::l) -> update_name_params_list (update_name_params name_params a) l
-
 
 (* Decompose tuples *)
 
@@ -516,10 +501,12 @@ let rec do_red_nointeract f prev_state n =
                          prev_state.subprocess);
             comment = RPar(n);
             previous_state = Some prev_state } (n+1)
-  | Restr(na,p,occ) ->
+  | Restr(na,(args,env),p,occ) ->
       debug_print "Doing Restr";
       made_forward_step := true;
-      let l = extract_name_params_noneed name_params in
+      let need_list = get_need_vars na.f_name in
+      let include_info = prepare_include_info env args need_list in
+      let l = extract_name_params na.f_name include_info name_params in
       let n' = FunApp(add_name_for_pat (FunApp(na, l)),[]) in
       let p' = process_subst p na n' in
       begin
@@ -537,8 +524,9 @@ let rec do_red_nointeract f prev_state n =
         auto_cleanup (fun () -> 
           let name_params' = term_evaluation_name_params_and_match pat (OLet(occ)) t name_params in
           let p' = copy_process p in
+          let name_params'' = update_name_params IfQueryNeedsIt name_params' pat in 
           do_red_nointeract f { prev_state with
-	    subprocess = replace_at n (p', name_params', new_occs, facts, Nothing) prev_state.subprocess;
+	    subprocess = replace_at n (p', name_params'', new_occs, facts, Nothing) prev_state.subprocess;
             comment = RLet1(n, pat, t);
             previous_state = Some prev_state } n
         )
@@ -664,7 +652,7 @@ let rec do_red_nointeract f prev_state n =
               with Unify ->
 	        f false { prev_state with
                       subprocess = remove_at n prev_state.subprocess;
-                      comment = ROutput3(n, tc, t);
+                      comment = ROutput2(n, tc, t);
                       previous_state = Some prev_state } 
               | FailOneSideOnly ->
 	          (* SUCCESS *)
@@ -726,7 +714,7 @@ let rec do_red_nointeract f prev_state n =
               with Unify ->
 	        f false { prev_state with
                       subprocess = remove_at n prev_state.subprocess;
-                      comment = ROutput3(n, tc, t);
+                      comment = ROutput2(n, tc, t);
                       previous_state = Some prev_state } 
               | FailOneSideOnly ->
 	          (* SUCCESS *)
@@ -734,7 +722,7 @@ let rec do_red_nointeract f prev_state n =
                     goal = NonInterfGoal(ProcessTest([],[],ref (Some(n, List.nth prev_state.subprocess n)))) }
 	end
       end
-  | Event(FunApp(fs,l) as t,p,occ) ->
+  | Event(FunApp(fs,l) as t,_,p,occ) ->
       debug_print "Doing Event";
       made_forward_step := true;
       begin
@@ -763,7 +751,7 @@ let rec do_red_nointeract f prev_state n =
       debug_print "Doing Repl";
       made_forward_step := true;
       let sid = Terms.new_var "sid" Param.sid_type in
-      let new_occs = (ReplTag (occ,List.length name_params))::occs in
+      let new_occs = (ReplTag (occ,count_name_params name_params))::occs in
       let copy_number = ref 0 in
       let new_state = ref { prev_state with
 	                    subprocess = remove_at n prev_state.subprocess;
@@ -778,11 +766,11 @@ let rec do_red_nointeract f prev_state n =
                     let p' = auto_cleanup (fun () -> copy_process p) in
                     incr copy_number;
                     new_state := { !new_state with
-                            subprocess = add_at n (p', Always("!",sid_pat)::name_params, new_occs, facts, Nothing) !new_state.subprocess
+                            subprocess = add_at n (p', (MSid 0,sid_pat,Always)::name_params, new_occs, facts, Nothing) !new_state.subprocess
                           };
                     raise Unify
            | _ -> Parsing_helper.internal_error "Repl case, reduction.ml"
-	     ) new_occs facts (Always("!",Var sid)::name_params) [Var sid] prev_state.io_rule
+	     ) new_occs facts ((MSid 0,Var sid,Always)::name_params) [Var sid] prev_state.io_rule
            )
       with Unify ->
 	debug_print ("Repl: " ^ (string_of_int (!copy_number)) ^ " copies");
@@ -860,6 +848,13 @@ let rec do_red_nointeract f prev_state n =
 	    else
 	      raise No_result
       end
+  | NamedProcess(name, tl, p) ->
+    debug_print "Doing NamedProcess";
+    do_red_nointeract  f { prev_state with
+      subprocess = replace_at n (p, name_params, occs, facts, Nothing) prev_state.subprocess;
+      comment = RNamedProcess(n, name, tl);
+      previous_state = Some prev_state } n
+
   | _ -> f false prev_state
 
 
@@ -1002,7 +997,7 @@ let rec init_rule state tree =
     FHAny | FEmpty -> 
       begin
 	match tree.thefact with
-	  Out(_,_,_) -> state
+	  Out(_,_) -> state
 	| Pred(p, [t]) when p.p_prop land Param.pred_ATTACKER != 0 ->
 	    begin
 	      let t' = rev_name_subst t in
@@ -1106,7 +1101,7 @@ let do_res_in cur_state seen_list rest_subprocess n current_cache_list name_para
     made_forward_step := true;
     auto_cleanup (fun () ->
       let _ = bi_action (bi_match_pattern pat mess_term) in
-      let name_params'' = update_name_params name_params' pat in
+      let name_params'' = update_name_params Always name_params' pat in
       let p' = auto_cleanup (fun () -> copy_process p) in
       let fact' = build_mess_fact cur_state.current_phase tc' mess_term in
       normal_state next_f false 
@@ -1147,7 +1142,7 @@ let do_async_res_io cur_state seen_list rest_subprocess n current_cache_list nam
       try
 	auto_cleanup (fun () ->
 	  let _ = bi_action (bi_match_pattern pat mess_term) in
-	  let name_params'' = update_name_params name_params' pat in
+	  let name_params'' = update_name_params Always name_params' pat in
 	  let p' = auto_cleanup (fun () -> copy_process p) in
 	  let fact' = build_mess_fact cur_state.current_phase tc' mess_term in
 	  let cur_state' = 
@@ -1205,7 +1200,7 @@ let do_sync_res_io cur_state seen_list rest_subprocess n name_params' new_occs f
 		try
 		  auto_cleanup (fun () ->
 		    let _ = bi_action (bi_match_pattern pat t2') in
-		    let name_params'' = update_name_params name_params' pat in
+		    let name_params'' = update_name_params Always name_params' pat in
 		    let p' = auto_cleanup (fun () -> copy_process p) in
 		    let cur_state' = 
 			{ (if public_channel then
@@ -1263,7 +1258,7 @@ let do_res_get cur_state seen_list rest_subprocess n current_cache_list name_par
     auto_cleanup (fun () ->
       (* we check that the pattern pat matches and t evaluates to true *)	    
       let _ = bi_action (bi_match_pattern_and_test pat mess_term t) in 
-      let name_params'' = update_name_params name_params' pat in
+      let name_params'' = update_name_params Always name_params' pat in
       let p' = auto_cleanup (fun () -> copy_process p) in
       let fact' = build_table_fact cur_state.current_phase mess_term in
       normal_state next_f false 
@@ -1473,7 +1468,7 @@ let rec find_in_out next_f cur_state n seen_list = function
 				    normal_state next_f false 
 				      { cur_state with
 			                subprocess = List.rev_append seen_list ((p_else, name_params, new_occs, facts, Nothing) :: rest_subprocess);
-                                        comment = RGet2(n);
+                                        comment = RGet2(n, pat);
                                         previous_state = Some cur_state } n				    
 				  end
 			    | _ -> Parsing_helper.internal_error "get else case; reduction_bipro.ml"
@@ -1558,7 +1553,7 @@ let rec find_phase next_f cur_state n = function
   | (Phase(n,p,_),name_params,occs, facts, cache_info)::rest_subprocess -> 
       debug_print "Doing Phase";
       if n <= cur_state.current_phase then
-	Parsing_helper.user_error "Phases should be in increasing order";
+	Parsing_helper.user_error "Phases should be in increasing order.\n";
       made_forward_step := true;
       begin
 	try 
@@ -1678,13 +1673,16 @@ let do_reduction tree =
 	    Display.Html.print_string "<H1>Trace</H1>\n"	    
 	  end;
 	let final_state = normal_state reduction true state 0 in
-	display_trace final_state; 
+	display_trace final_state;
+	let dot_err = Reduction_helper.create_pdf_trace "" final_state in
 	if !Param.html_output then
 	  begin
 	    Display.Html.display_goal Display.Html.display_bi_term noninterftest_to_string final_state.goal final_state.hyp_not_matched;
 	    Display.LangHtml.close();
 	    let qs = string_of_int (!Param.derivation_number) in
-	    Display.Html.print_string ("<A HREF=\"trace" ^ qs ^ ".html\">Trace</A><br>\n")
+	    Display.Html.print_string ("<A HREF=\"trace" ^ qs ^ ".html\">Trace</A><br>\n");
+	    if (not !Param.command_line_graph_set) && (!Param.trace_backtracking && (dot_err = 0))  then
+              Display.Html.print_string ("<A HREF=\"trace" ^ qs ^ ".pdf\">Trace graph</A><br>\n")
 	  end
 	else
 	  Display.Text.display_goal Display.Text.display_bi_term noninterftest_to_string final_state.goal final_state.hyp_not_matched;
@@ -1698,7 +1696,7 @@ let do_reduction tree =
 	    if not (!Param.trace_backtracking) then
 	      begin
 		let qs = string_of_int (!Param.derivation_number) in
-		Display.Html.print_string ("<A HREF=\"trace" ^ qs ^ ".html\">Unfinished trace</A><br>\n")
+		Display.Html.print_string ("<A HREF=\"trace" ^ qs ^ ".html\">Unfinished trace</A><br>\n")		
 	      end;
 	    Display.Html.print_line "Could not find a trace corresponding to this derivation."
 	  end;
@@ -1707,376 +1705,13 @@ let do_reduction tree =
     end
   in
 (*  print_endline ("Failed " ^ (string_of_int (!failed_traces)) ^ " traces."); *)
-  Terms.cleanup ();
 (*  Profile.stop(); *)
   res
 
-(* Heuristic to find traces more often, especially with complex protocols:
-   we unify rules of the derivation tree when possible
-   Note that success is not guaranteed; however, when the heuristic fails,
-   the derivation does not correspond to a trace. 
-
-This heuristic can break inequality constraints.
-We recheck them after modifying the derivation tree. *)
-
-(* First, revise_tree is the function that checks that inequality constraints still hold *)
-
-exception Loop
-
-
-let rec find_fact f t =
-  if 
-    (match t.desc with 
-      FHAny | FEmpty | FRemovedWithProof _ -> false
-    | _ -> true) && (equal_facts_modulo f t.thefact) then t else
-  match t.desc with
-    FEquation son -> find_fact f son
-  | FRule(_,_,_,sons) -> find_fact_list f sons
-  | _ -> raise Not_found
-
-and find_fact_list f = function
-    [] -> raise Not_found
-  | a::l -> 
-      try
-	find_fact f a 
-      with Not_found ->
-	find_fact_list f l
-      
-
-let revise_tree tree =
-  let rec revise_tree_rec no_loop t =
-    if List.memq t no_loop then
-      raise Loop
-    else
-      { desc =
-	begin
-	  match t.desc with
-	    FHAny | FEmpty -> 
-	      begin
-		match t.thefact with
-                  Pred(p, [t']) when 
-		  (match follow_link t' with Var v -> true | _ -> false) -> t.desc
-		| Pred(p, [t';t'']) when 
-		  (match follow_link t' with Var v -> true | _ -> false) &&
-		  (match follow_link t'' with Var v -> true | _ -> false) -> t.desc
-		| Out _ -> t.desc (* Out facts cannot be proved anyway *)
-		| _ -> 
-		    (* When unification has lead to instantiating a fact that need not be proved before, try to find a proof for it. *)
-	            try
-                      let t' = revise_tree_rec (t::no_loop) (find_fact t.thefact tree) in
-		      t'.desc 
-                    with Not_found | Loop -> 
-		      FEmpty
-              end
-	  | FRule(n, tags, constra, sons) -> 
-	      if constra != [] then
-		begin
-		  try 
-		    let constra' = Terms.auto_cleanup (fun () ->
-		      List.map Terms.copy_constra2 constra) in
-		    Terms.auto_cleanup(fun () ->
-		      ignore (TermsEq.simplify_constra_list [] constra'))
-		  with TermsEq.FalseConstraint ->
-		    Display.Def.print_line "Unification made an inequality become false.";
-		    Display.Def.print_line "Trying with the initial derivation tree instead.";
-		    if !Param.html_output then
-			Display.LangHtml.close();
-		    raise TermsEq.FalseConstraint
-		end;
-	      FRule(n, tags, constra, List.map (revise_tree_rec no_loop) sons)
-	  | FRemovedWithProof t ->  FRemovedWithProof t
-	  | FEquation son -> FEquation(revise_tree_rec no_loop son)
-	end;
-	thefact = t.thefact }
-  in
-  let tree' = revise_tree_rec [] tree in
-  if !Param.html_output then
-    Display.LangHtml.close();
-  tree'
-
-
-(* simplify_tree unifies facts with same session identifier *)
-
-(* "first" is true when this is the first call to simplify_tree. 
-   In this case, if we find no unification to do, we do not need to call
-   revise_tree, since the derivation has not been modified at all *)
-
-let f_has_no_eq f =
-  match f.f_cat with
-    Eq [] -> true
-  | Eq _ -> false
-  | _ -> true
-
-module HashFactId =
-  struct
-
-    type factIdElem =
-	HypSpec of hypspec
-      |	Term of term
-
-    type t = 
-	{ hash : int;
-	  factId : factIdElem list }
-
-    let equalFactIdElem a b =
-      match (a,b) with
-	HypSpec h, HypSpec h' -> h = h'
-      |	Term t, Term t' -> Termslinks.equal_terms_with_links t t'
-      |	_ -> false
-
-    let equal a b = 
-      (List.length a.factId == List.length b.factId) &&
-      (List.for_all2 equalFactIdElem a.factId b.factId)
-
-    type skel_term =
-	SVar of int
-      |	SFun of string * skel_term list
-
-    type skel_factIdElem =
-	SHypSpec of hypspec
-      |	STerm of skel_term
-
-    let rec skeleton_term = function
-	Var b -> 
-	  begin
-	    match b.link with
-	      TLink t -> skeleton_term t
-	    | NoLink -> SVar(b.vname)
-	    | _ -> Parsing_helper.internal_error "unexpected link in skeleton_term"
-	  end
-      |	FunApp(f,l) -> 
-	  match f.f_cat with
-	    Name _ -> SFun(f.f_name,[])
-	  | _ -> SFun(f.f_name, List.map skeleton_term l)
-
-    let skeleton_factIdElem = function
-	HypSpec x -> SHypSpec x
-      |	Term t -> STerm(skeleton_term t)
-
-    let hash a = a.hash
-
-    (* build a HashFactId.t from a fact id *)
-
-    let build fid = { hash = Hashtbl.hash(List.map skeleton_factIdElem fid);
-		      factId = fid }
-
-  end
-
-module FactHashtbl = Hashtbl.Make(HashFactId)
-
-let rec simplify_tree first next_f tree =
-  let unif_to_do_left = ref [] in
-  let unif_to_do_right = ref [] in
-  let fact_hashtbl = FactHashtbl.create 7 in
-  let done_unif = ref false in
-
-  let unif t1 t2 v =
-    if !Param.html_output then
-      begin
-	try
-	  Display.Html.print_string "Trying unification ";
-	  Display.Html.WithLinks.term t1;
-	  Display.Html.print_string " with ";
-	  Display.Html.WithLinks.term t2;
-	  Terms.occur_check v t2;
-	  Terms.link v (TLink t2);
-	  Display.Html.print_line " succeeded.";
-	  done_unif := true
-	with Unify -> 
-          (* Unification failed *)
-	  Display.Html.print_line " failed."
-      end
-    else
-      begin
-	try
-	  Display.Text.print_string "Trying unification ";
-	  Display.Text.WithLinks.term t1;
-	  Display.Text.print_string " with ";
-	  Display.Text.WithLinks.term t2;
-	  Terms.occur_check v t2;
-	  Terms.link v (TLink t2);
-	  Display.Text.print_line " succeeded.";
-	  done_unif := true
-	with Unify -> 
-          (* Unification failed *)
-	  Display.Text.print_line " failed."
-      end
-  in
-
-  let rec add_unif_term t1 t2 =
-    match t1, t2 with
-      FunApp(f1, l1), FunApp(f2,l2) when f_has_no_eq f1 && f_has_no_eq f2 ->
-	if f1 == f2 then List.iter2 add_unif_term l1 l2
-	(* When f1 != f2, unification fails; I display no message. *)
-    | Var v, Var v' when v == v' -> ()
-    | Var v, _ -> 
-	begin
-	  match v.link with
-	    NoLink ->
-	      begin
-		match t2 with
-		  Var {link = TLink t2'} -> add_unif_term t1 t2'
-		| _ -> unif t1 t2 v
-	      end
-	  | TLink t1' -> add_unif_term t1' t2
-	  | _ -> Parsing_helper.internal_error "Unexpected link in add_unif_term 1"
-	end
-    | _, Var v ->
-	begin
-          match v.link with
-             NoLink -> unif t2 t1 v
-           | TLink t2' -> add_unif_term t1 t2'
-           | _ -> Parsing_helper.internal_error "Unexpected link in add_unif_term 2"
-	end
-    | _ ->
-        (* It is important to check equality *modulo the equational
-	   theory* here. Otherwise, unify_modulo may make the two terms equal
-	   modulo the theory but still syntactically different, which would 
-	   result in an endless iteration of unifyDerivation. *)
-	if not (equal_open_terms_modulo t1 t2) then
-	  begin
-	    unif_to_do_left := t1 :: (!unif_to_do_left);
-	    unif_to_do_right := t2 :: (!unif_to_do_right)
-	  end
-  in
-  
-  let add_unif_fact f1 f2 =
-    if (f1 != f2) then
-      match f1, f2 with
-	Pred(p1,l1), Pred(p2,l2) when p1 == p2 ->
-	  List.iter2 add_unif_term l1 l2
-      | Out(_,t1,_),Out(_,t2,_) -> 
-	  add_unif_term t1 t2
-      | _ -> 
-	  Display.Def.print_line "Trying to unify incompatible facts in unifyDerivation; skipping this impossible unification."
-
-  in
-
-  let rec check_coherent factId (concl, hyp_spec, name_params, sons) =
-    match hyp_spec with
-      [] -> ()
-    | h1::l1 -> 
-	let factId' = (HashFactId.HypSpec h1) :: factId in
-	match h1 with
-          ReplTag (occ,count_params) -> 
-	    (* the session identifiers are part of the fact id *)
-	    check_coherent ((HashFactId.Term (List.nth name_params count_params)) :: factId')
-	      (concl, l1, name_params, sons) 
-	| OutputTag occ | AssignTag(occ,_) | InsertTag occ | InputPTag occ | OutputPTag occ ->
-	    if l1 == [] then
-	      (* I'm reaching the conclusion *)
-	      let fact_id = HashFactId.build factId' in
-	      try
-		let concl' = FactHashtbl.find fact_hashtbl fact_id in
-		add_unif_fact concl concl'
-	      with Not_found ->
-		FactHashtbl.add fact_hashtbl fact_id concl
-	    else
-	      check_coherent factId' (concl, l1, name_params, sons)
-	| LetTag occ | TestTag occ | TestUnifTag2 occ | GetTagElse occ ->
-	    check_coherent factId' (concl, l1, name_params, sons)
-	| InputTag _ | ReadAsTag _ | GetTag _ | SequenceTag | ReachTag -> 
-	    let f = (List.hd sons).thefact in
-	    let fact_id = HashFactId.build factId' in
-	    begin
-	      try
-		let f' = FactHashtbl.find fact_hashtbl fact_id in
-		add_unif_fact f f'
-	      with Not_found -> 
-		FactHashtbl.add fact_hashtbl fact_id f
-	    end;
-            check_coherent factId' (concl, l1, name_params, List.tl sons)
-	| TestUnifTag _ | BeginEvent _ | LetFilterTag _ | BeginFact | LetFilterFact -> Parsing_helper.internal_error "TestUnifTag, BeginEvent, LetFilterTag, BeginFact, LetFilterFact should not be generated for biprocesses"
-  in
-
-  let rec simplify_tree1 t =
-    match t.desc with
-      FRule(_, ProcessRule(hyp_spec, name_params), constra, sons) -> 
-	check_coherent [] (t.thefact, List.rev hyp_spec, List.rev name_params, List.rev sons);
-	List.iter simplify_tree1 sons
-    | FRule(_,_,_,sons) ->
-        List.iter simplify_tree1 sons
-    | FEquation son -> simplify_tree1 son
-    | FHAny -> 
-	begin
-	match t.thefact with
-	  Pred({p_info = [AttackerBin _]}, [t1;t2]) ->
-	    if t1 != t2 then add_unif_term t1 t2
-	| _ -> ()
-	end
-    | _ -> ()
-  in
-
-  simplify_tree1 tree;
-  if (!unif_to_do_left) == [] then
-    if !done_unif then
-      begin
-	Display.Def.print_line "Iterating unifyDerivation.";
-        simplify_tree false next_f tree
-      end
-    else if first then
-      begin
-	debug_print "Nothing to unify.";
-	if !Param.html_output then
-	  Display.LangHtml.close();
-	next_f tree
-      end
-    else
-      begin
-	Display.Def.print_line "Fixpoint reached: nothing more to unify.";
-	next_f (revise_tree tree)
-      end
-  else
-    begin
-      if !Param.html_output then
-	begin
-	  Display.Html.print_string "Trying unification ";
-	  Display.Html.WithLinks.term_list (!unif_to_do_left);
-	  Display.Html.print_string " with ";
-	  Display.Html.WithLinks.term_list (!unif_to_do_right)
-	end
-      else
-	begin
-	  Display.Text.print_string "Trying unification ";
-	  Display.Text.WithLinks.term_list (!unif_to_do_left);
-	  Display.Text.print_string " with ";
-	  Display.Text.WithLinks.term_list (!unif_to_do_right)
-	end;
-      try
-	auto_cleanup (fun () ->
-	  TermsEq.unify_modulo_list (fun () -> 
-	    Display.Def.print_line " succeeded.";
-	    Display.Def.print_line "Iterating unifyDerivation.";
-	    simplify_tree false next_f tree
-	       ) (!unif_to_do_left) (!unif_to_do_right)
-	    )
-      with Unify ->
-        Display.Def.print_line " failed.";
-	next_f (revise_tree tree)
-    end
-
 let do_reduction tree =
   debug_print "Starting reduction"; 
-  let r = 
-    if !Param.unify_derivation then
-      begin
-	debug_print "Starting unifyDerivation.";
-	if !Param.html_output then
-	  begin
-	    let qs = string_of_int (!Param.derivation_number) in
-	    Display.Html.print_string ("<A HREF=\"unifyDeriv" ^ qs ^ ".html\" TARGET=\"unifderiv\">Unify derivation</A><br>\n");
-	    Display.LangHtml.openfile ((!Param.html_dir) ^ "/unifyDeriv" ^ qs ^ ".html") ("ProVerif: unifying derivation for query " ^ qs);
-	    Display.Html.print_string "<H1>Unifying the derivation</H1>\n"
-	  end;
-	try
-	  auto_cleanup (fun () -> simplify_tree true do_reduction tree)
-	with TermsEq.FalseConstraint ->
-	  do_reduction tree
-      end
-    else
-      do_reduction tree
-  in
-  Terms.cleanup();
-  r
+  let res = History.unify_derivation do_reduction None tree in
+  Terms.cleanup ();
+  res
 
 

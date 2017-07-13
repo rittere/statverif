@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -29,6 +29,8 @@ open Parsing_helper
 open Types
 open Pitypes
 
+let initial_cell_states () = List.map snd !Param.cells
+
 module FunMap = struct
     include Funmap.FunMap
     let for_all f m = Funmap.FunMap.fold (fun k v x -> x && (f k v)) m true
@@ -48,7 +50,7 @@ let session1 = Param.session1
 let comp_session_var = Terms.new_var "session" Param.sid_type
 
 (* For non-interference *)
-let testunif_pred = Param.testunif_pred
+
 let bad_pred = Param.bad_pred
 
 (* Returns true when event f is present in the process.
@@ -58,6 +60,7 @@ let bad_pred = Param.bad_pred
 
 let rec check_uniq_ev f = function
    Nil -> false
+ | NamedProcess(_, _, p) -> check_uniq_ev f p
  | Par(p,q) -> 
      let present_p = check_uniq_ev f p in
      let present_q = check_uniq_ev f q in
@@ -65,13 +68,13 @@ let rec check_uniq_ev f = function
        user_error ("Error: the event " ^ f.f_name ^ " is present several times in the same branch of a test.\nInjective agreement cannot be proved.\n");
      present_p || present_q
  | Repl (p,_) -> check_uniq_ev f p
- | Restr(a,p,_) -> check_uniq_ev f p
+ | Restr(a,_,p,_) -> check_uniq_ev f p
  | Test(t,p,q,_) -> (check_uniq_ev f p) || (check_uniq_ev f q)
  | Input(tc,pat,p,_) -> check_uniq_ev f p
  | Output(tc,t,p,_) -> check_uniq_ev f p
  | Let(pat,t,p,p',_) -> (check_uniq_ev f p) || (check_uniq_ev f p')
  | LetFilter(_,_,p,q,_) -> (check_uniq_ev f p) || (check_uniq_ev f q)
- | Event (FunApp(f',_),p,_) -> 
+ | Event (FunApp(f',_),_,p,_) -> 
      let present_p = check_uniq_ev f p in
      if f' == f then
        begin
@@ -81,12 +84,14 @@ let rec check_uniq_ev f = function
        end
      else
        present_p
- | Event (_,p,_) -> 
+ | Event (_,_,p,_) -> 
      user_error ("Events should be function applications\n")
  | Insert(_,p,_) -> check_uniq_ev f p
  | Get(_,_,p,q,_) -> (check_uniq_ev f p) || (check_uniq_ev f q)
  | Phase(n,p,_) ->
      check_uniq_ev f p
+ | Barrier _ | AnnBarrier _ ->
+     internal_error "Barriers should not appear here (1)"
  | Lock(_,p,_) -> check_uniq_ev f p
  | Unlock(_,p,_) -> check_uniq_ev f p
  | Open(_,p,_) -> check_uniq_ev f p
@@ -99,25 +104,28 @@ let rec check_uniq_ev f = function
 
 let rec get_uniq_ev_proc accu = function
    Nil -> ()
+ | NamedProcess(s, tl, p) -> get_uniq_ev_proc accu p
  | Par(p,q) -> get_uniq_ev_proc accu p; get_uniq_ev_proc accu q
  | Repl (p,_) -> get_uniq_ev_proc accu p
- | Restr(a,p,_) -> get_uniq_ev_proc accu p
+ | Restr(a,_,p,_) -> get_uniq_ev_proc accu p
  | Test(t,p,q,_) -> get_uniq_ev_proc accu p; get_uniq_ev_proc accu q
  | Input(tc,pat,p,_) -> get_uniq_ev_proc accu p
  | Output(tc,t,p,_) -> get_uniq_ev_proc accu p
  | Let(pat,t,p,p',_) -> get_uniq_ev_proc accu p; get_uniq_ev_proc accu p'
  | LetFilter(_,_,p,q,_) -> get_uniq_ev_proc accu p; get_uniq_ev_proc accu q
- | Event (FunApp(f,_),p,_) -> 
+ | Event (FunApp(f,_),_,p,_) -> 
      let fstatus = Pievent.get_event_status f in
      if fstatus.end_status = Inj || fstatus.begin_status = Inj then
        accu := f :: (!accu);
      get_uniq_ev_proc accu p
- | Event (_,p,_) -> 
+ | Event (_,_,p,_) -> 
      user_error ("Events should be function applications\n")
  | Insert(_,p,_) -> get_uniq_ev_proc accu p
  | Get(_,_,p,q,_) -> get_uniq_ev_proc accu p; get_uniq_ev_proc accu q
  | Phase(n,p,_) ->
      get_uniq_ev_proc accu p
+ | Barrier _ | AnnBarrier _ ->
+     internal_error "Barriers should not appear here (2)"
  | Lock(_,p,_) -> get_uniq_ev_proc accu p
  | Unlock(_,p,_) -> get_uniq_ev_proc accu p
  | Open(_,p,_) -> get_uniq_ev_proc accu p
@@ -177,7 +185,7 @@ let rec check_fact error_message seen_pred_calls bound_vars = function
     Pred(p, l) ->
       check_pred error_message seen_pred_calls (p, List.map (is_ground (!bound_vars)) l);
       List.iter (binds_vars error_message bound_vars) l
-  | Out(_,_,_) -> 
+  | Out(_,_) -> 
       internal_error "Out fact not allowed in user clauses in pi input"
 
 and check_pred error_message seen_pred_calls (p, ground_list) = 
@@ -231,7 +239,7 @@ and check_pred error_message seen_pred_calls (p, ground_list) =
 		  error_message''();
 		  user_error "In the conclusion of a clause, all variables should have been bound by evaluating the hypothesis\n"
 		end) l'
-      |	(_, Out(_,_,_), _, _) ->
+      |	(_, Out(_,_), _, _) ->
 	  internal_error "No Out fact allowed in conclusion (check_pred)"
       ) (!Param.red_rules);
     List.iter (function 
@@ -252,7 +260,7 @@ and check_pred error_message seen_pred_calls (p, ground_list) =
 		  error_message'();
 		  user_error "In a fact, all variables should have been bound\n"
 		end) l'
-      |	Out(_,_,_) ->
+      |	Out(_,_) ->
 	  internal_error "No Out fact allowed in conclusion (check_pred)"
       ) (!Param.elim_true)
 
@@ -274,7 +282,7 @@ let check_first_fact vlist = function
 	      Display.Text.display_keyword "suchthat"
 	end;
 	print_string " ";
-	Display.Text.display_fact f;
+	Display.Text.display_fact2 f;
 	print_string "\"";
 	Display.Text.newline()
       in
@@ -286,7 +294,7 @@ let check_first_fact vlist = function
 	  end
 		 ) vlist;
       check_fact error_message [] bound_vars f
-  | Out(_,_,_) -> 
+  | Out(_,_) -> 
       internal_error "No Out fact in let...suchthat"
 
 (* Rule base *)
@@ -303,10 +311,9 @@ let add_rule hyp concl constra tags =
       incr nrule
 
 type name_param_info =
-    Always of string * binder * term
-  | IfQueryNeedsIt of string * binder * term
-(* string: variable name;
-   binder: variable for the fisrt component of the environment in Out facts
+    arg_meaning * binder * term * when_include
+(* arg_meaning: meaning of the argument
+   binder: variable for the first component of the environment in Out facts
    term: to put as parameter of name function symbol
 *)
 
@@ -438,54 +445,15 @@ let mess_fact s phase tc tm =
 let table_fact phase t =
   Pred(Param.get_pred (Table(phase)), [t])
 
-let rec count_name_params = function
-    [] -> 0
-  | (Always _)::l -> 1+count_name_params l
-  | (IfQueryNeedsIt _)::l -> count_name_params l
+let testunif_fact t1 t2 =
+  Pred(Param.get_pred (TestUnifP(Terms.get_term_type t1)), [t1;t2])
 
-let rec extract_name_params_noneed = function
-    [] -> []
-  | (Always(s,_,t)::l) ->
-      t::(extract_name_params_noneed l)
-  | (IfQueryNeedsIt(s,_,t)::l) ->
-      extract_name_params_noneed l
-
-let rec extract_name_params sf need_list = function
-    [] -> 
-      begin
-	match need_list with
-	  [] -> []
-	| ((s,ext)::_) ->
-	    Parsing_helper.input_error ("variable " ^ s ^ " not defined at restriction " ^ sf) ext
-      end
-  | (Always(s,_,t)::l) ->
-      t::(extract_name_params sf (List.filter (fun (s',_) -> s' <> s) need_list) l)
-  | (IfQueryNeedsIt(s,_,t)::l) ->
-      if List.exists (fun (s',_) -> s' = s) need_list then
-	t::(extract_name_params sf (List.filter (fun (s',_) -> s' <> s) need_list) l)
-      else
-	extract_name_params sf need_list l
-
-let rec extract_name_params_meaning sf need_list = function
-    [] -> 
-      begin
-	match need_list with
-	  [] -> []
-	| ((s,ext)::_) ->
-	    Parsing_helper.input_error ("variable " ^ s ^ " not defined at restriction " ^ sf) ext
-      end
-  | (Always(s,_,_)::l) ->
-      s::(extract_name_params_meaning sf (List.filter (fun (s',_) -> s' <> s) need_list) l)
-  | (IfQueryNeedsIt(s,_,_)::l) ->
-      if List.exists (fun (s',_) -> s' = s) need_list then
-	s::(extract_name_params_meaning sf (List.filter (fun (s',_) -> s' <> s) need_list) l)
-      else
-	extract_name_params_meaning sf need_list l
+let remove_snd_comp l = List.map (fun (x,_,y,z) -> (x,y,z)) l
 
 let output_rule { hypothesis = prev_input; constra = constra; unif = unif;
 		  last_step_unif = lsu;  
 		  hyp_tags = hyp_tags; name_params = name_params1 } out_fact =
-   let name_params = extract_name_params_noneed name_params1 in
+   let name_params = Reduction_helper.extract_name_params_noneed (remove_snd_comp name_params1) in
    Terms.auto_cleanup (fun _ ->
      assert (lsu == []); (* "last_step_unif should have been appended to unif" *)
       (*Unification is now useless here since we unify when with
@@ -529,7 +497,7 @@ let output_rule { hypothesis = prev_input; constra = constra; unif = unif;
 		| [Mess(0,ty)] -> Param.get_pred(Mess(1,ty))
 		| [Table(0)] -> Param.get_pred(Table(1))
 		| _ -> chann), List.map copy_term3 t)
-	    | Out(ty,t,l) -> Out(ty,copy_term3 t, List.map copy_term_pair3 l)
+	    | Out(t,l) -> Out(copy_term3 t, List.map copy_term_pair3 l)
 	  in
 	  let rec copy_constra3 c = List.map (function
 	      Neq(t1,t2) -> Neq(copy_term3 t1, copy_term3 t2)) c
@@ -667,7 +635,7 @@ let end_destructor_group next_f occ cur_state =
 	  if cur_state.last_step_unif != [] then 
 	    begin
 	      let tuple_fun = Terms.get_tuple_fun (List.map Terms.get_term_type l1) in
-	      let new_hyp = Pred(testunif_pred, [FunApp(tuple_fun, l1); FunApp(tuple_fun, l2)]) in
+	      let new_hyp = testunif_fact (FunApp(tuple_fun, l1)) (FunApp(tuple_fun, l2)) in
 	      output_rule { cur_state with 
                         hypothesis = new_hyp :: cur_state.hypothesis;
 		        hyp_tags = TestUnifTag(occ) :: cur_state.hyp_tags;
@@ -681,7 +649,7 @@ let end_destructor_group next_f occ cur_state =
 	      List.iter (fun constra ->
 		let (l1, l2) = List.split (List.map (fun (Neq(t1,t2)) -> (t1,t2)) constra) in
 		let tuple_fun = Terms.get_tuple_fun (List.map Terms.get_term_type l1) in
-		let new_hyp = Pred(testunif_pred, [FunApp(tuple_fun, l1); FunApp(tuple_fun, l2)]) in
+		let new_hyp = testunif_fact (FunApp(tuple_fun, l1)) (FunApp(tuple_fun, l2)) in
 		output_rule { cur_state with
 		          hypothesis = new_hyp :: cur_state.hypothesis;
 		          hyp_tags = TestUnifTag(occ) :: cur_state.hyp_tags;
@@ -783,7 +751,7 @@ let transl_term_incl_destructor f cur_state occ t =
   transl_term (fun cur_state1 pat1 ->
     if may_have_several_types then
       f { cur_state1 with 
-                 name_params = Always("", (get_var_for_term t (if !Param.tulafale != 1 then "@destrv" else "destrv")), pat1)::cur_state1.name_params } pat1
+                 name_params = (MUnknown, (get_var_for_term t (if !Param.tulafale != 1 then "@destrv" else "destrv")), pat1, Always)::cur_state1.name_params } pat1
     else
       f cur_state1 pat1
     ) cur_state t
@@ -793,7 +761,7 @@ let transl_term_list_incl_destructor f cur_state occ tl =
   transl_term_list (fun cur_state1 patlist ->
     if may_have_several_types then
       f { cur_state1 with 
-                    name_params = (List.map2 (fun t pat -> Always("", get_var_for_term t (if !Param.tulafale != 1 then "@destrv" else "destrv"), pat)) tl patlist) @ cur_state1.name_params } patlist
+                    name_params = (List.map2 (fun t pat -> (MUnknown, get_var_for_term t (if !Param.tulafale != 1 then "@destrv" else "destrv"), pat, Always)) tl patlist) @ cur_state1.name_params } patlist
     else
       f cur_state1 patlist
     ) cur_state tl
@@ -830,7 +798,7 @@ let get_occ_var occ =
 let replace_begin_out name_params tags hyp =
    let rec make_out_fun np = match np with
       [] -> []
-    | Always(_,ve,Var v)::l -> (ve, Var v) :: make_out_fun l
+    | (_,ve,Var v,Always)::l -> (ve, Var v) :: make_out_fun l
     | _ :: l -> make_out_fun l
    in
    let make_out = make_out_fun name_params in
@@ -850,9 +818,9 @@ let replace_begin_out name_params tags hyp =
 	 if fstatus.begin_status = Inj then
 	   (* Store the occurrence of the "begin" event in the environment, 
               to be able to find it back in piauth.ml *)
-	   Out(pred_begin_x.p_type, pat_begin, make_out @ [get_occ_var occ, occ_cst] )
+	   Out(pat_begin, make_out @ [get_occ_var occ, occ_cst] )
 	 else
-	   Out(pred_begin_x.p_type, pat_begin, [])
+	   Out(pat_begin, [])
      | Pred(pred_begin_x,_)  when pred_begin_x == pred_begin_tmp -> 
          user_error ("Events should be function applications\n")
      | c -> c) hyp
@@ -876,20 +844,13 @@ let must_fail next_f cur_state t =
 
 (* Translate pattern *)
 
-type put_var_type =
-    PutAlways | PutIfQueryNeedsIt
-
 let rec transl_pat put_var f cur_state pat =
   match pat with
     PatVar b ->
       let b' = Terms.copy_var b in
       let pat' = Var b' in
       b.link <- TLink pat';
-      f (match put_var with
-	   PutAlways -> 
-	     { cur_state with name_params = Always(b.sname, b, pat') :: cur_state.name_params }
-         | PutIfQueryNeedsIt -> 
-             { cur_state with name_params = IfQueryNeedsIt(b.sname, b, pat') :: cur_state.name_params }) (Var b');
+      f { cur_state with name_params = (MVar(b, None), b, pat', put_var) :: cur_state.name_params } (Var b');
       b.link <- NoLink
   | PatTuple (fsymb,pat_list) ->
       transl_pat_list put_var (fun cur_state2 term_list ->
@@ -1014,7 +975,7 @@ let transl_pat_fail next_f cur_state pat pat' =
 
 let transl_fact next_fun cur_state occ f =
   match f with
-    Out(_, _, _) -> Parsing_helper.internal_error "Out fact not allowed in let... suchthat"
+    Out(_, _) -> Parsing_helper.internal_error "Out fact not allowed in let... suchthat"
   | Pred(p,tl) ->
       transl_term_list_incl_destructor (no_fail_list (fun cur_state1 patl ->
 	next_fun (Pred(p,patl)) cur_state1)) cur_state occ tl 
@@ -1031,6 +992,7 @@ let unify_cells cur_state side =
 let rec transl_process cur_state process =
   match process with
  |  Nil -> ()
+ |  NamedProcess(_, _, p) -> transl_process cur_state p
  | Par(p,q) -> 
     let cur_state = invalidate_cells cur_state in
     transl_process cur_state p;
@@ -1039,6 +1001,7 @@ let rec transl_process cur_state process =
      let cur_state = { cur_state with repl_count = cur_state.repl_count + 1 } in
      (* Always invalidate cells *)
      let cur_state = invalidate_cells cur_state in
+     let sid_meaning = MSid cur_state.repl_count in
      (* Always introduce session identifiers ! *)
      let cur_state = 
        if cur_state.is_below_begin then
@@ -1052,7 +1015,7 @@ let rec transl_process cur_state process =
      let v = Terms.new_var (if !Param.tulafale != 1 then "@sid" else "sid") Param.sid_type in
      no_gen_var := v :: (!no_gen_var);
      let v' = get_var_for_process p' v in 
-     let count_params = count_name_params cur_state.name_params in
+     let count_params = Reduction_helper.count_name_params (remove_snd_comp cur_state.name_params) in
      begin
        if !Param.non_interference then 
 	 begin
@@ -1060,23 +1023,23 @@ let rec transl_process cur_state process =
 	     transl_process { cur_state with 
 			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
 			      current_session_id = Some v;
-			      name_params = Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
+			      name_params = (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
 			    } p
 	   else if (!Param.key_compromise == 1) then
 	     transl_process { cur_state with 
 			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: (att_fact cur_state.cur_cells cur_state.cur_phase (Var comp_session_var)) :: cur_state.hypothesis;
 			      current_session_id = Some v;
-			      name_params = Always("!comp", comp_session_var, Var comp_session_var) :: 
-                                 Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
+			      name_params = (MCompSid, comp_session_var, Var comp_session_var, Always) :: 
+                                 (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
 			    } p
 	   else 
 	     transl_process { cur_state with 
 			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
 			      current_session_id = Some v;
-			      name_params = Always("!comp", v', compromised_session) :: 
-                                 Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
+			      name_params = (MCompSid, v', compromised_session, Always) :: 
+                                 (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
 			    } p
 	 end
@@ -1085,30 +1048,32 @@ let rec transl_process cur_state process =
 	   if (!Param.key_compromise == 0) then
 	     transl_process { cur_state with 
 			      current_session_id = Some v;
-			      name_params = Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
+			      name_params = (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
 			    } p
 	   else if (!Param.key_compromise == 1) then
 	     transl_process { cur_state with 
 			      current_session_id = Some v;
-			      name_params = Always("!comp", comp_session_var, Var comp_session_var) :: 
-                                 Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
+			      name_params = (MCompSid, comp_session_var, Var comp_session_var, Always) :: 
+                                 (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
 			    } p
 	   else 
 	     transl_process { cur_state with 
 			      current_session_id = Some v;
-			      name_params = Always("!comp", v', compromised_session) :: 
-                                 Always(("!" ^ (string_of_int cur_state.repl_count)), v', Var v) :: cur_state.name_params;
+			      name_params = (MCompSid, v', compromised_session, Always) :: 
+                                 (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
 			    } p
 	 end
      end;
- | Restr(n,p,_) -> 
+ | Restr(n,(args, env),p,_) -> 
      begin
        let need_list = Reduction_helper.get_need_vars n.f_name in
-       let npm = extract_name_params_meaning n.f_name need_list cur_state.name_params in
-       let np = extract_name_params n.f_name need_list cur_state.name_params in
+       let include_info = Reduction_helper.prepare_include_info env args need_list in
+       let name_params = remove_snd_comp cur_state.name_params in
+       let npm = Reduction_helper.extract_name_params_meaning n.f_name include_info name_params in
+       let np = Reduction_helper.extract_name_params n.f_name include_info name_params in
      match n.f_cat with
        Name r -> 
 	 let nptype = List.map Terms.get_term_type np in
@@ -1117,7 +1082,7 @@ let rec transl_process cur_state process =
 	     n.f_type <- nptype, snd n.f_type;
 	     r.prev_inputs_meaning <- npm
 	   end
-	 else if !Param.ignore_types then
+	 else if Param.get_ignore_types() then
 	   begin
 	     (* When we ignore types, the types of the arguments may vary,
 		only the number of arguments is preserved. *)
@@ -1151,7 +1116,7 @@ let rec transl_process cur_state process =
 	 end_destructor_group (fun cur_state2 ->
            if !Param.non_interference then
 	     output_rule { cur_state2 with 
-			   hypothesis = (Pred(testunif_pred, [pat1;Terms.true_term])) :: cur_state2.hypothesis;
+			   hypothesis = (testunif_fact pat1 Terms.true_term) :: cur_state2.hypothesis;
 			   hyp_tags = TestUnifTag(occ) :: cur_state2.hyp_tags 
 			 } (Pred(bad_pred, []));
 	   Terms.auto_cleanup (fun _ ->
@@ -1179,7 +1144,7 @@ let rec transl_process cur_state process =
         match tc with
           FunApp({ f_cat = Name _; f_private = false },_) when !Param.active_attacker ->
 	    let x = Reduction_helper.new_var_pat pat in
-	    transl_pat PutAlways (fun cur_state1 pat1 ->
+	    transl_pat Always (fun cur_state1 pat1 ->
                 end_destructor_group (fun cur_state2 -> transl_process cur_state2 p) occ
 	            { cur_state1 with 
 		      last_step_unif = (pat1, x) :: cur_state1.last_step_unif;
@@ -1200,7 +1165,7 @@ let rec transl_process cur_state process =
 	    transl_term_incl_destructor (no_fail (fun cur_state1 pat1 ->
               end_destructor_group (fun cur_state2 ->
 		let x = Reduction_helper.new_var_pat pat in
-	        transl_pat PutAlways (fun cur_state3 pat2 ->
+	        transl_pat Always (fun cur_state3 pat2 ->
                     end_destructor_group (fun cur_state4 -> transl_process cur_state4 p) occ 
 		      { cur_state3 with 
                         last_step_unif = (pat2, x) :: cur_state3.last_step_unif;
@@ -1260,7 +1225,7 @@ let rec transl_process cur_state process =
      (* Case "in" branch taken *)
      let neg_success_conditions = ref (Some (ref [])) in
      transl_term_incl_destructor (no_fail (fun cur_state1 pat1 ->
-       transl_pat PutIfQueryNeedsIt (fun cur_state2 pat2 ->
+       transl_pat IfQueryNeedsIt (fun cur_state2 pat2 ->
            end_destructor_group (fun cur_state3 -> transl_process cur_state3 p) occ 
              { cur_state2 with
                last_step_unif = (pat1, pat2)::cur_state2.last_step_unif }
@@ -1320,10 +1285,10 @@ let rec transl_process cur_state process =
 			  hyp_tags = LetFilterFact :: (LetFilterTag(occ)) :: cur_state2.hyp_tags
 			} p
        ) cur_state1
-     ) { cur_state with name_params = (List.map2 (fun v v' -> Always(v.sname, v, v')) vlist vlist') @ cur_state.name_params } (OLetFilter(occ)) f;
+     ) { cur_state with name_params = (List.map2 (fun v v' -> (MVar(v, None), v, v', Always)) vlist vlist') @ cur_state.name_params } (OLetFilter(occ)) f;
      List.iter (fun v -> v.link <- NoLink) vlist;
      transl_process { cur_state with hyp_tags = LetFilterTag(occ) :: cur_state.hyp_tags } q
- | Event(FunApp(f,l) as lendbegin, p,occ) ->
+ | Event(FunApp(f,l) as lendbegin, (env_args, env), p,occ) ->
      begin
        if !Param.key_compromise == 0 then
 	 ()
@@ -1337,7 +1302,8 @@ let rec transl_process cur_state process =
 	 | _ -> internal_error "Bad event format in queries"
      end;
      let fstatus = Pievent.get_event_status f in
-     begin
+     let end_and_next_process cur_state pat =
+       begin
        match fstatus.end_status with
 	 No -> ()
        | Inj ->
@@ -1349,61 +1315,48 @@ let rec transl_process cur_state process =
 		 Some v -> Var v
 	       | None -> FunApp(Terms.get_tuple_fun [], [])
 	     in
-	     transl_term (no_fail (fun cur_state1 pat1 -> 
-               end_destructor_group (fun cur_state2 ->
-		 (* Standard ProVerif injectivity *)
-		 output_rule { cur_state2 with
-                               hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
-                               hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis
-                             } (Pred(Param.end_pred_inj, [first_param; pat1]));
-                 (* Stateful injectivity *)
-                 let cur_state3 = { cur_state2 with
-                                    hypothesis = Pred(pred_end1_tmp, [pat1]) :: cur_state2.hypothesis;
-                                    hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state2.hyp_tags } in
-		 (* Forward search on the process:
-                    - if the next action is an assignment then translate the continuation as normal,
-                    - otherwise insert an empty assignment.
-                    This is used to chain together the end1 and end2 events.*)
-                 match p with
-		 | Assign(_,_,_) -> transl_process cur_state3 p
-		 | _ -> transl_process cur_state3 (Assign([], p, occ))
-               ) occ cur_state1
-             )) cur_state lendbegin;
+ 	     output_rule { cur_state with 
+                           hypothesis = replace_begin_out cur_state.name_params cur_state.hyp_tags cur_state.hypothesis
+			 } (Pred(Param.end_pred_inj, [first_param; pat])) 
        | NonInj ->
-	     transl_term (no_fail (fun cur_state1 pat1 -> 
-               end_destructor_group (fun cur_state2 ->
-		 output_rule { cur_state2 with 
-                               hyp_tags = (BeginEvent(occ)) :: cur_state.hyp_tags;
-                               hypothesis = replace_begin_out cur_state2.name_params cur_state2.hyp_tags cur_state2.hypothesis
-			     } (Pred(Param.end_pred, [pat1]))
-               ) occ cur_state1
-	     )) cur_state lendbegin
-     end;
+	  	   output_rule { cur_state with 
+                         hypothesis = replace_begin_out cur_state.name_params cur_state.hyp_tags cur_state.hypothesis
+		       } (Pred(Param.end_pred, [pat]))
+       end;
+       transl_process cur_state p
+     in
      begin
-       match fstatus.begin_status with
-	 No -> begin
-           (* Even if the event does nothing, the term lendbegin is evaluated *)
-	      match fstatus.end_status with
-	      |	No | NonInj -> transl_term 
+       match fstatus.begin_status, env_args with
+	 No, _ -> 
+	   transl_term 
 			(no_fail (fun cur_state0 pat_begin -> end_destructor_group 
 		           (fun cur_state1 ->
-			      transl_process { cur_state1 with hyp_tags = (BeginEvent(occ)) :: cur_state1.hyp_tags } p
+		   end_and_next_process { cur_state1 with hyp_tags = (BeginEvent(occ)) :: cur_state1.hyp_tags } pat_begin
  			   ) occ cur_state0
 			 )) cur_state lendbegin 
-	      | Inj -> ()
-	    end
-	 | Inj | NonInj ->
+       | Inj, Some lenv_args ->
+	  let make_out = List.map (fun v -> (v, Var v)) lenv_args in
 	   transl_term_incl_destructor 
 	     (no_fail (fun cur_state0 pat_begin -> end_destructor_group 
 		 (fun cur_state1 ->
-		   transl_process { cur_state1 with 
+		   end_and_next_process { cur_state1 with 
+				    hypothesis = Out(pat_begin, make_out @ [get_occ_var occ, occ_cst]) :: cur_state1.hypothesis;
+				    hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state1.hyp_tags
+				  } pat_begin
+		 ) occ cur_state0
+	     )) { cur_state with is_below_begin = true } (OEvent(occ)) lendbegin 	   
+       | (Inj | NonInj), _ ->
+	   transl_term_incl_destructor 
+	     (no_fail (fun cur_state0 pat_begin -> end_destructor_group 
+		 (fun cur_state1 ->
+		   end_and_next_process { cur_state1 with 
 				    hypothesis = Pred(pred_begin_tmp, [pat_begin]) :: cur_state1.hypothesis;
 				    hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state1.hyp_tags
-				  } p;
+				  } pat_begin
 		 ) occ cur_state0
 	     )) { cur_state with is_below_begin = true } (OEvent(occ)) lendbegin 
      end
- | Event(_,_,_) -> user_error ("Events should be function applications\n")
+ | Event(_,_,_,_) -> user_error ("Events should be function applications\n")
  | Insert(t,p,occ) ->
      transl_term (no_fail (fun cur_state1 pat1 ->
        end_destructor_group (fun cur_state2 ->
@@ -1416,7 +1369,7 @@ let rec transl_process cur_state process =
       transl_process { cur_state with
                        hyp_tags = (InsertTag occ) :: cur_state.hyp_tags } p
  | Get(pat,t,p,q,occ) ->
-     transl_pat PutAlways (fun cur_state1 pat1 -> 
+     transl_pat Always (fun cur_state1 pat1 -> 
        transl_term (no_fail (fun cur_state2 patt ->
 	 end_destructor_group (fun cur_state3 -> transl_process cur_state3 p) occ 
 	   { cur_state2 with 
@@ -1431,6 +1384,8 @@ let rec transl_process cur_state process =
                       cur_phase = n;
                       input_pred = Param.get_pred (InputP(n));
                       output_pred = Param.get_pred (OutputP(n)) } p
+ | Barrier _ | AnnBarrier _ ->
+     internal_error "Barriers should not appear here (3)"
 
   | Lock(cells, proc, occ)
   | Unlock(cells, proc, occ) ->
@@ -1486,7 +1441,7 @@ let rec transl_process cur_state process =
 
   | ReadAs(items, proc, occ) ->
       let cur_state = update_cells (invalidate_cells cur_state) in
-      transl_pat_list PutAlways (fun cur_state1 terms_pat ->
+      transl_pat_list Always (fun cur_state1 terms_pat ->
         end_destructor_group (fun cur_state2 -> 
           unify_cells cur_state2 (fun x -> x.value) items terms_pat;
 	  transl_process cur_state2 proc
@@ -1532,7 +1487,7 @@ let rules_for_red phase f red_rules =
 	let tuple_fun = Terms.get_tuple_fun thyp in
 	let vlist = List.map Terms.new_unfailing_var_def thyp in
 	add_rule 
-          ((Pred(testunif_pred, [FunApp(tuple_fun, vlist); FunApp(tuple_fun, hyp')]))
+          ((testunif_fact (FunApp(tuple_fun, vlist)) (FunApp(tuple_fun, hyp')))
 	   :: List.map (att_fact state_var phase) vlist)
 	  (Pred(bad_pred, []))
 	  []
@@ -1599,7 +1554,7 @@ let transl_attacker phase =
 	let vc = Terms.new_var_def Param.channel_type in
 	add_rule [att_fact state_var phase vc; Pred(att_pred, [get_state state_var; v])]
           (Pred(mess_pred, [get_state state_var; vc; v])) [] (Rs(att_pred, mess_pred))
-      end) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+      end) (if Param.get_ignore_types() then [Param.any_type] else !Param.all_types);
 
   
   if (!Param.non_interference) then
@@ -1618,8 +1573,8 @@ let transl_attacker phase =
       let vc = Terms.new_var_def Param.channel_type in
       let vc2 = Terms.new_var_def Param.channel_type in
       add_rule [Pred(input_pred, [get_state state_var; vc]); 
-		 Pred(output_pred, [get_state state_var; vc2]);  
-		 Pred(testunif_pred, [get_state state_var; vc; vc2])] 
+		Pred(output_pred, [get_state state_var; vc2]);
+		testunif_fact vc vc2] 
 	(Pred(bad_pred, [])) [] (TestComm(input_pred, output_pred))
 
     end
@@ -1637,7 +1592,7 @@ let weak_memo = Param.memo (fun t ->
   })
 
 let weaksecretcst t = 
-  weak_memo (if !Param.ignore_types then Param.any_type else t)
+  weak_memo (Param.get_type t)
 
 let att_guess_fact t1 t2 =
   Pred(Param.get_pred (AttackerGuess(Terms.get_term_type t1)), [t1;t2])
@@ -1714,7 +1669,7 @@ let weak_secret_clauses w =
        Selfun.add_no_unif (att_guess, [FVar v1; FVar v2])
 	 (Selfun.never_select_weight+10);
        
-       r) (if !Param.ignore_types then [Param.any_type] else !Param.all_types)
+       r) (if Param.get_ignore_types() then [Param.any_type] else !Param.all_types)
 
 
 (* Handle key_compromise *)
@@ -1730,25 +1685,29 @@ let comp_fact t =
 
 let rec comp_transl_process p = 
   let state_var = new_state () in match p with
- | Nil -> ()
+    | Nil -> ()
+ | NamedProcess(_, _, p) -> comp_transl_process p
  | Par(p,q) -> comp_transl_process p;
                comp_transl_process q
  | Repl (p,_) -> 
      comp_transl_process p
- | Restr(n,p,_) ->
+ | Restr(n,_,p,_) ->
      begin
        match n.f_cat with
 	 Name { prev_inputs_meaning = l } ->
 	   let rec build_params ml tl = 
 	     match (ml, tl) with
 	       [],[] -> [],[]
-	     | (a::l),(ty::tyl) ->
-		 let (name_params, prev_input) = build_params l tyl in
-		 if a = "!comp" then
-		   (compromised_session :: name_params, prev_input)
-		 else
-		   let v = Var (Terms.new_var a ty) in
-		   (v :: name_params, (comp_fact v) :: prev_input)
+	     | (m::l),(ty::tyl) ->
+		let (name_params, prev_input) = build_params l tyl in
+		begin
+		   match m with
+		     MCompSid ->
+		       (compromised_session :: name_params, prev_input)
+		   | _ -> 
+		       let v = Var (Terms.new_var (Reduction_helper.meaning_name m) ty) in
+		       (v :: name_params, (comp_fact v) :: prev_input)
+		 end
 	     | _ -> Parsing_helper.internal_error "bad length in comp_transl_process"
 	   in
 	   let (name_params, prev_input) = build_params l (fst n.f_type) in
@@ -1773,7 +1732,7 @@ let rec comp_transl_process p =
  | LetFilter(_,_,p,q,_) ->
      comp_transl_process p;
      comp_transl_process q
- | Event (l,p,_) -> 
+ | Event (l,_,p,_) -> 
      comp_transl_process p (* TO DO *)
  | Insert (_,p,_) -> 
      comp_transl_process p 
@@ -1782,6 +1741,8 @@ let rec comp_transl_process p =
      comp_transl_process q
  | Phase _ ->
      user_error "Phases are incompatible with key compromise.\nKey compromise is itself already a phase scenario\n"
+ | Barrier _ | AnnBarrier _ ->
+     internal_error "Barriers should not appear here (4)"
  | Lock(_,p,_) ->
     comp_transl_process p
  | Unlock(_,p,_) ->
@@ -1801,6 +1762,14 @@ let comp_rules_for_function _ f =
          (comp_fact (FunApp(f,vars))) []
          (Apply(f, Param.get_pred (Compromise(snd f.f_type))))
    | _ -> ()
+
+(* Produce a list of terms representing any state,
+   for example [Var vs1; Var vs2] in
+   attacker((vs1,vs2),vc) & attacker((vs1,vs2),vm) -> message((vs1,vs2),vc,vm) *)
+let free_cell_vars t =
+    List.map (fun (s, initial_value) ->
+        FVar(Terms.new_var ("freecell_" ^ (s.f_name)) t))
+        !Param.cells
 
 (* Global translation *)
 
@@ -1844,14 +1813,14 @@ let transl p =
 
       let att_i = Param.get_pred (Attacker(i,t)) in
       let v = Terms.new_var Param.def_var_name t in
-      Selfun.add_no_unif (att_i, [FVar v]) Selfun.never_select_weight;
+      Selfun.add_no_unif (att_i, [(new_state_formatv());(FVar v)]) Selfun.never_select_weight;
       if i > 0 then
 	(* It is enough to transmit only messages from one phase to the next
            because the attacker already has fail in all phases. *)
 	let w = Terms.new_var_def t in
 	let att_im1 = Param.get_pred (Attacker(i-1,t)) in
 	let state_var = new_state () in 
-	add_rule [Pred(att_im1, [get_state state_var; w])] (Pred(att_i, [get_state state_var; w])) [] PhaseChange) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+	add_rule [Pred(att_im1, [get_state state_var; w])] (Pred(att_i, [get_state state_var; w])) [] PhaseChange) (if Param.get_ignore_types() then [Param.any_type] else !Param.all_types);
     if i > 0 then begin
       let tbl_i = Param.get_pred (Table(i)) in
       let tbl_im1 = Param.get_pred (Table(i-1)) in
@@ -1899,11 +1868,11 @@ let transl p =
       (* The attacker can do all equality tests on data he has *)
 	let v = Terms.new_var_def t in
 	let vc = Terms.new_var_def t in
-	add_rule [Pred(att_pred, [vc]); Pred(att_pred, [v]); Pred(testunif_pred, [vc;v])]
+	add_rule [Pred(att_pred, [vc]); Pred(att_pred, [v]); testunif_fact vc v]
           (Pred(bad_pred, [])) [] (TestEq(att_pred));
 
       end
-	) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+	) (if Param.get_ignore_types() then [Param.any_type] else !Param.all_types);
 
 
   begin
@@ -1913,6 +1882,31 @@ let transl p =
     | Some w -> weak_secret_clauses w
   end;
 
+  (* Remove subsumed clauses and tautologies among attacker clauses, 
+     to avoid displaying many useless clauses. *)
+
+  if !Param.remove_subsumed_clauses_before_display then
+    begin
+      let tmp_rules = ref [] in
+      (* Store in tmp_rules the rules after removing subsumed rules and tautologies *)
+      List.iter (function (hyp, concl, _, _) as rule ->
+	(* eliminate tautologies *)
+	if List.exists (Terms.equal_facts concl) hyp then () else
+	(* eliminate subsumed clauses *)
+	if List.exists (fun r -> Rules.implies r rule) (!tmp_rules) then () else
+	  tmp_rules := rule :: (List.filter (fun r -> not (Rules.implies rule r)) (!tmp_rules))
+	) (!red_rules);
+      (* Renumber the rules *)
+      red_rules := [];
+      nrule := 0;
+      List.iter (function
+	  (hyp', concl', Rule(_, tags, hyp, concl, constra), constra') ->
+	    red_rules := (hyp', concl', Rule(!nrule, tags, hyp, concl, constra), constra') :: (!red_rules);
+	    incr nrule
+	| _ -> Parsing_helper.internal_error "All clauses should have history Rule(...) at this point"
+	     ) (!tmp_rules)
+    end;
+  
   List.iter (fun ch -> 
     match ch.f_cat with
       Name r -> r.prev_inputs <- Some (FunApp(ch, []))
@@ -1938,7 +1932,7 @@ let transl p =
       List.iter (fun t -> 
 	let v = Terms.new_var Param.def_var_name t in
 	Selfun.add_no_unif (Param.get_pred (Compromise(t)), [FVar v]) Selfun.never_select_weight
-	  ) (if !Param.ignore_types then [Param.any_type] else !Param.all_types);
+	  ) (if Param.get_ignore_types() then [Param.any_type] else !Param.all_types);
       comp_transl_process p;
       List.iter (fun ch ->
 	if not ch.f_private then
@@ -1951,7 +1945,8 @@ let transl p =
       QFact(p,l) ->
 	(* For attacker: not declarations, the not declaration is also
 	   valid in previous phases, because of the implication
-	   attacker_p(i):x => attacker_p(i+1):x *)
+	   attacker_p(i):x => attacker_p(i+1):x.
+	   A similar point holds for table. *)
 	begin
 	  match p.p_info with
 	    [Attacker(i,t)] ->
@@ -1959,10 +1954,15 @@ let transl p =
 		let att_j = Param.get_pred (Attacker(j,t)) in
 		Rules.add_not(Pred(att_j,l))
 	      done
+	  | [Table(i)] ->
+	      for j = 0 to i-1 do
+		let table_j = Param.get_pred (Table(j)) in
+		Rules.add_not(Pred(table_j,l))
+	      done	      
 	  | _ -> ()
 	end;
 	Rules.add_not(Pred(p,l))
-    | _ -> Parsing_helper.user_error "The only allowed facts in \"not\" declarations are attacker:, mess:, and user-defined predicates.\n"
+    | _ -> Parsing_helper.user_error "The only allowed facts in \"not\" declarations are attacker, mess, table, and user-defined predicates.\n"
 	  ) (if !Param.typed_frontend then Pitsyntax.get_not() else Pisyntax.get_not());
   
   List.iter (function (f,n) ->
@@ -1975,51 +1975,62 @@ let transl p =
 let rec put_new l p = 
   match l with
     [] -> p
-  | ((a,occ)::l') -> Restr(a,put_new l' p,occ)
+  | ((a,args,occ)::l') -> Restr(a,args,put_new l' p,occ)
 
 let rec move_new accu = function
-    Nil -> Nil
+  Nil -> Nil
+  | NamedProcess(s, tl, p) ->
+    	(* let (l1,l2) = List.partition (fun (f,_,_) -> List.exists (Terms.occurs_f f) tl) accu in *)
+        (* put_new l1 (NamedProcess(s, tl , move_new l2 p)) *)
+      if List.exists (fun (f, _, _) -> (List.exists (Terms.occurs_f f) tl)) accu then
+        NamedProcess(s, [], move_new accu p)
+      else
+        NamedProcess(s, tl, move_new accu p)
   | Par(p1,p2) -> put_new accu (Par(move_new [] p1, move_new [] p2))
   | Repl(p,occ) ->  put_new accu (Repl (move_new [] p,occ))
-  | Restr(f, p,occ) -> move_new ((f,occ)::accu) p
+  | Restr(f, args, p,occ) -> move_new ((f,args,occ)::accu) p
   | Test(t,p1,p2,occ) -> 
       if p2 <> Nil then
 	put_new accu (Test(t, move_new [] p1, move_new [] p2,occ))
       else
-	let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f f t) accu in
+	let (l1,l2) = List.partition (fun (f,_,_) -> Terms.occurs_f f t) accu in
         put_new l1 (Test(t,move_new l2 p1,Nil,occ))
   | Input(t,pat,p,occ) ->
-      let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f f t || Terms.occurs_f_pat f pat) accu in
+      let (l1,l2) = List.partition (fun (f,_,_) -> Terms.occurs_f f t || Terms.occurs_f_pat f pat) accu in
       put_new l1 (Input(t,pat, move_new l2 p,occ))
   | Output(t1,t2,p,occ) ->
-      let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f f t1 || Terms.occurs_f f t2) accu in
+      let (l1,l2) = List.partition (fun (f,_,_) -> Terms.occurs_f f t1 || Terms.occurs_f f t2) accu in
       put_new l1 (Output(t1,t2,move_new l2 p,occ))
   | Let(pat,t,p,p',occ) ->
       if p' <> Nil then
         put_new accu (Let(pat, t, move_new [] p, move_new [] p',occ))
       else
-        let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f f t || Terms.occurs_f_pat f pat) accu in
+        let (l1,l2) = List.partition (fun (f,_,_) -> Terms.occurs_f f t || Terms.occurs_f_pat f pat) accu in
         put_new l1 (Let(pat, t, move_new l2 p, Nil,occ))
   | LetFilter(vl,fact,p,q,occ) ->
       if q <> Nil then
 	put_new accu (LetFilter(vl,fact,move_new [] p, move_new [] q,occ))
       else
-	let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f_fact f fact) accu in
+	let (l1,l2) = List.partition (fun (f,_,_) -> Terms.occurs_f_fact f fact) accu in
 	put_new l1 (LetFilter(vl, fact, move_new l2 p,Nil,occ))
-  | Event(t1,p,occ) ->
-      let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f f t1) accu in
-      put_new l1 (Event(t1, move_new l2 p, occ))
+  | Event(t1,env_args,p,occ) ->
+      let (l1,l2) = List.partition (fun (f,_,_) -> Terms.occurs_f f t1) accu in
+      put_new l1 (Event(t1, env_args, move_new l2 p, occ))
   | Insert(t1,p,occ) ->
-      let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f f t1) accu in
+      let (l1,l2) = List.partition (fun (f,_,_) -> Terms.occurs_f f t1) accu in
       put_new l1 (Insert(t1, move_new l2 p, occ))
   | Get(pat,t1,p,q,occ) ->
       if q <> Nil then
 	put_new accu (Get(pat,t1,move_new [] p, move_new [] q,occ))
       else
-	let (l1,l2) = List.partition (fun (f,_) -> Terms.occurs_f f t1 || Terms.occurs_f_pat f pat) accu in
+	let (l1,l2) = List.partition (fun (f,_, _) -> Terms.occurs_f f t1 || Terms.occurs_f_pat f pat) accu in
 	put_new l1 (Get(pat, t1, move_new l2 p, Nil, occ))
   | Phase(n,p,occ) ->
       Phase(n, move_new accu p,occ)
+  | Barrier(n, tag, p,occ) ->
+      Barrier(n, tag, move_new accu p,occ)
+  | AnnBarrier _ ->
+     internal_error "Annotated barriers should not appear here (5)"
   | Lock(s,p,occ) ->
      Lock(s, move_new accu p, occ)
   | Unlock(s,p,occ) ->

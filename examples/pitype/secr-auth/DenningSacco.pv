@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -150,7 +150,8 @@ let process_signK =
 
 let process_encK =
         in(c, (h: host, pk: pkey));
-	if h <> A && h <> B then insert enc_keys(h, pk).
+	if h <> A && h <> B then 
+	insert enc_keys(h, pk).
 
 (* Main process *)
 

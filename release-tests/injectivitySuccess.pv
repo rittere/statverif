@@ -1,37 +1,34 @@
-  set debugOutput = true.
+(* set debugOutput = true. *)
 
- set verboseClauses = explained. 
-set verboseRules = true.
+set verboseClauses=explained.
+set verboseRules=true.
+
 channel c.
 type key.
-free one:bitstring.
-free two:bitstring.
 
-free sk:key[private].
+free initKey:key.
 free beep:bitstring[private].
 fun enc(bitstring,key):bitstring.
 reduc forall m:bitstring, k:key; dec(enc(m,k),k)= m.
 
-event data_sent(bitstring).
-event beep_received(bitstring).
+event stored_key(key).
+event beep_received(key).
 
-cell s := sk.
-query event(beep_received(beep)) ==> inj-event(data_sent(beep)).
+cell s := initKey.
+query k:key ; inj-event(beep_received(k)) ==> inj-event(stored_key(k)).
 
 let A =
-new m:bitstring;
-new k:key;
-new r:bitstring;
+! new k:key;
 s := k;
-event data_sent(r);
-out (c, enc(r, k)).
+event stored_key(k);
+out (c, enc(beep, k)).
 
 let B =
-read s as k;
+! read s as k:key;
 in (c, xm:bitstring);
-let m = dec(xm,k) in 
-out (c, m);
-event beep_received(m).
+if dec(xm, k) = beep then
+out(c, xm);
+event beep_received(k).
 
-process !A | !B
+process A | B
 

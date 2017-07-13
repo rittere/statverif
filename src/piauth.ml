@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -68,18 +68,23 @@ let display_clause_trace detail recheck inj_mode list_started cl =
   (* TulaFale expects a derivation after "goal reachable" *)
   if (detail || (!Param.tulafale = 1)) then
     begin
-      let new_tree = History.build_history cl in
-      if (!Param.reconstruct_trace) && (!Param.reconstruct_derivation) &&
-	(!Param.key_compromise == 0)
-      then 
-	begin
-	  Reduction.do_reduction recheck inj_mode new_tree
-	end
-      else 
-	begin
-	  cleanup();
-	  false
-	end
+      try 
+	let new_tree = History.build_history recheck cl in
+	if (!Param.reconstruct_trace) && (!Param.reconstruct_derivation) &&
+	  (!Param.key_compromise == 0)
+	then 
+	  begin
+	    Reduction.do_reduction recheck inj_mode new_tree
+	  end
+	else 
+	  begin
+	    cleanup();
+	    false
+	  end
+      with Not_found ->
+	(* When the derivation could not be reconstructed *)
+	cleanup();
+	false	
     end
   else
     false
@@ -105,7 +110,7 @@ let rec put_constants = function
 
 let put_constants_fact = function
     Pred(p,l) -> List.iter put_constants l
-  | Out(_,t,tl) -> 
+  | Out(t,tl) -> 
       put_constants t;
       List.iter (fun (_,t') -> put_constants t') tl
 
@@ -189,7 +194,7 @@ let specvar_to_var_env = List.map (fun (v,t) -> (v, specvar_to_var t))
 
 let specvar_to_var_fact = function
     Pred(p,l) -> Pred(p, List.map specvar_to_var l)
-  | Out(ty,t,tl) -> Out(ty,specvar_to_var t, 
+  | Out(t,tl) -> Out(specvar_to_var t, 
 		     List.map (fun (x,t') -> (x,specvar_to_var t')) tl)
 
 let specvar_to_var_constra = List.map (function
@@ -396,7 +401,7 @@ let rec events_to_hyp = function
 	      QSEvent(b, param) -> 
 	  (* The second arg of Out is used only as a marker to know whether
              the event is injective or not *)
-		((Out([Param.event_type], param, if b then inj_marker else non_inj_marker)) :: hyp', hyp_q', constra', eq_left', eq_right')
+		((Out(param, if b then inj_marker else non_inj_marker)) :: hyp', hyp_q', constra', eq_left', eq_right')
 	    | QFact(p,l) -> ((Pred(p,l)) :: hyp', hyp_q', constra', eq_left', eq_right')
 	    | QNeq (t1,t2) -> (hyp', hyp_q', [Neq(t1,t2)] :: constra', eq_left', eq_right')
 	    | QEq (t1,t2) -> (hyp', hyp_q', constra', t1 :: eq_left', t2 :: eq_right')
@@ -404,7 +409,7 @@ let rec events_to_hyp = function
       |	NestedQuery(Before(QSEvent(b, param),_) as q) ->
 	  (* The second arg of Out is used only as a marker to know whether
              the event is injective or not *)
-	  ((Out([Param.event_type], param, if b then inj_marker else non_inj_marker)) :: hyp', q :: hyp_q', constra', eq_left', eq_right')
+	  ((Out(param, if b then inj_marker else non_inj_marker)) :: hyp', q :: hyp_q', constra', eq_left', eq_right')
       |	NestedQuery(Before(QFact(p,l),_) as q) ->
 	  ((Pred(p,l)):: hyp', q :: hyp_q', constra', eq_left', eq_right')
       |	NestedQuery(_) ->
@@ -625,7 +630,7 @@ let match_facts_mod_eq f f1 f2 = match (f1,f2) with
       TermsEq.unify_modulo_list (fun () -> try f() with Unify -> raise Not_found) t1 t2
     with Not_found -> raise Unify
     end
-| Out(ty1,t1,l1),Out(ty2,t2,l2) ->
+| Out(t1,l1),Out(t2,l2) ->
     (* Is it the right direction ? *)
     let len1 = List.length l1 in
     let len2 = List.length l2 in
@@ -696,11 +701,13 @@ let rec remove_subsumed_mod_eq = function
 (* Reprogrammation of clause implication to handle one clause and 
    one query.  *)
 
+let arg_var = {sname = "event_arg"; vname = 0; unfailing = false; btype = Param.event_type; link = NoLink }
+
 let match_facts_eq f end_session_id f1 f2 = match (f1,f2) with
   Pred(chann1, t1),Pred(chann2, t2) ->
     if chann1 != chann2 then raise Unify;
     TermsEq.unify_modulo_list f t1 t2
-| Out(_,t1,marker),Out(_,t2,l2) ->
+| Out(t1,marker),Out(t2,l2) ->
     if marker == non_inj_marker then
       TermsEq.unify_modulo f t1 t2
     else
@@ -710,7 +717,20 @@ let match_facts_eq f end_session_id f1 f2 = match (f1,f2) with
       | Some i -> 
           match t1 with
             FunApp(fsymb, _) -> 
-              TermsEq.unify_modulo (fun () -> check_inj fsymb i l2 f) t1 t2
+              TermsEq.unify_modulo (fun () -> 
+		(* The change of l2 cannot be done before unification modulo,
+                   because before the unification, the event t2 may not correspond to event t1,
+                   and so may even not be injective *)
+		let l2 =
+		  match l2 with
+		    [] -> Parsing_helper.internal_error "Environment in Out fact should at least contain the occurrence variable"
+		  | [occ_entry] -> 
+		    (* The user specified to use an empty environment in the event.
+		       In this case, we are at least using the arguments of the event in order to prove injectivity. *)
+		      [(arg_var, t2); occ_entry]
+		  | _ -> l2
+		in
+		check_inj fsymb i l2 f) t1 t2
           | _ -> Parsing_helper.internal_error "arguments of events should be function applications"
       end
 | _ -> raise Unify
@@ -1132,7 +1152,7 @@ and check_query restwork non_nested rec_call display_query (Before(e, hypll) as 
     List.iter Display.Text.display_rule clauses
   end;
   let clauses = 
-    if TermsEq.hasEquations() then
+    if (!Param.simpeq_final) && (TermsEq.hasEquations()) then
       remove_subsumed_mod_eq clauses
     else
       clauses
@@ -1209,7 +1229,7 @@ let solve_auth rules queries =
   | _ -> 
       if !Param.html_output then
 	Display.Html.print_string "<UL>\n";
-      List.iter (do_query true) queries;
+      List.iter (fun q -> let q = add_state q in do_query true q) queries;
       if !Param.html_output then
 	Display.Html.print_string "</UL>\n"
   

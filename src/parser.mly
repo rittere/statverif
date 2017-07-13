@@ -3,9 +3,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -186,13 +186,21 @@ factformat:
   	IDENT COLON formatseq
 	{ ($1,$3) }
 
+/* Equations */
+
+eqlist:
+        term EQUAL term
+        { [($1, $3)] }
+|       term EQUAL term SEMI eqlist
+	{ ($1, $3) :: $5 }
+
 all:
         FUN IDENT SLASH INT DOT all
         { (FunDecl($2, $4)) :: $6 }
 |       DATA IDENT SLASH INT DOT all
         { (DataFunDecl($2, $4)) :: $6 }
-|       EQUATION term EQUAL term DOT all
-        { (Equation($2, $4)) :: $6 }
+|       EQUATION eqlist DOT all
+        { (Equation($2)) :: $4 }
 |       QUERY fact DOT all
         { (Query $2) :: $4 } 
 |       NOUNIF factformat optint DOT all
@@ -265,6 +273,14 @@ options:
 | 
         { [] }
 
+/* Equations */
+
+teqlist:
+    forallvartype term EQUAL term 
+    { [($1, $2, $4)] }
+|   forallvartype term EQUAL term SEMI teqlist
+    { ($1, $2, $4)::$6 }
+
 tall:
         TYPE IDENT DOT tall
         { TTypeDecl($2) :: $4 }
@@ -274,8 +290,11 @@ tall:
         { (TFunDecl($2, $4, $7, $8)) :: $10 }
 |       CONST IDENT COLON IDENT options DOT tall
         { (TConstDecl($2, $4, $5)) :: $7 }
-|       EQUATION forallvartype term EQUAL term DOT tall
-        { (TEquation($2, $3, $5)) :: $7 }
+|       EQUATION options teqlist DOT tall 
+        /* I put the options first to avoid a shift/reduce conflict
+	   between equation ... = n[terms]. 
+	   and     equation ... = x [convergent]. */
+        { (TEquation($3, $2)) :: $5 }
 |       QUERY nevartype SEMI tfact DOT tall
         { (TQuery($2, $4)) :: $6 } 
 |       QUERY tfact DOT tall

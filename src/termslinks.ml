@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -42,8 +42,7 @@ let rec equal_terms_with_links t1 t2 = (t1 == t2) || (match (t1,t2) with
 
 let equal_facts_with_links f f' = (f == f') || (match (f,f') with
   Pred(p,l), Pred(p',l') -> (p == p') && (List.for_all2 equal_terms_with_links l l') 
-| Out(ty,t,l),Out(ty',t',l') -> 
-   (* Warning: not doing any check on types *)
+| Out(t,l),Out(t',l') -> 
     (equal_terms_with_links t t') && 
     (List.for_all2 (fun (v,t) (v',t') -> (v == v') && (equal_terms_with_links t t')) l l')
 | _,_ -> false)
@@ -115,7 +114,10 @@ let equal_constra c1 c2 =
 (* Matching *)
 
 let rec match_terms t1 t2 =
-   match (t1,t2) with
+  if not (Param.get_ignore_types()) then
+    if (get_term_type t1 != get_term_type t2) then
+      assert false;
+  match (t1,t2) with
      (Var { link = TLink t1' }, _) -> match_terms t1' t2
    | (_, Var { link = TLink t2' }) -> match_terms t1 t2'
    | (_, Var _) -> Parsing_helper.internal_error "Bad link in match_terms (1)"

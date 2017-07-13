@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -30,8 +30,8 @@
 
 open Types
 
-(* Register an equation *)
-val register_equation : term * term -> unit
+(* Register equations *)
+val register_equation : eq_info -> (term * term) list -> unit
 
 (* returns true when at least one equation has been registered since last
    call to record_eqs *)
@@ -56,9 +56,16 @@ val close_fact_eq : (fact -> unit) -> fact -> unit
 val close_fact_list_eq : (fact list -> unit) -> fact list -> unit
 val close_rule_eq : (reduction -> unit) -> reduction -> unit
 
+(* Close terms by rewrite rules of constructors and destructors. *)
+val close_term_destr_eq : (term * term) list -> ((term * term) list -> term -> unit) -> term -> unit
+
 (* Close clauses by rewrite rules of constructors and destructors. *
    Used for clauses that define predicates (for LetFilter). *)
 val close_rule_destr_eq : (fact list * fact * constraints list list -> unit) -> fact list * fact * constraints list list -> unit
+
+(* [f_has_no_eq f] returns [true] when the function symbol [f]
+   has no equation. *)
+val f_has_no_eq : funsymb -> bool
 
 (* Unification modulo the equational theory *)
 val unify_modulo : (unit -> 'a) -> term -> term -> 'a
@@ -93,7 +100,7 @@ val simplify_constra_list : fact list -> constraints list list -> constraints li
    [rule] is a list of facts of the clause that contains [formula1]. 
    (The argument [rule] is used to know which variables should be preserved in 
    the simplification of the instance of [formula2], which after substitution 
-   uses variables of the clause [rule, formula1]. *)
+   uses variables of the clause [rule, formula1].) *)
 
 val implies_constra_list : fact list -> constraints list list -> constraints list list -> unit -> unit
 

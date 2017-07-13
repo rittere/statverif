@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -199,7 +199,7 @@ let rec check_eq_term varenv = function
   | (PFunApp (f, tlist)) ->
       let (tl, tyl) = List.split (List.map (check_eq_term varenv) tlist) in
       let f' = get_fun f tyl in
-      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types) then
+      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()) then
 	match tl with
 	  [t] -> (t, snd f'.f_type)
 	| _ -> internal_error "type converter functions should always be unary"
@@ -210,16 +210,25 @@ let rec check_eq_term varenv = function
       let (tl, tyl) = List.split (List.map (check_eq_term varenv) l) in
       (FunApp(Terms.get_tuple_fun tyl, tl), Param.bitstring_type)
 
-let check_equation env t1 t2 =
-   let var_env = create_env env in
-   let (t1', ty1) = check_eq_term var_env t1 in
-   let (t2', ty2) = check_eq_term var_env t2 in
-   if ty1 != ty2 then
-     begin
+let check_equation l eqinfo =
+  let l' = List.map (fun (env, t1, t2) ->
+    let var_env = create_env env in
+    let (t1', ty1) = check_eq_term var_env t1 in
+    let (t2', ty2) = check_eq_term var_env t2 in
+    if ty1 != ty2 then
+      begin
        (* TO DO locate this error message *)
-       user_error "The two members of an equation should have the same type.\n" 
-     end;
-   TermsEq.register_equation (t1',t2')
+	user_error "The two members of an equation should have the same type.\n" 
+      end;
+    (t1', t2')) l 
+  in
+  let eqinfo' = match eqinfo with
+    [] -> EqNoInfo
+  | ["convergent",ext] -> EqConvergent
+  | ["linear",ext] -> EqLinear
+  | (_,ext)::_ -> Parsing_helper.input_error "for equations, the only allowed options are either convergent or linear" ext
+  in
+  TermsEq.register_equation eqinfo' l'
 
 
 let rule_counter = ref 0
@@ -310,7 +319,7 @@ let rec check_term env = function
   | (PFunApp(f,l)) -> 
       let (tl, tyl) = List.split (List.map (check_term env) l) in
       let f' = get_fun f tyl in
-      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types) then
+      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()) then
 	match tl with
 	  [t] -> (t, snd f'.f_type)
 	| _ -> internal_error "type converter functions should always be unary"
@@ -345,7 +354,7 @@ let rec check_format env = function
   | (PFFunApp(f,l)) -> 
       let (tl, tyl) = List.split (List.map (check_format env) l) in
       let f' = get_fun f tyl in
-      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types) then
+      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()) then
 	match tl with
 	  [t] -> (t, snd f'.f_type)
 	| _ -> internal_error "type converter functions should always be unary"
@@ -439,7 +448,7 @@ let gen_data_clauses () =
     Hashtbl.iter (fun _ f ->
       match f.f_cat with
 	Tuple -> if (f.f_options land Param.fun_TYPECONVERTER == 0) ||
-	            (not (!Param.ignore_types)) then gen_fun p f
+	            (not (Param.get_ignore_types())) then gen_fun p f
       | _ -> ()) fun_decls;
     Hashtbl.iter (fun _ f -> gen_fun p f) Terms.tuple_table
   in
@@ -464,7 +473,7 @@ let rec check_all = function
   | (TNameDecl(n,t))::l -> check_name_decl n t; check_all l
   | (TFunDecl(f,argt,rest,i))::l -> check_fun_decl f argt rest i; check_all l
   | (TConstDecl(f,rest,i))::l -> check_fun_decl f [] rest i; check_all l
-  | (TEquation(env,t1,t2))::l -> check_equation env t1 t2; check_all l
+  | (TEquation(leq,eqinfo))::l -> check_equation leq eqinfo; check_all l
   | (TQuery(env,fact)) :: l -> 
       let env = create_env env in
       query_facts := (check_simple_fact env fact) :: (!query_facts);
@@ -501,10 +510,15 @@ let parse_file s =
       TSet((p,ext),v) -> 
 	begin
 	  match (p,v) with
-	    "ignoreTypes", _ -> Param.boolean_param Param.ignore_types p ext v
+	    "ignoreTypes", S (("true" | "yes"), _) -> Param.set_ignore_types true
+	  | "ignoreTypes", S (("false" | "no"), _) -> Param.set_ignore_types false
+	  | "ignoreTypes", _ -> 
+	      Parsing_helper.input_error ("Unexpected value for parameter " ^ p ^ "=" ^ 
+					  (match v with S (s,_) -> s | I n -> string_of_int n)) ext
 	  | _,_ -> Param.common_parameters p ext v
 	end
     | _ -> ()) decl;
+  Param.default_set_ignore_types();
   check_all (List.filter (function 
       TSet _ -> false
     | _ -> true) decl)

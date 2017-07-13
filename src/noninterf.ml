@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -29,11 +29,10 @@ open Types
 open Terms
 
 let detect_atteq = function
-    ([Pred(p1, [Var v1]); Pred(p2, [Var v2]); Pred(p3, [Var v1'; Var v2'])],
+    ([Pred(p1, [Var v1]); Pred(p2, [Var v2]); Pred({p_info = [TestUnifP _]}, [Var v1'; Var v2'])],
      (Pred(p4, [])), _, []) 
       when p1.p_prop land Param.pred_ATTACKER != 0
       && p2.p_prop land Param.pred_ATTACKER != 0
-      && p3 == Param.testunif_pred
       && p4 == Param.bad_pred
       && v1 == v1'
       && v2 == v2' -> true
@@ -170,11 +169,11 @@ let dec_out_rule next_stage hypbefore hypafter concl hist constra t1simp t2simp 
   match (t1simp,t2simp) with 
     [],[] -> ()
   | [t1s],[t2s] ->
-      let hypbefore' = (Pred(Param.testunif_pred, [t1s; t2s])) :: hypbefore in
+      let hypbefore' = (Pred(Param.get_pred (TestUnifP(Terms.get_term_type t1s)), [t1s; t2s])) :: hypbefore in
       next_stage hypbefore' hypafter concl hist constra
   | _ ->
       let tuple_fun = get_tuple_fun (List.map Terms.get_term_type t1simp) in
-      let hypbefore' = (Pred(Param.testunif_pred, 
+      let hypbefore' = (Pred(Param.get_pred (TestUnifP(Param.bitstring_type)), 
 			     [ FunApp(tuple_fun, t1simp); 
 			       FunApp(tuple_fun, t2simp)])) :: hypbefore
       in
@@ -253,8 +252,7 @@ let check_testunif_true next_stage hypbefore hypafter concl hist constra l1 l2 =
        Display.Text.display_rule (List.rev_append hypbefore hypafter, concl, hist, constra)) hypbefore hypafter concl hist constra l1 l2;
       *)
      (* Testunif true *)
-     let hist2 = History.get_rule_hist RTestUnif in
-     let hist' = Resolution(hist2, List.length hypbefore, hist) in
+     let hist' = TestUnifTrue(List.length hypbefore, hist) in
      secr_in_sets next_stage hypbefore hypafter concl hist' constra l1 l2
     end
    else
@@ -334,7 +332,9 @@ let inst_elim next_stage repeat_next_stage hypbefore hypafter concl hist constra
 	     if has_selectable() then () else
 	     begin
 	       List.iter (fun ((s,_) as descr) ->
-		 if do_instantiate descr then
+		 if (do_instantiate descr) &&
+		   (Terms.equal_types (snd s.f_type) v1.btype)
+		 then
 		   let curr_bound_vars = !Terms.current_bound_vars in
 		   Terms.current_bound_vars := [];
 		   Terms.link v1 (TLink (FunApp(s,[])));
@@ -437,7 +437,7 @@ let simplify next_stage repeat_next_stage ((hyp, concl, hist, constra) as r) =
 	[] -> next_stage ((List.rev hypbefore), concl, hist, constra)
       |	(a::l) ->
 	  match a with
-	    Pred(p,[t1;t2]) when p == Param.testunif_pred ->
+	    Pred({p_info = [TestUnifP _]},[t1;t2]) ->
 	(* In the intermediate simplification steps, the rule is in format
 	   hypbefore hypafter concl hist constra t1 t2. 
 	   At the beginning, t1 t2 are terms;

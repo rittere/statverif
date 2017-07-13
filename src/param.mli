@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -84,9 +84,14 @@ val ansi_color : bool ref
 val active_attacker : bool ref
 val key_compromise : int ref
 val non_interference : bool ref
-
+val expand_if_terms_to_terms : bool ref
+val expand_simplify_if_cst : bool ref
+    
 val typed_frontend : bool ref
-val ignore_types : bool ref
+val get_ignore_types : unit -> bool
+val set_ignore_types : bool -> unit
+val default_set_ignore_types : unit -> unit
+val get_type : Types.typet -> Types.typet
 
 val html_output : bool ref
 val html_dir : string ref
@@ -96,6 +101,8 @@ val inside_query_number : int ref
 val process_number : int ref
 
 val simplify_process : int ref
+val reject_choice_true_false : bool ref
+val reject_no_simplif : bool ref
 
 val verbose_rules : bool ref
 type explain_clauses = NoClauses | Clauses | ExplainedClauses
@@ -106,6 +113,7 @@ val verbose_eq : bool ref
 val verbose_destr : bool ref
 val verbose_term : bool ref
 val abbreviate_clauses : bool ref
+val remove_subsumed_clauses_before_display : bool ref
 val unselectable_state : bool ref
 
 val reconstruct_derivation : bool ref
@@ -139,18 +147,38 @@ val check_pred_calls : bool ref
 val eq_in_names : bool ref
 
 val simpeq_remove : bool ref
+val simpeq_final : bool ref
 
 type eqtreatment = ConvLin | NonProved
 val eqtreatment : eqtreatment ref
 
+val symb_order : (string * Parsing_helper.extent) option ref
+
 type trace_display = NoDisplay | ShortDisplay | LongDisplay
 val trace_display : trace_display ref
 
+type trace_display_graphicx = TextDisplay | GraphDisplay
+val trace_display_graphicx : trace_display_graphicx ref
+
+
+val command_line_graph : string ref
+val command_line_graph_set : bool ref
+
+val graph_output : bool ref
+
+  
 val tulafale : int ref
+
+(* For swapping at barriers *)
+
+val interactive_swapping : bool ref
+val set_swapping : (string * Parsing_helper.extent) option ref
 
 val boolean_param : bool ref -> string -> Parsing_helper.extent -> Ptree.pval -> unit
 val common_parameters : string -> Parsing_helper.extent -> Ptree.pval -> unit
 
+
+  
 (* types *)
 
 val any_type : Types.typet
@@ -172,8 +200,8 @@ val get_type_suffix : Types.typet -> string
 val mid_pred_inj : Types.predicate
 val end_pred : Types.predicate
 val end_pred_inj : Types.predicate
-val testunif_pred : Types.predicate
 val bad_pred : Types.predicate
+val dummy_pred : Types.predicate
 
 (* Special variables *)
 
@@ -188,6 +216,7 @@ val memo : ('a -> 'b) -> 'a -> 'b
 
 (* Phases *)
 
+val build_pred_memo : Types.info -> Types.predicate
 val get_pred : Types.info -> Types.predicate
 
 (* Weak secrets *)
@@ -199,6 +228,7 @@ val weaksecret_mode : bool ref
 
 val choice_fun : Types.typet -> Types.funsymb
 val has_choice : bool ref
+val has_barrier : bool ref
 val equivalence : bool ref
 
 (* Values computed from the input file *)

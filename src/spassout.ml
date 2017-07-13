@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -68,7 +68,7 @@ let output_fun_name filename f =
        output_string filename "tuple_"; 
        if f.f_name = "" then
 	 let arity = List.length (fst f.f_type) in
-	 if (arity = 0) || (!Param.ignore_types) then
+	 if (arity = 0) || (Param.get_ignore_types()) then
 	   output_string filename (string_of_int arity)
 	 else
 	   output_string filename (Terms.tl_to_string "_" (fst f.f_type))
@@ -81,6 +81,8 @@ let output_fun_name filename f =
    | Eq _ ->
        output_string filename "constr_";
        output_ident filename f.f_name
+   | Failure ->
+       Parsing_helper.user_error "Error: The symbol fail cannot be handled by Spass. Stopping the translation\n"
    | _ ->
        Parsing_helper.internal_error "function symbols of these categories should not appear in rules"
 
@@ -89,7 +91,11 @@ let output_pred_name filename p =
    output_ident filename p.p_name
 
 let output_var_name filename v =
-  output_string filename "var_v";
+  if v.unfailing then
+    Parsing_helper.user_error "Error: May-fail variables cannot be handled by Spass. Stopping the translation\n";
+  output_string filename "var_";
+  output_ident filename v.sname;
+  output_string filename "_";
   output_string filename (string_of_int v.vname)
 
 let func_set = Hashtbl.create 7
@@ -287,6 +293,21 @@ let output_query filename query =
   output_string filename ").\nend_of_list.\n\n"
 
 let main filename rules queries =
+  (* Spass does not support the special symbol fail and the may-fail
+     variables. We eliminate those completely when possible.
+
+     We filter out rules that conclude p(...fail...). This is safe because
+     we stop the translation when a rule has fail or a may-fail variable
+     in its hypothesis, or when a query contains fail or a may-fail variable,
+     so rules that conclude p(...fail...) are useless. *)
+  let rules = List.filter (fun (_, concl, _, _) ->
+    match concl with
+      Pred(_, l) -> 
+	List.for_all (function
+	    FunApp({f_cat = Failure}, []) -> false
+	  | _ -> true) l
+    | _ -> true) rules
+  in
   (* Each query must be output in a separate file, otherwise spass tries to 
      prove the disjunction of the queries *)
    let n = ref 0 in

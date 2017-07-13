@@ -242,7 +242,7 @@ fi
 
 # Tests for choice (exactly LICS'05)
 
-if [ \( \( .$1 = .all \) -o \( .$1 = .obsequi \) \) -a \( -d ../web/webperso/proverif/obsequi \) ]
+if [ \( \( .$1 = .all \) -o \( .$1 = .obsequi \) \) -a \( -d ../../dev/web/webperso/proverif/obsequi \) ]
 then
 
 echo
@@ -253,7 +253,7 @@ echo
 function analyzeo()
 {
     echo PROTOCOL $1
-    $PROVERIF -in pi ../web/webperso/proverif/obsequi/$2
+    $PROVERIF -in pi ../../dev/web/webperso/proverif/obsequi/$2
 }
 
 analyzeo "DH" dh-fs

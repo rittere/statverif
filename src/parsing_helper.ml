@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -51,6 +51,14 @@ let extent lexbuf =
 let parse_extent () =
   (Parsing.symbol_start_pos(),
    Parsing.symbol_end_pos())
+
+let combine_extent ((outer_start, _) as outer_ext) ((inner_start, inner_end) as inner_ext) =
+  if inner_ext == dummy_ext then outer_ext else
+  if outer_ext == dummy_ext then inner_ext else
+  ({ outer_start with 
+     pos_cnum = outer_start.pos_cnum + inner_start.pos_cnum + 1 },
+   { outer_start with 
+     pos_cnum = outer_start.pos_cnum + inner_end.pos_cnum + 1 })
 
 let input_error mess (loc_start, loc_end) =
   if loc_start.pos_cnum = -1 then

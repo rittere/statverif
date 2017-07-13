@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -64,7 +64,7 @@ let rec find_min_choice_phase current_phase process =
       find_min_choice_phase current_phase q
   | Repl (p,_) ->
       find_min_choice_phase current_phase p
-  | Restr(n,p,_) ->
+  | Restr(n,_,p,_) ->
       find_min_choice_phase current_phase p
   | Test(t,p,q,_) ->
       if has_choice t then set();
@@ -83,7 +83,7 @@ let rec find_min_choice_phase current_phase process =
       find_min_choice_phase current_phase q
   | LetFilter(vlist,f,p,q,_) ->
       user_error "Predicates are currently incompatible with proofs of equivalences.\n"
-  | Event(t,p,_) ->
+  | Event(t,_,p,_) ->
       if has_choice t then set();
       find_min_choice_phase current_phase p
   | Insert(t,p,_) ->
@@ -94,7 +94,11 @@ let rec find_min_choice_phase current_phase process =
       find_min_choice_phase current_phase p;
       find_min_choice_phase current_phase q
   | Phase(n,p,_) ->
-      find_min_choice_phase n p
+     find_min_choice_phase n p
+  | NamedProcess(_,_,p) ->
+      find_min_choice_phase current_phase p
+  | Barrier _ | AnnBarrier _ ->
+     internal_error "Barriers should not appear here (6)"
   | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_) ->
       find_min_choice_phase current_phase p
   | ReadAs(sp,p,_) ->
@@ -162,16 +166,8 @@ let add_rule hyp concl constra tags =
       try
         let constra' = TermsEq.simplify_constra_list (concl::hyp) constra in
       	let rule = (hyp, concl, Rule (!nrule, tags, hyp, concl, constra'), constra') in
-	match tags with 
-(* needs changing - use current_states and assignment_rules in a different way now *)
-	  RinitState _ -> 
-	    Rules.current_states  := rule::!Rules.current_states
-	| ProcessRule ((AssignTag _)::_, _) ->
-	    Rules.assignment_rules :=  rule::!Rules.assignment_rules
-	| _ -> begin
       	    red_rules := rule :: !red_rules;
       	    incr nrule
-	end
       with
       	TermsEq.FalseConstraint -> ()
     end
@@ -191,9 +187,8 @@ type transl_state =
   { hypothesis : fact list; (* Current hypotheses of the rule *)
     constra : constraints list list; (* Current constraints of the rule *)
 
-    name_params : term list; (* List of parameters of names *)
-    name_params_types : typet list;
-    name_params_meaning : string list;
+    name_params : name_param_info list; (* List of parameters of names *)
+    name_params_types : typet list; 
     repl_count  : int; (* Counter for replication *)
 
     input_pred  : predicate;
@@ -209,8 +204,6 @@ let display_transl_state cur_state =
    Display.Text.display_list (Display.Text.WithLinks.fact) " ; " cur_state.hypothesis;
    Printf.printf "\nConstraint:\n";
    Display.Text.WithLinks.constra_list cur_state.constra;
-   Printf.printf "\nName params:\n";
-   Display.Text.display_term_list cur_state.name_params;
    Printf.printf "\n"
 
 (* Tools *)
@@ -268,15 +261,11 @@ let update_cells ts =
       left_value = Var(Terms.new_var s t);
       right_value = Var(Terms.new_var s t) }
   ) old_cells in
-  let no_state_hypothesis = eliminate_previous_state ts.hypothesis in
   { ts with
     cur_cells = new_cells;
-    hypothesis = (Pred(Param.get_pred (ReachBin(ts.cur_phase)),
-                       [left_state old_cells;
-                        right_state old_cells]))::
-                 (Pred(Param.get_pred (SeqBin(ts.cur_phase)),
+    hypothesis = (Pred(Param.get_pred (SeqBin(ts.cur_phase)),
                        [left_state old_cells; left_state new_cells;
-                        right_state old_cells; right_state new_cells])) :: no_state_hypothesis;
+                        right_state old_cells; right_state new_cells])) :: ts.hypothesis;
     hyp_tags = ts.hyp_tags }
 
 (* Return initial cell states. *)
@@ -341,7 +330,7 @@ let output_rule cur_state out_fact =
     let hyp = List.map Terms.copy_fact2 cur_state.hypothesis in
     let concl = Terms.copy_fact2 out_fact in
     let constra = List.map Terms.copy_constra2 cur_state.constra in
-    let name_params = List.map Terms.copy_term2 cur_state.name_params in
+    let name_params = List.map Terms.copy_term2 (Reduction_helper.extract_name_params_noneed cur_state.name_params) in
     Terms.cleanup();
     begin
       try
@@ -463,12 +452,11 @@ let transl_term_incl_destructor next_f cur_state occ term =
     then
       let type_t = Terms.get_term_type term1 in
       next_f { cur_state1 with
-          name_params = FunApp(Param.choice_fun type_t,[term1;term2])::cur_state1.name_params;
+          name_params = (MUnknown, FunApp(Param.choice_fun type_t,[term1;term2]), Always)::cur_state1.name_params;
           name_params_types = type_t (* this type may not be accurate when types are ignored
 					(a type conversion function may have been removed); we
 					don't use it since it is not associated to a variable *)
-                                     :: cur_state1.name_params_types;
-          name_params_meaning = "" :: cur_state1.name_params_meaning
+                                     :: cur_state1.name_params_types
         } term1 term2
     else
       next_f cur_state1 term1 term2
@@ -596,7 +584,7 @@ let generate_pattern_with_uni_var binders_list term_pat_left term_pat_right =
 **********************************************)
 
 let all_types () =
-  if !Param.ignore_types then [Param.any_type]
+  if Param.get_ignore_types() then [Param.any_type]
   else !Param.all_types
 
 let unify_cells cur_state side =
@@ -623,29 +611,33 @@ end ; *)
   | Repl(proc,occ) ->
       (* Always introduce session identifiers ! *)
       let var = Terms.new_var "@sid" Param.sid_type in
+      let sid_meaning = MSid (cur_state.repl_count + 1) in
       let cur_state' =
         {
           (invalidate_cells cur_state) with
           repl_count = cur_state.repl_count + 1;
-          name_params = (Var var)::cur_state.name_params;
+          name_params = (sid_meaning, Var var, Always)::cur_state.name_params;
           name_params_types = Param.sid_type ::cur_state.name_params_types;
-          name_params_meaning = (Printf.sprintf "!%d" (cur_state.repl_count + 1))::cur_state.name_params_meaning;
-          hyp_tags = (ReplTag(occ, List.length cur_state.name_params)) :: cur_state.hyp_tags
+          hyp_tags = (ReplTag(occ, Reduction_helper.count_name_params cur_state.name_params)) :: cur_state.hyp_tags 
         } in
       transl_process cur_state' proc
 
-  | Restr(name,proc,occ) ->
+  | Restr(name,(args,env),proc,occ) ->
       begin
         match name.f_cat with
           | Name r ->
-              let name_prev_type = cur_state.name_params_types in
+	      let need_list = Reduction_helper.get_need_vars name.f_name in
+	      let include_info = Reduction_helper.prepare_include_info env args need_list in
+	      let npm = Reduction_helper.extract_name_params_meaning name.f_name include_info cur_state.name_params in
+	      let np = Reduction_helper.extract_name_params name.f_name include_info cur_state.name_params in
+	      let name_prev_type = Reduction_helper.extract_name_params_types name.f_name include_info cur_state.name_params cur_state.name_params_types in
               if Terms.eq_lists (fst name.f_type) Param.tmp_type
               then
                 begin
                   name.f_type <- name_prev_type, snd name.f_type;
-                  r.prev_inputs_meaning <- cur_state.name_params_meaning
+                  r.prev_inputs_meaning <- npm
                 end
-  	      else if !Param.ignore_types then
+  	      else if Param.get_ignore_types() then
 		begin
 	          (* When we ignore types, the types of the arguments may vary,
                      only the number of arguments is preserved. *)
@@ -657,10 +649,10 @@ end ; *)
 		  if not (Terms.eq_lists (fst name.f_type) name_prev_type) then
   		    internal_error ("Name " ^ name.f_name ^ " has bad type")
 		end;
-  	      if List.length r.prev_inputs_meaning <> List.length cur_state.name_params
-  	      then internal_error "prev_inputs_meaning and name_params should have the same size";
+  	      if List.length r.prev_inputs_meaning <> List.length np
+  	      then internal_error "prev_inputs_meaning and np should have the same size";
 		
-  	      r.prev_inputs <- Some (FunApp(name, cur_state.name_params));
+  	      r.prev_inputs <- Some (FunApp(name, np));
   	      transl_process cur_state proc;
   	      r.prev_inputs <- None
 
@@ -811,6 +803,12 @@ end ; *)
 		  Terms.unify term_left term_pat_left;
 		  Terms.unify term_right term_pat_right;
 		  transl_process { cur_state4 with
+                    name_params = (List.map 
+                        (fun b -> (MVar(b, None), (match b.link with
+                           | TLink t -> t
+                           | _ ->internal_error "unexpected link in translate_term (4)"), IfQueryNeedsIt)
+			    ) binders_list) @ cur_state4.name_params;
+                    name_params_types = (List.map (fun b -> b.btype) binders_list)@cur_state4.name_params_types;
                     hyp_tags = (LetTag occ)::cur_state4.hyp_tags
                   } proc_then;
                 with Terms.Unify -> ()
@@ -913,12 +911,11 @@ end ; *)
                   (* Pattern satisfied in both sides *)
                   transl_process { cur_state3 with
                     name_params = (List.map
-                      (fun b -> match b.link with
+                      (fun b -> (MVar(b,None), (match b.link with
                          | TLink t -> t
-                         | _ ->internal_error "unexpected link in translate_term (3)"
-                      ) binders) @ cur_state3.name_params;
+                         | _ ->internal_error "unexpected link in translate_term (3)"), Always)
+			  ) binders) @ cur_state3.name_params;
                     name_params_types = (List.map (fun b -> b.btype) binders)@cur_state3.name_params_types;
-                    name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state3.name_params_meaning;
                     hypothesis = (att_fact cur_state3.cur_cells cur_state.cur_phase term_pat_left term_pat_right) :: cur_state3.hypothesis;
                     hyp_tags = (InputTag occ)::cur_state3.hyp_tags
                   } proc;
@@ -975,13 +972,11 @@ end ; *)
                   transl_both_side_succeed (fun cur_state5 ->
                     let cur_state6 = { cur_state5 with
                       name_params = (List.map
-                        (fun b -> match b.link with
+                        (fun b -> (MVar(b, None), (match b.link with
                            | TLink t -> t
-                           | _ ->internal_error "unexpected link in translate_term (4)"
-                      ) binders) @ cur_state5.name_params;
+                           | _ ->internal_error "unexpected link in translate_term (4)"), Always)
+			    ) binders) @ cur_state5.name_params;
                       name_params_types = (List.map (fun b -> b.btype) binders)@cur_state5.name_params_types;
-                      name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state5.name_params_meaning;
-
                     } in
 
                     (* Pattern satisfied in both sides *)
@@ -1118,7 +1113,7 @@ end ; *)
   | LetFilter(_,_,_,_,_) ->
       user_error "Predicates are currently incompatible with proofs of equivalences.\n"
 
-  | Event(t,p,occ) ->
+  | Event(t,_, p,occ) ->
       (* Even if the event does nothing, the term t is evaluated *)
       transl_term (fun cur_state1 term_left term_right ->
         (* Case both sides succeed *)
@@ -1191,12 +1186,11 @@ end ; *)
 		  Terms.unify term_right Terms.true_term;
 		  transl_process { cur_state4 with
                     name_params = (List.map
-                      (fun b -> match b.link with
+                      (fun b -> (MVar(b,None), (match b.link with
                          | TLink t -> t
-                         | _ ->internal_error "unexpected link in translate_term (6)"
-                      ) binders) @ cur_state4.name_params;
+                         | _ ->internal_error "unexpected link in translate_term (6)"), Always)
+			  ) binders) @ cur_state4.name_params;
                     name_params_types = (List.map (fun b -> b.btype) binders)@cur_state4.name_params_types;
-                    name_params_meaning = (List.map (fun b -> b.sname) binders)@cur_state4.name_params_meaning;
                     hypothesis = (table_fact cur_state4.cur_phase term_pat_left term_pat_right) :: cur_state4.hypothesis;
                     hyp_tags = (GetTag(occ)) :: cur_state4.hyp_tags;
                   } proc;
@@ -1288,7 +1282,11 @@ end ; *)
                        input_pred = Param.get_pred (InputPBin(n));
                        output_pred = Param.get_pred (OutputPBin(n));
                        cur_phase = n } proc
+ | NamedProcess(_,_,p) ->
+     transl_process cur_state p
 
+ | Barrier _ | AnnBarrier _ ->
+     internal_error "Barriers should not appear here (7)"
   | Lock(cells, proc, occ)
   | Unlock(cells, proc, occ) ->
       let new_locked = match process with Lock _ -> true | _ -> false in
@@ -1368,13 +1366,12 @@ end ; *)
               unify_cells cur_state2 (fun x -> x.right_value) items terms_pat_right;
               transl_process { cur_state3 with
                   name_params = (List.map
-                    (fun b -> match b.link with
+                    (fun b -> (MVar(b,None), (match b.link with
                        | TLink t -> t
-                       | _ -> internal_error "unexpected link in translate_term (7)"
-                    ) binders) @ cur_state3.name_params;
+                       | _ -> internal_error "unexpected link in translate_term (7)"),Always)
+                     ) binders) @ cur_state3.name_params;
                   name_params_types = (List.map (fun b -> b.btype) binders) @ cur_state3.name_params_types;
-                  name_params_meaning = (List.map (fun b -> b.sname) binders) @ cur_state3.name_params_meaning
-                } proc;
+                    }  proc;
             ) with Terms.Unify -> () end;
 
             (* Pattern satisfied only on left side. *)
@@ -1508,19 +1505,16 @@ let transl_attacker phase =
     add_rule [] (Pred (reach_pred, [left_state init_state; right_state init_state]) ) [] (RinitState att_pred);
 
       (* State sequencing. *)
-    (* TODO: Move these outside the iteration over all types! *)
-    add_rule [] (Pred(seq_pred,
-        [left_state init_state; left_state init_state; right_state init_state; right_state init_state]))
-      [] (Rseq0 seq_pred);
-
-(*    let vs1 = new_state () in
+    
+    let vs1 = new_state () in
     let vs2 = new_state () in
     let vs3 = new_state () in
-    add_rule [Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
+    add_rule [Pred (reach_pred , [left_state vs1; right_state vs1]); Pred(seq_pred, [left_state vs1; left_state vs2; right_state vs1; right_state vs2]);
               Pred(seq_pred, [left_state vs2; left_state vs3; right_state vs2; right_state vs3])]
       (Pred(seq_pred, [left_state vs1; left_state vs3; right_state vs1; right_state vs3]))
-      [] (Rseq1 seq_pred); *)
+      [] (Rseq1 seq_pred); 
 
+    (* Reachability predicate progression *)
     let vs1 = new_state () in
     let vs2 = new_state () in
     add_rule [Pred (reach_pred, [left_state vs1; right_state vs1]); 
@@ -1528,6 +1522,13 @@ let transl_attacker phase =
       (Pred (reach_pred, [left_state vs2; right_state vs2]))
       [] (Rseq2 (reach_pred, seq_pred));
 
+    (* Elimination of seq *)
+    let vs1 = new_state() in
+    add_rule [Pred (reach_pred, [left_state vs1; right_state vs1])] (Pred(seq_pred, [left_state vs1; left_state vs1; right_state vs1; right_state vs1]))
+      [] (Rseq3 (reach_pred, seq_pred));
+
+    
+    (* Inheritance of knowledge *)
     let vs1 = new_state () in
     let vs2 = new_state () in
     let v1 = Terms.new_var_def t in
@@ -1655,16 +1656,19 @@ let rec convert_to_2 = function
   | FunApp(f, l) ->
       match f.f_cat with
 	Name { prev_inputs_meaning = pim } ->
-	  let l' = List.map2 (fun t s ->
-	    if (s <> "") && (s.[0] = '!') then
-	      try
-		convert_to_1 t
-	      with Terms.Unify ->
-		user_error "Error: In not declarations, session identifiers should be variables.\n"
-	    else
-	      (* The arguments of names are always choice, except for session identifiers *)
-	      let (t1,t2) = convert_to_2 t in
-	      FunApp(Param.choice_fun (Terms.get_term_type t1), [t1;t2])
+	  let l' = List.map2 (fun t m ->
+	    match m with
+	      MSid _ | MCompSid | MAttSid ->
+		begin
+		try
+		  convert_to_1 t
+		with Terms.Unify -> 
+		  user_error "Error: In not declarations, session identifiers should be variables.\n"
+		end
+	    | _ -> 
+	        (* The arguments of names are always choice, except for session identifiers *)
+		let (t1,t2) = convert_to_2 t in
+		FunApp(Param.choice_fun (Terms.get_term_type t1), [t1;t2])
 	      ) l pim
 	  in
 	  (FunApp(f, l'), FunApp(f, l'))
@@ -1704,13 +1708,15 @@ let rec convertformat_to_1 = function
   | FFunApp(f, l) ->
       match f.f_cat with
 	Name { prev_inputs_meaning = pim } ->
-	  (* The arguments of names are always choice *)
-	  let l' = List.map2 (fun t s ->
-	    if (s <> "") && (s.[0] = '!') then
-	      convertformat_to_1 t
-	    else
-	      let t' = convertformat_to_1 t in
-	      FFunApp(Param.choice_fun (Terms.get_format_type t'), [t';t'])
+	  (* The arguments of names are always choice, except for 
+	     session identifiers *)
+	  let l' = List.map2 (fun t m ->
+	    match m with
+	      MSid _ | MCompSid | MAttSid ->
+		convertformat_to_1 t
+	    | _ -> 
+		let t' = convertformat_to_1 t in
+		FFunApp(Param.choice_fun (Terms.get_format_type t'), [t';t'])
 		) l pim
 	  in
 	  FFunApp(f, l')
@@ -1755,17 +1761,18 @@ let rec convertformat_to_2 = function
 	Name { prev_inputs_meaning = pim } ->
 	  (* The arguments of names are always choice, except for
 	     session identifiers *)
-	  let l' = List.map2 (fun t s ->
-	    if (s <> "") && (s.[0] = '!') then
-	      begin
-		match t with
-		  FVar x -> assert (x.btype == Param.sid_type); FVar x
-		| FAny x -> assert (x.btype == Param.sid_type); FAny x
-		| _ -> Parsing_helper.user_error "Error: In nounif declarations, session identifiers should be variables.\n"
-	      end
-	    else
-	      let (t1,t2) = convertformat_to_2 t in
-	      FFunApp(Param.choice_fun (Terms.get_format_type t1), [t1;t2])
+	  let l' = List.map2 (fun t m ->
+	    match m with
+	      MSid _ | MCompSid | MAttSid ->
+		begin
+		  match t with
+		    FVar x -> assert (x.btype == Param.sid_type); FVar x
+		  | FAny x -> assert (x.btype == Param.sid_type); FAny x
+		  | _ -> Parsing_helper.user_error "Error: In nounif declarations, session identifiers should be variables.\n"
+		end
+	    | _ ->
+		let (t1,t2) = convertformat_to_2 t in
+		FFunApp(Param.choice_fun (Terms.get_format_type t1), [t1;t2])
 		) l pim
 	  in
 	  (FFunApp(f, l'), FFunApp(f, l'))
@@ -1813,36 +1820,11 @@ let transl p =
 	end
       else
 	begin
-	  (*
 
 	  (* Phase coded by binary predicates *)
 	  let v1 = Terms.new_var Param.def_var_name t in
 	  let v2 = Terms.new_var Param.def_var_name t in
 	  Selfun.add_no_unif (att_i, [new_state_format(); FVar v1; new_state_format(); FVar v2]) Selfun.never_select_weight;
-	  (* nounif attacker2(*vs1,vm1,*vs2,vm2)       *)*)
-	  (*Selfun.add_no_unif (att_i, [new_state_formatv(); FAny v1; new_state_formatv(); FAny v2]) Selfun.never_select_weight;*)
-	  (* nounif mess2(*vs,vc,vm,*vs2,vc2,vm2)   *)*)
-	  let mess_i = Param.get_pred (MessBin(i,t)) in
-	  let [vc1;vm1;vc2;vm2] = List.map (Terms.new_var Param.def_var_name)
-	    [Param.channel_type; t; Param.channel_type; t] in
-	  Selfun.add_no_unif (mess_i, [new_state_format(); FVar vc1; FVar vm1;
-	                               new_state_format(); FVar vc2; FVar vm2]) Selfun.never_select_weight;
-	  (*Selfun.add_no_unif (mess_i, [new_state_formatv(); FAny vc1; FAny vm1;
-	                               new_state_formatv(); FAny vc2; FAny vm2]) Selfun.never_select_weight;*)
-	  (* nounif output2(*vs1,*vc1,*vs2,*vc2) *)*)
-	  let [vc1;vc2] = List.map (Terms.new_var Param.def_var_name)
-	    [Param.channel_type; Param.channel_type] in
-	  Selfun.add_no_unif (Param.get_pred (OutputPBin(i)),
-	    [new_state_format(); FVar vc1; new_state_format(); FVar vc2])
-	    Selfun.never_select_weight;
-	  (* nounif input2(*vs1,*vc1,*vs2,*vc2) *)*)
-	  let [vc1;vc2] = List.map (Terms.new_var Param.def_var_name)
-	    [Param.channel_type; Param.channel_type] in
-	  Selfun.add_no_unif (Param.get_pred (InputPBin(i)),
-	    [new_state_format(); FVar vc1; new_state_format(); FVar vc2])
-	    Selfun.never_select_weight
-
-	  *)()
 	end;
 	
       if i > 0 then
@@ -1907,6 +1889,31 @@ let transl p =
 
    ) (all_types());
 
+  (* Remove subsumed clauses and tautologies among attacker clauses, 
+     to avoid displaying many useless clauses. *)
+
+  if !Param.remove_subsumed_clauses_before_display then
+    begin
+      let tmp_rules = ref [] in
+      (* Store in tmp_rules the rules after removing subsumed rules and tautologies *)
+      List.iter (function (hyp, concl, _, _) as rule ->
+	(* eliminate tautologies *)
+	if List.exists (Terms.equal_facts concl) hyp then () else
+	(* eliminate subsumed clauses *)
+	if List.exists (fun r -> Rules.implies r rule) (!tmp_rules) then () else
+	  tmp_rules := rule :: (List.filter (fun r -> not (Rules.implies rule r)) (!tmp_rules))
+	) (!red_rules);
+      (* Renumber the rules *)
+      red_rules := [];
+      nrule := 0;
+      List.iter (function
+	  (hyp', concl', Rule(_, tags, hyp, concl, constra), constra') ->
+	    red_rules := (hyp', concl', Rule(!nrule, tags, hyp, concl, constra), constra') :: (!red_rules);
+	    incr nrule
+	| _ -> Parsing_helper.internal_error "All clauses should have history Rule(...) at this point"
+	     ) (!tmp_rules)
+    end;
+
    List.iter (fun ch ->
      match ch.f_cat with
        | Name r -> r.prev_inputs <- Some (FunApp(ch, []))
@@ -1917,7 +1924,7 @@ let transl p =
 
    Terms.auto_cleanup (fun _ -> transl_process
      { hypothesis = []; constra = [];
-       name_params = []; name_params_types = []; name_params_meaning = [];
+       name_params = [];  name_params_types = []; 
        repl_count = 0;
        input_pred = Param.get_pred (InputPBin(0));
        output_pred = Param.get_pred (OutputPBin(0));
@@ -1970,7 +1977,25 @@ let transl p =
 	     convert_to_2 t1, convert_to_2 t2)
 	   in
 	   Rules.add_not(Pred(mess2_i,[t1';t2';t1'';t2'']))
-     | _ -> Parsing_helper.user_error "The only allowed facts in \"not\" declarations are attacker: and mess: predicates (for process equivalences, user-defined predicates are forbidden).\n"
+     | QFact({ p_info = [Table(i)] },[t]) ->
+      	 (* For "table" not declarations, the not declaration is also
+	    valid in previous phases, because of the implication
+	      table_p(i):x => table_p(i+1):x
+	    Furthermore, we have to translate unary to binary not declarations *)
+	 for j = 0 to i do
+	   if j < !min_choice_phase then
+	     (* Phase coded by unary predicate, since it does not use choice *)
+	     let table_j = Param.get_pred (Table(j)) in
+	     try
+	       Rules.add_not(Pred(table_j,[Terms.auto_cleanup (fun () -> convert_to_1 t)]))
+	     with Terms.Unify -> ()
+	   else
+	     (* Phase coded by binary predicate *)
+	     let table2_j = Param.get_pred (TableBin(j)) in
+	     let (t',t'') = Terms.auto_cleanup (fun () -> convert_to_2 t) in
+	     Rules.add_not(Pred(table2_j,[t';t'']))
+	 done
+     | _ -> Parsing_helper.user_error "The only allowed facts in \"not\" declarations are attacker, mess, and table predicates (for process equivalences, user-defined predicates are forbidden).\n"
 	   ) (if !Param.typed_frontend then Pitsyntax.get_not() else Pisyntax.get_not());
 
   (* Take into account "nounif" declarations *)
@@ -2008,6 +2033,15 @@ let transl p =
         if i < !min_choice_phase then
           Parsing_helper.user_error "seq2 cannot be used in phases before \"choice\" is used.\n";
         Selfun.add_no_unif (pred, List.map convertformat_to_1 tl) n
+    | ({ p_info = [Table(i)] } as pred, [t]) -> 
+	if i < !min_choice_phase then
+	  (* Phase coded by unary predicate, since it does not use choice *)
+	  Selfun.add_no_unif (pred, [convertformat_to_1 t]) n
+	else
+	  (* Phase coded by binary predicate *)
+	  let table2_i = Param.get_pred (TableBin(i)) in
+	  let (t', t'') = Terms.auto_cleanup (fun () -> convertformat_to_2 t) in
+	  Selfun.add_no_unif (table2_i, [t';t'']) n
     | _ -> Parsing_helper.user_error "The only allowed facts in \"nounif\" declarations are attacker: and mess: predicates (for process equivalences, user-defined predicates are forbidden).\n"
 	  ) (if !Param.typed_frontend then Pitsyntax.get_nounif() else Pisyntax.get_nounif());
 

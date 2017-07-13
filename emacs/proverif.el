@@ -2,7 +2,7 @@
 ;; mode for .pi files 
 ;;
 
-(defvar proverif-pi-kw '("among" "and" "can" "choice" "clauses" "data" "elimtrue" "else" "equation" "event" "fail" "free" "fun" "if" "in" "let" "new" "noninterf" "not" "nounif" "otherwise" "out" "param" "phase" "putbegin" "pred" "private" "process" "query" "reduc" "suchthat" "then" "weaksecret" "where") "ProVerif keywords")
+(defvar proverif-pi-kw '("among" "and" "can" "choice" "diff" "clauses" "data" "elimtrue" "else" "equation" "event" "fail" "free" "fun" "if" "in" "let" "new" "noninterf" "not" "nounif" "otherwise" "out" "param" "phase" "putbegin" "pred" "private" "process" "query" "reduc" "suchthat" "sync" "then" "weaksecret" "where") "ProVerif keywords")
 
 (defvar proverif-pi-builtin '("memberOptim" "decompData" "decompDataSelect" "block" "attacker" "mess" "ev" "evinj") "ProVerif builtins")
 
@@ -36,7 +36,7 @@
 ;; mode for .pv files (typed pi calculus)
 ;;
 
-(defvar proverif-pv-kw '("among" "channel" "choice" "clauses" "const" "def" "elimtrue" "else" "equation" "equivalence" "event" "expand" "fail" "forall" "free" "fun" "get" "if" "in" "inj-event" "insert" "let" "letfun" "new" "noninterf" "not" "nounif" "or" "otherwise" "out" "param" "phase" "pred" "proba" "process" "proof" "putbegin" "query" "reduc" "set" "suchthat" "table" "then" "type" "weaksecret" "yield") "ProVerif keywords")
+(defvar proverif-pv-kw '("among" "channel" "choice" "diff" "clauses" "const" "def" "elimtrue" "else" "equation" "equivalence" "event" "expand" "fail" "forall" "free" "fun" "get" "if" "in" "inj-event" "insert" "let" "letfun" "new" "noninterf" "not" "nounif" "or" "otherwise" "out" "param" "phase" "pred" "proba" "process" "proof" "putbegin" "query" "reduc" "set" "suchthat" "sync" "table" "then" "type" "weaksecret" "yield") "ProVerif keywords")
 
 (defvar proverif-pv-builtin '("private" "data" "typeConverter" "memberOptim" "decompData" "decompDataSelect" "block" "attacker" "mess") "ProVerif builtins")
 

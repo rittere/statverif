@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -71,7 +71,7 @@ let parse filename =
 
 rule token = parse
   "\010" | "\013" | "\013\010"
-     { print_string "$\\\\\n$"; token lexbuf }
+     { print_string " $\\\\\n$"; token lexbuf }
 | ' ' 
      { print_string "\\ "; token lexbuf }
 | '\009'

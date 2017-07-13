@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -133,7 +133,7 @@ let glob_table = Simplify.glob_table
 let check_single ext s =
   let vals = Hashtbl.find_all glob_table s in
   match vals with
-    _::_::_ -> input_error (s ^ " cannot be used in queries. Its definition is ambiguous. (For example, several restrictions might define " ^ s ^ ".)") ext
+    _::_::_ -> input_error (s ^ " cannot be used in queries, not, or nounif. Its definition is ambiguous. (For example, several restrictions might define " ^ s ^ ".)") ext
   | _ -> ()
   
   
@@ -143,7 +143,7 @@ let check_single ext s =
 
 let fun_decls = Param.fun_decls
 
-let initialyse_env_and_fun_decl () =
+let initialize_env_and_fun_decl () =
   (* Initial functions and constant *)
   Hashtbl.add fun_decls "true" Terms.true_cst;
   Terms.record_id "true" dummy_ext;
@@ -153,17 +153,17 @@ let initialyse_env_and_fun_decl () =
   Terms.record_id "false" dummy_ext;
   global_env := StringMap.add "false" (EFun Terms.false_cst) (!global_env);
   
-  Hashtbl.add fun_decls "not" Terms.not_fun;
+  Hashtbl.add fun_decls "not" (Terms.not_fun());
   Terms.record_id "not" dummy_ext;
-  global_env := StringMap.add "not" (EFun Terms.not_fun) (!global_env);
+  global_env := StringMap.add "not" (EFun (Terms.not_fun())) (!global_env);
   
-  Hashtbl.add fun_decls "&&" Terms.and_fun;
+  Hashtbl.add fun_decls "&&" (Terms.and_fun());
   Terms.record_id "&&" dummy_ext;
-  global_env := StringMap.add "&&" (EFun Terms.and_fun) (!global_env);
+  global_env := StringMap.add "&&" (EFun (Terms.and_fun())) (!global_env);
   
-  Hashtbl.add fun_decls "||" Terms.or_fun;
+  Hashtbl.add fun_decls "||" (Terms.or_fun());
   Terms.record_id "||" dummy_ext;
-  global_env := StringMap.add "||" (EFun Terms.or_fun) (!global_env);
+  global_env := StringMap.add "||" (EFun (Terms.or_fun())) (!global_env);
 
   Hashtbl.add fun_decls "cells" Param.state_fun;
   Terms.record_id "cells" dummy_ext;
@@ -413,7 +413,7 @@ let rec check_eq_term f_allowed fail_allowed_top fail_allowed_all env (term,ext)
       let (tl', tyl) = List.split (List.map (check_eq_term f_allowed false fail_allowed_all env) tlist) in
       let (f', result_type) = get_fun env (f,ext) tyl in
       f_allowed f' ext;
-      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types) then
+      if (f'.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()) then
 	match tl' with
 	  [t] -> (t, result_type)
 	| _ -> internal_error "type converter functions should always be unary"
@@ -438,16 +438,25 @@ let check_may_fail_term env type_term (mterm,ext) = match mterm with
 
 (* Equations *)
 
-let check_equation env t1 t2 =
-   let var_env = create_env env in
-   let (t1', ty1) = check_eq_term f_eq_tuple false false var_env t1 in
-   let (t2', ty2) = check_eq_term f_eq_tuple false false var_env t2 in
-   if ty1 != ty2 then
-     begin
-       let ext = merge_ext (snd t1) (snd t2) in
-       input_error "the two members of an equation should have the same type" ext
-     end;
-   TermsEq.register_equation (t1',t2')
+let check_equation l eqinfo =
+  let l' = List.map (fun (env, t1, t2) ->
+    let var_env = create_env env in
+    let (t1', ty1) = check_eq_term f_eq_tuple false false var_env t1 in
+    let (t2', ty2) = check_eq_term f_eq_tuple false false var_env t2 in
+    if ty1 != ty2 then
+      begin
+	let ext = merge_ext (snd t1) (snd t2) in
+	input_error "the two members of an equation should have the same type" ext
+      end;
+    (t1', t2')) l 
+  in
+  let eqinfo' = match eqinfo with
+    [] -> EqNoInfo
+  | ["convergent",ext] -> EqConvergent
+  | ["linear",ext] -> EqLinear
+  | (_,ext)::_ -> Parsing_helper.input_error "for equations, the only allowed options are either convergent or linear" ext
+  in
+  TermsEq.register_equation eqinfo' l'
 
 (* Definition of destructors using Otherwise. *)  
 
@@ -845,43 +854,47 @@ let pdeftbl = (Hashtbl.create 7 : (string, binder list * process) Hashtbl.t)
 
 (* Term from identifier *)  
 
-let get_type_from_ident env (s,ext) =
-   try
-     match StringMap.find s env with
-       EVar b -> b.btype
-     | EName r -> snd r.f_type
-     | EFun f ->
-         if fst f.f_type = [] then
-           snd f.f_type
-         else
-           input_error ("function " ^ s ^ " expects " ^
-                        (string_of_int (List.length (fst f.f_type))) ^
-                        " arguments but is used without arguments") ext
-     | _ -> input_error ("identifier " ^ s ^ " should be a variable, a function, or a name") ext
-   with Not_found ->
-     input_error ("Variable, function, or name " ^ s ^ " not declared") ext
-
 let get_term_from_ident env (s, ext) =
    try
      match StringMap.find s env with
-       EVar b -> 
-         begin 
-	   match b.link with
-           | NoLink -> Var(b)
-           | TLink t -> t
-           | _ -> internal_error "Bad link in the environment [pit_syntax_equivalence > get_term_from_ident]"
-         end
-     | EName r -> FunApp (r,[])
+       EVar b ->
+	 (fun proc_context -> proc_context
+           begin 
+	     match b.link with
+             | NoLink -> Var(b)
+             | TLink t -> t
+             | _ -> internal_error "Bad link in the environment [pit_syntax_equivalence > get_term_from_ident]"
+           end
+	     ), b.btype
+     | EName r ->
+	 (fun proc_context -> proc_context (FunApp (r,[]))), snd r.f_type
      | EFun f -> 
 	 if fst f.f_type = [] then
-	   FunApp(f,[])
+	   (fun proc_context -> proc_context (FunApp(f,[]))), snd f.f_type
 	 else
 	   input_error ("function " ^ s ^ " expects " ^ 
 			(string_of_int (List.length (fst f.f_type))) ^
 			" arguments but is used without arguments") ext
-     | _ -> input_error ("identifier " ^ s ^ " should be a variable, a function, or a name") ext
+     | ELetFun(func_proc_layer, arg_type_list, result_type) ->
+	 if arg_type_list != [] then
+    	   input_error ("letfun function " ^ s ^ " expects " ^ 
+			(args_to_string arg_type_list) ^
+			" but is used without arguments") ext;
+	 (func_proc_layer []), result_type
+     | EPred p ->
+	 if p.p_type != [] then
+	   input_error ("predicate " ^ s ^ " expects " ^ 
+			(args_to_string p.p_type) ^
+			" but is used without arguments") ext;
+	 (fun proc_context ->
+	   LetFilter([], Pred(p, []),
+		   proc_context Terms.true_term,
+		   proc_context Terms.false_term,
+		   Terms.new_occurrence ()
+		     )), Param.bool_type
+     | _ -> input_error ("identifier " ^ s ^ " should be a variable, a function, a name, or a predicate") ext
    with Not_found ->
-     input_error ("Variable, function, or name " ^ s ^ " not declared") ext
+     input_error ("Variable, function, name, or predicate " ^ s ^ " not declared") ext
 
 let get_cell_from_ident env (s,ext) =
    try
@@ -895,6 +908,24 @@ let get_cell_from_ident env (s,ext) =
 (*********************************************
                Checking Term
 **********************************************)
+
+let rec get_restr_arg env = function
+    [] -> []
+  | (s,ext)::l ->
+      if List.exists (fun (s',_) -> s' = s) l then
+	get_restr_arg env l 
+      else
+	try 
+	  match StringMap.find s env with
+	    EVar b -> b::(get_restr_arg env l)
+	  | _ ->
+	      Parsing_helper.input_error (s ^ " should be a variable") ext
+	with Not_found ->
+	  Parsing_helper.input_error ("variable " ^ s ^ " not defined") ext
+
+let get_restr_arg_opt env = function
+    None -> None
+  | Some l -> Some (get_restr_arg env l)
 
 let check_no_ref ext vlist proc_layer =
   let proc_layer_Nil = proc_layer (fun _ -> Nil) in
@@ -910,8 +941,7 @@ The function returns the translated process obtain from [proc_func] once [pterm]
 let rec check_term env (term, ext) =
   match term with
   | PPIdent(id) -> 
-      let ty = get_type_from_ident env id in
-      (fun proc_context -> proc_context (get_term_from_ident env id)),ty
+      get_term_from_ident env id
     	
   | PPTuple(term_list) ->
       let proc_layer_list, type_list = check_term_list env term_list in
@@ -921,15 +951,42 @@ let rec check_term env (term, ext) =
       in
       (proc_layer_tuple, Param.bitstring_type)
 
-  | PPRestr((s,ext),tyid,t) ->
+  | PPRestr((s,ext),args,tyid,t) ->
       let ty = get_type tyid in
       if (StringMap.mem s env) then
 	input_warning ("identifier " ^ s ^ " rebound") ext;
       let r = Terms.create_name s (Param.tmp_type, ty) true in
       let env' = StringMap.add s (EName r) env in
       let (proc_layer, type_t) = check_term env' t in
+      let args_opt = get_restr_arg_opt env args in
+      let rec get_lets_args = function
+	  [] -> ([],[])
+	| b::l ->
+	    let (lets,l') = get_lets_args l in
+	    match b.link with
+	      NoLink -> (lets, b::l')
+	    | TLink (Var b') -> 
+		(lets, b'::l')
+	    | TLink t -> 
+		let b' = Terms.new_var_noren b.sname b.btype in
+		let glet_symb =  Terms.glet_fun b.btype in
+		((b', FunApp(glet_symb, [t]))::lets, b'::l')
+	    | _ -> Parsing_helper.internal_error "unexpected link in Pitsyntax.check_term"
+      in
+      let get_lets_args_opt = function
+	  None -> ([], None)
+	| Some l -> 
+	    let lets, l' = get_lets_args l in
+	    (lets, Some l')
+      in
+      let rec put_lets p = function
+	  [] -> p
+	| (v,t)::l -> put_lets (Let(PatVar v,t,p,Nil,Terms.new_occurrence())) l
+      in
       let proc_layer_restr proc_context = 
-	Restr(r, proc_layer proc_context, Terms.new_occurrence()) 
+	let (lets, args_opt') = get_lets_args_opt args_opt in
+	put_lets
+	  (Restr(r, (args_opt', env), proc_layer proc_context, Terms.new_occurrence())) lets
       in
       (proc_layer_restr, type_t)
 	
@@ -939,7 +996,7 @@ let rec check_term env (term, ext) =
     	let (proc_layer_list, type_list) = check_term_list env list_arg in
     	match get_apply_symb env (s,ext) type_list with
 	  (EFun f, result_type) ->
-    	    if (f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types) then
+    	    if (f.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()) then
     	      (* For a type converter function, the result is directly given : no FunApp.
     	         Furthermore, the number of argument should be 1 *)
     	      let proc_layer proc_context =
@@ -1001,16 +1058,46 @@ let rec check_term env (term, ext) =
     	       type_then.tname type_else.tname)
             ext;
    	
-	let proc_layer proc_context = 
-	  proc_layer_cond (fun c ->
-	    proc_layer_then (fun tthen ->
-	      proc_layer_else (fun telse ->
-                 let gtest_symb = Terms.gtest_fun type_then in
-                 proc_context (FunApp(gtest_symb,[c;tthen;telse]))
-		   )))
-	in
-          
-        (proc_layer, type_then)
+	if !Param.expand_if_terms_to_terms then
+	       
+          let proc_layer proc_context = 
+	    proc_layer_cond (fun c ->
+	      proc_layer_then (fun tthen ->
+	        proc_layer_else (fun telse ->
+                  let gtest_symb = Terms.gtest_fun type_then in
+                  proc_context (FunApp(gtest_symb,[c;tthen;telse]))
+	    )))
+	  in
+          (proc_layer, type_then)
+        else
+	  begin
+	    match term_else_opt with
+              Some term_else -> 
+                let fail = Terms.get_fail_term type_then in
+	        let b = Terms.new_var Param.def_var_name Param.bool_type in
+                let proc_layer proc_context =
+		  proc_layer_cond (fun c ->
+                  Let(PatVar b, c,
+		      Test(Var b, proc_layer_then proc_context,
+		 	   proc_layer_else proc_context,
+			   Terms.new_occurrence()),
+		      proc_context fail,
+		      Terms.new_occurrence()))
+                in
+                (proc_layer, type_then) 
+
+	    | None ->
+                let fail = Terms.get_fail_term type_then in
+                let proc_layer proc_context =
+		  proc_layer_cond (fun c ->
+		    Let(PatEqual (Terms.true_term), c,
+		        proc_layer_then proc_context,
+                        proc_context fail,
+                        Terms.new_occurrence()))
+                in
+                (proc_layer, type_then) 
+	  end
+
         
     | PPLet(pat,term,term_then, term_else_opt) ->
        	(* This case will be transformed into a process Let which will never fail,
@@ -1054,9 +1141,9 @@ let rec check_term env (term, ext) =
        		       proc_layer_then (fun t_then ->
        	                 proc_layer_else (fun t_else ->
        	                   proc_context (FunApp(Terms.gtest_fun type_then,
-						[ FunApp(Terms.and_fun,
+						[ FunApp(Terms.and_fun(),
 							 [ FunApp(Terms.not_caught_fail_fun type_term, [var]);
-							   FunApp(Terms.success_fun Param.bool_type, [FunApp(Terms.is_true_fun, [test])]) ]);
+							   FunApp(Terms.success_fun Param.bool_type, [FunApp(Terms.is_true_fun(), [test])]) ]);
 						  t_then; t_else ]))
        	                 )
        	               ),
@@ -1227,7 +1314,7 @@ and check_pattern environment type_pat_opt pat new_env =
               if f.f_cat <> Tuple then
                 input_error ("only data functions are allowed in patterns, not " ^ s) ext;
                 
-              if (f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types)
+              if (f.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types())
               then  
                 let layer_proc context = 
                   layer_list (fun l -> match l with
@@ -1332,7 +1419,7 @@ and check_pattern_into_one_var ext environment type_pat_opt pat =
              let test_proper_tuple = FunApp(success_symb,[fst_elt]) in
              match opt_test with
              | None -> context f_pat (Some test_proper_tuple)
-             | Some(test) -> context f_pat (Some (FunApp(Terms.and_fun,[test;test_proper_tuple])))
+             | Some(test) -> context f_pat (Some (FunApp(Terms.and_fun(),[test;test_proper_tuple])))
            ) 
        in
            
@@ -1373,7 +1460,7 @@ and check_pattern_into_one_var ext environment type_pat_opt pat =
                 (layer_proc, env, snd f.f_type)
             | EFun f-> 
                 begin 
-		  match type_pat_opt with
+		  match cor_ty_opt with
                   | None -> ()
                   | Some ty -> 
                       if ty != snd f.f_type then 
@@ -1390,7 +1477,7 @@ and check_pattern_into_one_var ext environment type_pat_opt pat =
                 if f.f_cat <> Tuple then
                   input_error ("only data functions are allowed in patterns, not " ^ s) ext;
                 
-                if (f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types)
+                if (f.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types())
                 then  
                   let layer_proc final_pat cor_term context = 
                     layer_list final_pat ([cor_term]) context in
@@ -1406,7 +1493,7 @@ and check_pattern_into_one_var ext environment type_pat_opt pat =
                          let test_proper_tuple = FunApp(success_symb,[fst_elt]) in
                          match opt_test with
                            | None -> context f_pat (Some test_proper_tuple)
-                           | Some(test) -> context f_pat (Some (FunApp(Terms.and_fun,[test;test_proper_tuple])))
+                           | Some(test) -> context f_pat (Some (FunApp(Terms.and_fun(),[test;test_proper_tuple])))
                       ) 
 		  in
                     
@@ -1431,7 +1518,7 @@ and check_pattern_into_one_var ext environment type_pat_opt pat =
                      |None,None -> context f_pat' None
                      |None,Some(_) -> context f_pat' opt_test'
                      |Some(_),None -> context f_pat' opt_test
-                     |Some(test),Some(test') -> context f_pat' (Some (FunApp(Terms.and_fun,[test; test'])))
+                     |Some(test),Some(test') -> context f_pat' (Some (FunApp(Terms.and_fun(),[test; test'])))
                 )
             ) in
             
@@ -1555,14 +1642,32 @@ let get_table_fun env (s,ext) tl =
 (*********************************************
               Checking Process
 **********************************************)	            
-    
-let rec has_destr = function
-    Var _ -> false
+
+(* [term_may_fail t] returns [true] when [t] may fail
+   and [false] when [t] for sure does not fail. *)
+      
+let rec term_may_fail = function
+    Var v -> v.unfailing
   | FunApp(f,l) -> 
       (match f.f_cat with
-	Eq _ | Tuple | Choice | Name _ -> false
-      |	_ -> true) || (List.exists has_destr l)
+       Eq _ | Tuple | Choice | Name _ -> false
+      |        _ -> true) || (List.exists term_may_fail l)
 
+let rec used_in_restr b = function
+    Nil -> false
+  | NamedProcess(_, _, p) -> used_in_restr b p
+  | Test(_,p1,p2,_) | Get(_,_,p1,p2,_) | Let(_,_,p1,p2,_)
+  | LetFilter(_,_,p1,p2,_) | Par(p1,p2) -> 
+      (used_in_restr b p1) || (used_in_restr b p2)
+  | Input(_,_,p,_) | Output(_,_,p,_) | Event(_,_,p,_) | Insert(_,p,_)
+  | Phase(_,p,_) | Repl(p,_) | Barrier(_,_,p,_) | AnnBarrier(_,_,_,_,_,p,_) -> 
+      used_in_restr b p 
+  | Restr(f,(args,env),p,_) ->
+      (match args with
+	None -> false
+      | Some l -> List.memq b l) || (used_in_restr b p)
+  | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_) | ReadAs(_,p,_) | Assign(_,p,_) -> used_in_restr b p
+      
 let rec check_process env process = match process with
   | PNil -> Nil
   | PPar(p1,p2) -> Par(check_process env p1, check_process env p2)
@@ -1574,7 +1679,17 @@ let rec check_process env process = match process with
         input_error "The condition on the test should be of type boolean" (snd cond);
        
       layer_proc_cond (fun t ->
-        Test(t,check_process env p1, check_process env p2, Terms.new_occurrence ())
+	if !Param.expand_simplify_if_cst then
+	  begin
+	    if Terms.equal_terms t Terms.true_term then
+	      check_process env p1
+	    else if Terms.equal_terms t Terms.false_term then
+	      check_process env p2
+	    else
+              Test(t,check_process env p1, check_process env p2, Terms.new_occurrence ())
+	  end
+	else
+	  Test(t,check_process env p1, check_process env p2, Terms.new_occurrence ())
       )
         
   | PLetDef((s,ext), args) -> 
@@ -1582,6 +1697,7 @@ let rec check_process env process = match process with
       begin
 	try
           let (param, p') = Hashtbl.find pdeftbl s in
+          let p' = NamedProcess(s, (List.map (fun b -> Var b) param), p') in
 	  let ptype = List.map (fun b -> b.btype) param in
 	  if not (Terms.eq_lists ptype type_list) then
 	    input_error ("process " ^ s ^ " expects " ^ 
@@ -1592,14 +1708,20 @@ let rec check_process env process = match process with
           	 
           assert (!Terms.current_bound_vars == []);
 	    
-	    
-	  proc_layer_list (fun l -> 
+	    proc_layer_list (fun l -> 
 	    let p = ref p' in
-	      List.iter2 (fun t v -> 
-	        if has_destr t then 
-		  p := Let(PatVar v, t, (!p), Nil, Terms.new_occurrence())
-	        else
-		  Terms.link v (TLink t)) l param;
+	    List.iter2 (fun t v ->
+	      if (not v.unfailing) && (term_may_fail t || 
+		(* Simplify.copy_process does not support linking a variable
+		   that occurs in the argument of a Restr to a non-variable
+		   term (because arguments of Restr are always variables,
+		   and it would need to replace that variable with a 
+		   non-variable term).
+		   Hence we introduce a Let to keep a variable in this case *)
+	         (used_in_restr v (!p) && not (Terms.is_var t))) then 
+		p := Let(PatVar v, t, (!p), Nil, Terms.new_occurrence())
+	      else
+		Terms.link v (TLink t)) l param;
             
             let p'' = Simplify.copy_process false (!p) in
             Terms.cleanup ();
@@ -1609,12 +1731,12 @@ let rec check_process env process = match process with
           input_error ("process " ^ s ^ " not defined") ext
       end
   
-  | PRestr((s,ext),t,p) ->
+  | PRestr((s,ext),args,t,p) ->
       let ty = get_type t in
       if (StringMap.mem s env) then
 	input_warning ("identifier " ^ s ^ " rebound") ext;
       let r = Terms.create_name s (Param.tmp_type, ty) true in
-      Restr(r, check_process (StringMap.add s (EName r) env) p, Terms.new_occurrence())
+      Restr(r, (get_restr_arg_opt env args, env), check_process (StringMap.add s (EName r) env) p, Terms.new_occurrence())
       
   | PInput(ch_term,pat,p) ->
       let layer_channel, type_ch = check_term env ch_term in
@@ -1635,7 +1757,7 @@ let rec check_process env process = match process with
             | Some(test) -> 
                 let x = new_var_def Param.boolean_type in
                 Input(ch, pattern,
-                  Let(PatVar x, FunApp(Terms.is_true_fun, [test]),check_process env' p, Nil, new occurence ()),
+                  Let(PatVar x, FunApp(Terms.is_true_fun(), [test]),check_process env' p, Nil, new occurence ()),
                   new_occurence ())
         )
       )
@@ -1682,18 +1804,19 @@ let rec check_process env process = match process with
          LetFilter(vlist,fact', check_process env' p, check_process env q, Terms.new_occurrence ())
        )
    
-   | PEvent((i,ext),l,p) -> 
+   | PEvent((i,ext),l,env_args,p) -> 
        let layer_list,type_list = check_term_list env l in
-       
+       let env_args' = (get_restr_arg_opt env env_args, env) in
+
        if !Param.key_compromise == 0 then
          let f = get_event_fun env (i,ext) type_list in
          
-         layer_list (fun l' -> Event(FunApp(f, l'), check_process env p, Terms.new_occurrence()))
+         layer_list (fun l' -> Event(FunApp(f, l'), env_args', check_process env p, Terms.new_occurrence()))
        else
 	 let f = get_event_fun env (i,ext) (Param.sid_type :: type_list) in
 	
 	 layer_list (fun l' -> 
-	   Event(FunApp(f, (Terms.new_var_def Param.sid_type) :: l'), 
+	   Event(FunApp(f, (Terms.new_var_def Param.sid_type) :: l'), env_args', 
 	     check_process env p, 
 	     Terms.new_occurrence()
 	   )
@@ -1882,6 +2005,51 @@ let set_need_vars_in_names() =
   List.iter (fun (_, no) -> nvn_t no) (!not_list);
   List.iter (fun (_, nounif) -> nvn_nounif nounif) (!nounif_list)
 
+let rec has_nvn_t (term, ext0) =
+  match term with
+    PGIdent _ -> false
+  | PGFunApp(_,l) | PGPhase(_,l, _) | PGTuple l -> List.exists has_nvn_t l
+  | PGName ((s,ext),bl) -> bl != []
+  | PGLet(_,t,t') -> (has_nvn_t t) || (has_nvn_t t')
+
+let rec has_nvn_f (f,ext0) = 
+  match f with
+    PFGIdent _ | PFGAny _ -> false
+  | PFGFunApp(_,l) | PFGTuple l -> List.exists has_nvn_f l
+  | PFGName ((s,ext),bl) -> bl != []
+  | PFGLet(_,t,t') -> (has_nvn_f t) || (has_nvn_f t')
+
+let rec has_nvn_nounif = function
+    BFLet(_,t,nounif) ->  (has_nvn_f t) || (has_nvn_nounif nounif)
+  | BFNoUnif((id,fl,n),_) -> List.exists has_nvn_f fl
+
+let reset_need_vars_in_names() =
+  (* Since simplification does not support specifying new a[x = ...],
+     I remove the secrecy assumptions and nounif declaration that need that. *)
+  need_vars_in_names := [];
+  let secrecy_assumption_removed = ref false in
+  not_list := List.filter (fun (_, no) -> 
+    if has_nvn_t no then
+      begin
+	secrecy_assumption_removed := true;
+	false
+      end
+    else
+      true) (!not_list);
+  if !secrecy_assumption_removed then
+    print_string "Warning! Removed one or several several not declarations that used a construct of the form new a[x = ...].\n";
+  let nounif_removed = ref false in
+  nounif_list := List.filter (fun (_, nounif) -> 
+    if has_nvn_nounif nounif then
+      begin
+	nounif_removed := true;
+	false
+      end
+    else
+      true) (!nounif_list);
+  if !nounif_removed then
+    print_string "Warning! Removed one or several several nounif declarations that used a construct of the form new a[x = ...].\n"
+
 (* Macro expansion *)
 
 let macrotable = ref StringMap.empty
@@ -1961,7 +2129,13 @@ let rec rename_pterm (t,ext) =
     PPIdent i -> PPIdent (rename_ie i)
   | PPFunApp(f,l) -> PPFunApp(rename_ie f, List.map rename_pterm l)
   | PPTuple(l) -> PPTuple(List.map rename_pterm l)
-  | PPRestr(i,ty,t) -> PPRestr(rename_ie i, rename_ie ty, rename_pterm t)
+  | PPRestr(i,args,ty,t) -> 
+      let args' = 
+	match args with
+	  None -> None
+	| Some l-> Some (List.map rename_ie l)
+      in
+      PPRestr(rename_ie i, args', rename_ie ty, rename_pterm t)
   | PPTest(t1,t2,t3opt) -> PPTest(rename_pterm t1, rename_pterm t2, rename_pterm_opt t3opt)
   | PPLet(pat, t1, t2, t3opt) -> PPLet(rename_pat pat, rename_pterm t1, rename_pterm t2, rename_pterm_opt t3opt)
   | PPLetFilter(l, t1, t2, t3opt) -> PPLetFilter(List.map(fun (i,ty) -> (rename_ie i, rename_ie ty)) l, rename_pterm t1, rename_pterm t2, rename_pterm_opt t3opt)
@@ -1984,17 +2158,30 @@ let rec rename_process = function
     PNil -> PNil
   | PPar(p1,p2) -> PPar(rename_process p1, rename_process p2)
   | PRepl(p) -> PRepl(rename_process p)
-  | PRestr(i,ty,p) -> PRestr(rename_ie i, rename_ie ty, rename_process p)
+  | PRestr(i,args,ty,p) -> 
+      let args' = 
+	match args with
+	  None -> None
+	| Some l -> Some (List.map rename_ie l)
+      in
+      PRestr(rename_ie i, args', rename_ie ty, rename_process p)
   | PLetDef(i,l) -> PLetDef(rename_ie i, List.map rename_pterm l)
   | PTest(t,p1,p2) -> PTest(rename_pterm t, rename_process p1, rename_process p2)
   | PInput(t,pat,p) -> PInput(rename_pterm t, rename_pat pat, rename_process p)
   | POutput(t1,t2,p) -> POutput(rename_pterm t1, rename_pterm t2, rename_process p)
   | PLet(pat, t, p1, p2) -> PLet(rename_pat pat, rename_pterm t, rename_process p1, rename_process p2)
   | PLetFilter(l, t, p1, p2) -> PLetFilter(List.map (fun (i,ty) -> (rename_ie i, rename_ie ty)) l, rename_pterm t, rename_process p1, rename_process p2)
-  | PEvent(i,l,p) -> PEvent(rename_ie i ,List.map rename_pterm l, rename_process p)
+  | PEvent(i,l,env_args,p) -> 
+      let env_args' = 
+	match env_args with
+	  None -> None
+	| Some l -> Some (List.map rename_ie l)
+      in
+      PEvent(rename_ie i ,List.map rename_pterm l, env_args', rename_process p)
   | PInsert(i,l,p) -> PInsert(rename_ie i ,List.map rename_pterm l, rename_process p)
-  | PGet(i,patl,topt,p,elsep) -> PGet(rename_ie i ,List.map rename_pat patl, (match topt with None -> None | Some t -> Some (rename_pterm t)), rename_process p, rename_process elsep)
+  | PGet(i,patl,topt,p,elsep) -> PGet(rename_ie i ,List.map rename_pat patl, rename_pterm_opt topt, rename_process p, rename_process elsep)
   | PPhase(n,p) -> PPhase(n, rename_process p)
+  | PBarrier(n,tag,p) -> PBarrier(n, tag, rename_process p)
   | PLock(st,p) -> PLock(List.map rename_ie st, rename_process p)
   | PUnlock(st,p) -> PUnlock(List.map rename_ie st, rename_process p)
   | POpen(st,p) -> POpen(List.map rename_ie st, rename_process p)
@@ -2018,11 +2205,11 @@ let rename_decl = function
   | TConstDecl(i,ty,opt) -> TConstDecl(rename_ie i, rename_ie ty, opt)
   | TReduc(l,opt) -> TReduc(List.map (fun (env,t1,t2) -> (rename_env env,rename_term t1, rename_term t2)) l, opt)
   | TReducFail(f, ty_arg,ty_res,l,opt) -> TReducFail(rename_ie f, List.map rename_ie ty_arg, rename_ie ty_res, List.map (fun (env,t1,t2) -> (rename_may_fail_env env,rename_term t1, rename_term t2)) l, opt)
-  | TEquation(env, t1, t2) -> TEquation(rename_env env, rename_term t1, rename_term t2)
+  | TEquation(l, eqinfo) -> TEquation(List.map (fun (env, t1, t2) -> (rename_env env, rename_term t1, rename_term t2)) l, eqinfo)
   | TPredDecl(i,l,opt) -> TPredDecl(rename_ie i, List.map rename_ie l, opt)
   | TSet ((_,ext),_) ->
       input_error "set is not allowed inside macro definitions" ext
-  | TPDef(i,env,p) -> TPDef(rename_ie i, rename_env env, rename_process p)
+  | TPDef(i,env,p) -> TPDef(rename_ie i, rename_may_fail_env env, rename_process p)
   | TQuery(env, l) -> TQuery(rename_env env, List.map rename_query l)
   | TNoninterf(env, l) -> TNoninterf(rename_env env, List.map (fun (i,tlopt) ->
       (rename_ie i, match tlopt with
@@ -2045,7 +2232,7 @@ let rename_decl = function
       input_error "macro definitions are not allowed inside macro definitions" ext1
   | TExpand((s1,ext1),argl) ->
       internal_error "macro-expansion inside a macro should have been expanded at macro definition point" 
-  | TLetFun(i,env,t) -> TLetFun(rename_ie i, rename_env env, rename_pterm t)
+  | TLetFun(i,env,t) -> TLetFun(rename_ie i, rename_may_fail_env env, rename_pterm t)
 
 let apply argl paraml already_def def =
   rename_table := StringMap.empty;
@@ -2065,7 +2252,7 @@ let rec check_one = function
     TTypeDecl(i) -> check_type_decl i
   | TFunDecl(f,argt,rest,i) -> check_fun_decl f argt rest i
   | TConstDecl(f,rest,i) -> check_fun_decl f [] rest i
-  | TEquation(env,t1,t2) -> check_equation env t1 t2
+  | TEquation(l,eqinfo) -> check_equation l eqinfo
   | TReduc (r,i) -> check_red r i
   | TReducFail (f,ty_arg,ty_res,r,i) -> check_red_may_fail f ty_arg ty_res r i
   | TPredDecl (p, argt, info) -> check_pred p argt info
@@ -2073,7 +2260,7 @@ let rec check_one = function
   | TTableDecl(i, args) -> check_table i args
   | TPDef ((s,ext), args, p) -> 
       let env = ref (!global_env) in
-      let arglist = List.map (fun ((s',ext'),ty) ->
+      let arglist = List.map (fun ((s',ext'),ty,may_fail) ->
 	let t = get_type ty in
 	begin
 	  try
@@ -2083,7 +2270,7 @@ let rec check_one = function
 	  with Not_found ->
 	    ()
 	end;
-	let v = Terms.new_var_noren s' t in
+	let v = Terms.new_var_noren_with_fail s' t may_fail in
 	env := StringMap.add s' (EVar v) (!env);
 	v
 	       ) args
@@ -2116,7 +2303,7 @@ let rec check_one = function
       let initial_env = !global_env in
       let env = ref (!global_env) in
       
-      let type_arg_list = List.map (fun ((s',ext'),ty) ->
+      let type_arg_list = List.map (fun ((s',ext'),ty,may_fail) ->
 	let t = get_type ty in
 	begin
 	  try
@@ -2136,22 +2323,33 @@ let rec check_one = function
       
       let func_proc_layer list_term_arg proc_context = 
         let env = ref initial_env in
-        
+        let ok_args = ref [] in
         let rec link_the_variables args_list term_args_list = match args_list,term_args_list with
           | [],[] -> ()
           | [],_ | _,[] -> internal_error "Should have the same size"
-          | ((s',ext'),ty)::q,term::q_term ->
+          | ((s',ext'),ty,may_fail)::q,term::q_term ->
               let t = get_type ty in
-              let v = Terms.new_var_noren s' t in
+              let v = Terms.new_var_noren_with_fail s' t may_fail in
               v.link <- TLink term;
               env := StringMap.add s' (EVar v) (!env);
+	      if (not may_fail) && (term_may_fail term) then
+		ok_args := (FunApp(Terms.success_fun t, [term])) :: (!ok_args);
               link_the_variables q q_term in
               
         link_the_variables args list_term_arg;
         
         let (proc_layer, _) = check_term (!env) p in
         
-        proc_layer proc_context in
+        proc_layer (fun tthen ->
+          if (!ok_args) = [] then proc_context tthen else
+          (* The arguments that are not marked "or fail" must not fail.
+             If they fail, the result of the "letfun" is fail as well *)
+          let gtest_symb = Terms.gtest_fun type_result in
+          let fail = Terms.get_fail_term type_result in
+          let cond = Terms.and_list (!ok_args) in
+          proc_context (FunApp(gtest_symb, [cond; tthen; fail]))
+            )
+      in
         
       global_env := StringMap.add s (ELetFun(func_proc_layer, type_arg_list, type_result)) (!global_env)
 
@@ -2203,24 +2401,28 @@ let rec set_max_used_phase = function
     Nil -> ()
   | Par(p1,p2) -> set_max_used_phase p1; set_max_used_phase p2
   | Repl (p,_) ->  set_max_used_phase p
-  | Restr(n,p,_) -> set_max_used_phase p
+  | Restr(n,_,p,_) -> set_max_used_phase p
   | Test(_,p1,p2,_) -> set_max_used_phase p1; set_max_used_phase p2
   | Input(_,_, p,_) -> set_max_used_phase p
   | Output(_,_,p,_) -> set_max_used_phase p
   | Let(_,_,p1, p2,_) -> set_max_used_phase p1; set_max_used_phase p2
   | LetFilter(_,_,p,q,_) -> set_max_used_phase p; set_max_used_phase q
-  | Event(_,p,_) -> set_max_used_phase p
+  | Event(_,_,p,_) -> set_max_used_phase p
   | Insert(_,p,_) -> set_max_used_phase p
+  | NamedProcess(_, _, p) -> set_max_used_phase p
   | Get(_,_,p,q,_) -> set_max_used_phase p; set_max_used_phase q
   | Phase(n,p,_) ->
       if n > !Param.max_used_phase then
 	Param.max_used_phase := n;
       set_max_used_phase p
+  | Barrier(_,_,p,_) ->
+      set_max_used_phase p
+  | AnnBarrier _ ->
+      Parsing_helper.internal_error "Annotated barriers should not occur in the initial process"
   | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_) | ReadAs(_,p,_) | Assign(_,p,_) -> set_max_used_phase p
 
       
 let parse_file s = 
-  initialyse_env_and_fun_decl();
   let (decl, proc, second_proc) = parse_with_lib s in
   (* ignoreTypes must be set before doing the rest of the work
      Setting all parameters beforehand does not hurt. 
@@ -2250,6 +2452,7 @@ let parse_file s =
 	  | "verboseClauses", S ("short",_) -> Param.verbose_explain_clauses := Param.Clauses
 	  | "verboseClauses", S ("none",_) -> Param.verbose_explain_clauses := Param.NoClauses
 	  | "explainDerivation", _ -> Param.boolean_param Param.explain_derivation p ext v
+	  | "removeUselessClausesBeforeDisplay", _ -> Param.boolean_param Param.remove_subsumed_clauses_before_display p ext v
 	  | "predicatesImplementable", S("check",_) -> Param.check_pred_calls := true
 	  | "predicatesImplementable", S("nocheck",_) -> Param.check_pred_calls := false
 	  | "eqInNames", _ -> Param.boolean_param Param.eq_in_names p ext v
@@ -2261,15 +2464,22 @@ let parse_file s =
 	  | "traceDisplay", S ("none",_) -> Param.trace_display := Param.NoDisplay
 	  | "traceDisplay", S ("short",_) -> Param.trace_display := Param.ShortDisplay
 	  | "traceDisplay", S ("long",_) -> Param.trace_display := Param.LongDisplay
-	  | "ignoreTypes", S (("all" | "true" | "yes"), _) -> Param.ignore_types := true
-	  | "ignoreTypes", S (("none" | "attacker" | "false" | "no"), _) -> Param.ignore_types := false
+	  | "ignoreTypes", S (("all" | "true" | "yes"), _) -> Param.set_ignore_types true
+	  | "ignoreTypes", S (("none" | "attacker" | "false" | "no"), _) -> Param.set_ignore_types false
 	  | "simplifyProcess", S (("true" | "yes"), _) -> Param.simplify_process := 1
 	  | "simplifyProcess", S (("false" | "no"), _) -> Param.simplify_process := 0
 	  | "simplifyProcess", S ("interactive", _) -> Param.simplify_process := 2
+	  | "rejectChoiceTrueFalse", _ -> Param.boolean_param Param.reject_choice_true_false p ext v
+          | "rejectNoSimplif", _ -> Param.boolean_param Param.reject_no_simplif p ext v
+	  | "expandIfTermsToTerms", _ -> Param.boolean_param Param.expand_if_terms_to_terms p ext v
+	  | "expandSimplifyIfCst", _ -> Param.boolean_param Param.expand_simplify_if_cst p ext v
+	  | "interactiveSwapping", _ -> Param.boolean_param Param.interactive_swapping p ext v
+	  | "swapping", S sext -> Param.set_swapping := Some sext
 	  | _,_ -> Param.common_parameters p ext v
 	end
     | _ -> ()) decl;
-    
+  Param.default_set_ignore_types();
+  initialize_env_and_fun_decl();
   
   (* *)
 
@@ -2318,7 +2528,7 @@ let non_compromised_session = FunApp(Param.session1, [])
 (* Note: when check_query, get_queries are applied before the
    translation of the process into Horn clauses has been done, 
    the arity of names may not be correctly initialized. In this case,
-   update_arity_names should be called after the translation of the
+   update_type_names should be called after the translation of the
    process to update it.  *)
 
 let get_ident_any env (s, ext) =
@@ -2344,7 +2554,7 @@ let get_ident_any env (s, ext) =
    with Not_found ->
      input_error ("identifier " ^ s ^ " not defined") ext
 
-let rec check_query_term env (term, ext0) =
+let rec check_query_term names_must_be_encoded env (term, ext0) =
   match term with
     PGIdent i -> 
       let t = get_ident_any env i in
@@ -2352,9 +2562,9 @@ let rec check_query_term env (term, ext0) =
   | PGPhase _ -> input_error ("phase unexpected in query terms") ext0
   | PGFunApp((s,ext),l) -> 
       (* FunApp: only constructors allowed *)
-      if List.mem s ["="; "<>"; "==>"; "&&"; "||"; "event"; "inj-event"] then
+      if List.mem s ["="; "<>"; "==>"; "&&"; "||"; "event"; "inj-event"; "table"] then
 	input_error (s ^ " unexpected in query terms") ext;
-      let (l', tl') = List.split (List.map (check_query_term env) l) in
+      let (l', tl') = List.split (List.map (check_query_term names_must_be_encoded env) l) in
       let (f, result_type) = get_fun env (s,ext) tl' in
       begin
         match f.f_cat with
@@ -2365,14 +2575,14 @@ let rec check_query_term env (term, ext0) =
 	      input_error "choice cannot be used in queries or not declarations, except for not declarations when proving equivalences" ext
         | _ ->  input_error ("function " ^ s ^ " is defined by \"reduc\". Such a function should not be used in a query") ext
       end;
-      if (f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types) then
+      if (f.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()) then
 	match l' with
 	  [t] -> (t, result_type)
 	| _ -> internal_error "type converter functions should always be unary"
       else
 	(FunApp(f, l'), result_type)
   | PGTuple l -> 
-      let (l', tl') = List.split (List.map (check_query_term env) l) in
+      let (l', tl') = List.split (List.map (check_query_term names_must_be_encoded env) l) in
       (FunApp(Terms.get_tuple_fun tl', l'), Param.bitstring_type)
   | PGName ((s,ext),bl) -> 
       begin
@@ -2381,20 +2591,26 @@ let rec check_query_term env (term, ext0) =
 	  check_single ext s;
 	  if fst r.f_type == Param.tmp_type then
 	    begin
-	      let v = Terms.new_var Param.def_var_name (snd r.f_type) in
-	      v.link <- PGTLink (env, (term,ext0));
-	      (Var v, snd r.f_type)
+	      if names_must_be_encoded then
+		Parsing_helper.input_error ("You are referring to name " ^ s ^ " in this query or secrecy assumption, but this name will never be generated") ext
+	      else
+		begin
+		  let v = Terms.new_var Param.def_var_name (snd r.f_type) in
+		  v.link <- PGLink (fun () -> fst (check_query_term true env (term,ext0)));
+		  (Var v, snd r.f_type)
+		end
 	    end
 	  else
 	    begin
 	      match r.f_cat with 
 		Name { prev_inputs_meaning = sl } ->
 		  List.iter (fun ((s',ext'),_) -> 
-		    if not (List.mem s' sl) then
+		    if not (List.exists (fun m -> Reduction_helper.meaning_encode m = s') sl) then
 		      input_error ("variable " ^ s' ^ " not defined at restriction " ^ s) ext') bl;
-		  let p = List.map2 (fun s'' ty ->
-		    if s'' = "!comp" then non_compromised_session else
-		    binding_find env s'' ty bl) sl (fst r.f_type)
+		  let p = List.map2 (fun m ty ->
+		    match m with
+		      MCompSid -> non_compromised_session 
+                    | _ -> binding_find names_must_be_encoded env (Reduction_helper.meaning_encode m) ty bl) sl (fst r.f_type)
 		  in
 		  (FunApp(r, p), snd r.f_type)
 	      | _ -> internal_error "name expected here"
@@ -2402,14 +2618,14 @@ let rec check_query_term env (term, ext0) =
 	with Not_found ->
 	  input_error (s ^ " should be a name") ext
       end
-  | PGLet(id,t,t') -> check_query_term (add_binding env (id,t)) t'
+  | PGLet(id,t,t') -> check_query_term names_must_be_encoded (add_binding names_must_be_encoded env (id,t)) t'
 
-and binding_find env s ty = function
+and binding_find names_must_be_encoded env s ty = function
     [] -> Terms.new_var_def ty
   | ((s',ext),t)::l ->
       if s' = s then
 	begin
-	  let (t', ty') = check_query_term env t in
+	  let (t', ty') = check_query_term names_must_be_encoded env t in
 	  if ty' != ty then
 	    input_error ("this variable is of type " ^ ty.tname ^ " but is given a value of type " ^ ty'.tname) ext;
 	  if (s <> "") && (s.[0] = '!') then
@@ -2421,9 +2637,9 @@ and binding_find env s ty = function
 	  t'
 	end
       else
-	binding_find env s ty l
+	binding_find names_must_be_encoded env s ty l
 
-and add_binding env ((i,ext),t) =
+and add_binding names_must_be_encoded env ((i,ext),t) =
   begin
     try
       match StringMap.find i env with
@@ -2431,12 +2647,12 @@ and add_binding env ((i,ext),t) =
       | _ -> ()
     with Not_found -> ()
   end;
-  let (t', ty') = check_query_term env t in
+  let (t', ty') = check_query_term names_must_be_encoded env t in
   let v = Terms.new_var i ty' in
   v.link <- TLink t';
   StringMap.add i (EVar v) env
 
-let check_mess env e tl n =
+let check_mess names_must_be_encoded env e tl n =
   match tl with
     [t1;t2] ->
       if n > !Param.max_used_phase then
@@ -2444,8 +2660,8 @@ let check_mess env e tl n =
 	  input_warning "phase greater than the maximum phase used in the process.\nIs that really what you want?" e;
 	  Param.max_used_phase := n;
 	end;
-      let (t1', ty1) = check_query_term env t1 in
-      let (t2', ty2) = check_query_term env t2 in
+      let (t1', ty1) = check_query_term names_must_be_encoded env t1 in
+      let (t2', ty2) = check_query_term names_must_be_encoded env t2 in
       if ty1 != Param.channel_type then
 	input_error ("First argument of mess is of type " ^ ty1.tname ^ " and should be of type channel") e;
       let mess_n = Param.get_pred (Mess((if n = -1 then (!Param.max_used_phase) else n),
@@ -2455,7 +2671,7 @@ let check_mess env e tl n =
   | _ -> 
       input_error "arity of predicate mess should be 2" e
 
-let check_attacker env e tl n =
+let check_attacker names_must_be_encoded env e tl n =
   match tl with
     [t1] ->
       if n > !Param.max_used_phase then
@@ -2463,7 +2679,7 @@ let check_attacker env e tl n =
 	  input_warning "phase greater than the maximum phase used in the process.\nIs that really what you want?" e;
 	  Param.max_used_phase := n;
 	end;
-      let (t1', ty1) = check_query_term env t1 in
+      let (t1', ty1) = check_query_term names_must_be_encoded env t1 in
       let att_n = Param.get_pred (Attacker((if n = -1 then (!Param.max_used_phase) else n),
 	                                   ty1)) 
       in
@@ -2471,18 +2687,43 @@ let check_attacker env e tl n =
   | _ -> 
       input_error "arity of predicate attacker should be 1" e
 
-let rec check_event env (f,e) =
+let rec check_table_term names_must_be_encoded env (term, ext0) =
+  match term with
+  | PGFunApp((s,ext),l) -> 
+      (* FunApp: only tables allowed *)
+      if List.mem s ["="; "<>"; "==>"; "&&"; "||"; "event"; "inj-event"; "table"] then
+	input_error (s ^ " unexpected in query terms") ext;
+      let (l', tl') = List.split (List.map (check_query_term names_must_be_encoded env) l) in
+      let f = get_table_fun env (s,ext) tl' in
+      FunApp(f, l')
+  | _ -> input_error "Table term expected" ext0
+
+let check_table names_must_be_encoded env e tl n =
+  match tl with
+    [t1] ->
+      if n > !Param.max_used_phase then
+	begin
+	  input_warning "phase greater than the maximum phase used in the process.\nIs that really what you want?" e;
+	  Param.max_used_phase := n;
+	end;
+      let t1' = check_table_term names_must_be_encoded env t1 in
+      let table_n = Param.get_pred (Table(if n = -1 then (!Param.max_used_phase) else n)) in
+      QFact(table_n, [t1'])
+  | _ -> 
+      input_error "arity of predicate table should be 1" e
+
+let rec check_event names_must_be_encoded env (f,e) =
   match f with
-    (* FunApp: predicates, =, <>, event, inj-event, attacker, mess allowed *)
+    (* FunApp: predicates, =, <>, event, inj-event, attacker, mess, table allowed *)
     PGFunApp(("<>", _), [t1; t2]) ->
-      let (t1', ty1) = check_query_term env t1 in
-      let (t2', ty2) = check_query_term env t2 in
+      let (t1', ty1) = check_query_term names_must_be_encoded env t1 in
+      let (t2', ty2) = check_query_term names_must_be_encoded env t2 in
       if ty1 != ty2 then
 	input_error "the two arguments of an inequality test should have the same type" e;      
       QNeq(t1', t2')
   | PGFunApp(("=", _), [t1; t2]) ->
-      let (t1', ty1) = check_query_term env t1 in
-      let (t2', ty2) = check_query_term env t2 in
+      let (t1', ty1) = check_query_term names_must_be_encoded env t1 in
+      let (t2', ty2) = check_query_term names_must_be_encoded env t2 in
       if ty1 != ty2 then
 	input_error "the two arguments of an equality test should have the same type" e;      
       QEq(t1', t2')
@@ -2493,7 +2734,7 @@ let rec check_event env (f,e) =
 	| [PGIdent f,_] -> (f,[])
 	| _ -> input_error "predicate event should have one argument, which is a function application" e'
       in
-      let (tl', tyl') = List.split (List.map (check_query_term env) tl) in
+      let (tl', tyl') = List.split (List.map (check_query_term names_must_be_encoded env) tl) in
       if !Param.key_compromise == 0 then
 	QSEvent(false, FunApp((get_event_fun env f tyl'), tl'))
       else
@@ -2506,38 +2747,38 @@ let rec check_event env (f,e) =
 	| [PGIdent f,_] -> (f,[])
 	| _ -> input_error "predicate inj-event should have one argument, which is a function application" e'
       in
-      let (tl', tyl') = List.split (List.map (check_query_term env) tl) in
+      let (tl', tyl') = List.split (List.map (check_query_term names_must_be_encoded env) tl) in
       if !Param.key_compromise == 0 then
 	QSEvent(true, FunApp((get_event_fun env f tyl'), tl'))
       else
 	QSEvent(true, FunApp((get_event_fun env f (Param.sid_type :: tyl')),
 			     (Terms.new_var_def Param.sid_type)::tl'))
-  | PGFunApp(("attacker",_), tl) -> begin
-      check_attacker env e tl (-1)
-  end
+  | PGFunApp(("attacker",_), tl) ->
+      check_attacker names_must_be_encoded env e tl (-1)
   | PGFunApp(("mess",_), tl) ->
-      check_mess env e tl (-1)
+      check_mess names_must_be_encoded env e tl (-1)
   | PGFunApp((s, ext) as p, tl) ->
       if List.mem s ["||"; "&&"; "not"; "==>"] then
 	input_error (s ^ " unexpected in events") ext;
-      let (tl', tyl) = List.split (List.map (check_query_term env) tl) in
+      let (tl', tyl) = List.split (List.map (check_query_term names_must_be_encoded env) tl) in
       QFact(get_pred env p tyl, tl')
   | PGPhase((s, ext), tl, n) ->
       begin
 	match s with
-	  "mess" -> check_mess env e tl n
-	| "attacker" -> check_attacker env e tl n
-	| _ -> input_error "phases can be used only with attacker or mess" ext
+	  "mess" -> check_mess names_must_be_encoded env e tl n
+	| "attacker" -> check_attacker names_must_be_encoded env e tl n
+	| "table" -> check_table names_must_be_encoded env e tl n
+	| _ -> input_error "phases can be used only with attacker, mess, or table" ext
       end
   | PGIdent p -> 
       QFact(get_pred env p [], [])
-  | PGLet(id,t,t') -> check_event (add_binding env (id,t)) t'
+  | PGLet(id,t,t') -> check_event names_must_be_encoded (add_binding false env (id,t)) t'
   | _ -> input_error "an event should be a predicate application" e
       
 let rec check_hyp env = function
     (* FunApp: ==>, ||, && allowed, or what is allowed in events *)
     PGFunApp(("==>", _), [ev; hypll]), _ ->
-      let ev' = check_event env ev in
+      let ev' = check_event false env ev in
       (
        match ev' with
 	 QNeq _ | QEq _ -> input_error "Inequalities or equalities cannot occur before ==> in queries" (snd ev)
@@ -2551,13 +2792,13 @@ let rec check_hyp env = function
       let he1' = check_hyp env he1 in
       let he2' = check_hyp env he2 in
       List.concat (List.map (fun e1 -> List.map (fun e2 -> e1 @ e2) he2') he1')
-  | PGLet(id,t,t'), _ -> check_hyp (add_binding env (id,t)) t'
-  | ev -> [[QEvent(check_event env ev)]]
+  | PGLet(id,t,t'), _ -> check_hyp (add_binding false env (id,t)) t'
+  | ev -> [[QEvent(check_event false env ev)]]
 
 let rec check_real_query_top env = function
     PGFunApp(("==>", _), [ev; hypll]), _ ->
       (* FunApp: ==> allowed, or what is allowed in events (case below) *)
-      let ev' = check_event env ev in
+      let ev' = check_event false env ev in
       let ev'' = 
 	match ev' with
 	  QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur before ==> in queries\n"
@@ -2570,9 +2811,9 @@ let rec check_real_query_top env = function
       in
       let hypll' = check_hyp env hypll in
       Before(ev'', hypll')
-  | PGLet(id,t,t'), _ -> check_real_query_top (add_binding env (id,t)) t'
+  | PGLet(id,t,t'), _ -> check_real_query_top (add_binding false env (id,t)) t'
   | ev ->
-      let ev' = check_event env ev in
+      let ev' = check_event false env ev in
       let ev'' = 
 	match ev' with
 	  QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur alone queries\n"
@@ -2656,44 +2897,6 @@ let query_to_facts q =
 	    ) q;
   !facts
 
-(* After its translation, the arguments of names in the query are
-   given type Param.tmp_type The exact types of the arguments of each
-   name function symbol is computed during the translation of the
-   process. The following functions scan the query to update the names
-   with their real type. *)
-
-let rec update_type_names_t = function
-    Var v ->
-      begin
-	match v.link with
-	  PGTLink (env, t) ->
-	    let (t', _) = check_query_term env t in
-	    v.link <- TLink t';
-	    t'
-	| TLink t -> t
-	| NoLink -> Var v
-	| _ -> internal_error "unexpected link in update_type_names_t"
-      end
-  | FunApp(f,l) -> FunApp(f, List.map update_type_names_t l)
-      
-
-let update_type_names_e = function
-    QSEvent(b,t) -> QSEvent(b, update_type_names_t t)
-  | QFact(p,tl) -> QFact(p, List.map update_type_names_t tl)
-  | QNeq(t1,t2) -> QNeq(update_type_names_t t1, update_type_names_t t2)
-  | QEq(t1,t2) -> QEq(update_type_names_t t1, update_type_names_t t2)
-
-let rec update_type_names_r = function
-    Before(ev,hypll) -> Before(update_type_names_e ev, List.map (List.map update_type_names_h) hypll)
-
-and update_type_names_h = function
-    QEvent(ev) -> QEvent(update_type_names_e ev)
-  | NestedQuery(q) -> NestedQuery(update_type_names_r q)
-
-let update_type_names = function
-    PutBegin(b,l) -> PutBegin(b,l)
-  | RealQuery q -> RealQuery(update_type_names_r q)
-
 (* Noninterf queries *)
 
 let get_noninterf_queries () =
@@ -2707,7 +2910,8 @@ let get_weaksecret_queries () =
 (* Not declarations *)
 
 let get_not() =
-  List.map (fun (env, no) -> check_event (add_env true (!global_env) env) no) (!not_list)
+  List.map (fun (env, no) -> 
+    check_event true (add_env true (!global_env) env) no) (!not_list)
 
 (* For Nounif. Very similar to queries, except that *v is allowed
    and events are not allowed *)
@@ -2753,7 +2957,7 @@ let rec check_gformat env (term, ext0) =
 	      input_error "choice can be used in nounif declarations only when proving equivalences" ext
         | _ ->  input_error ("function " ^ s ^ " is defined by \"reduc\". Such a function should not be used in a \"nounif\" declaration") ext
       end;
-      if (f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types) then
+      if (f.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()) then
 	match l' with
 	  [t] -> (t, result_type)
 	| _ -> internal_error "type converter functions should always be unary"
@@ -2783,16 +2987,16 @@ let rec check_gformat env (term, ext0) =
 	  let r = Hashtbl.find glob_table s in
 	  check_single ext s;
 	  if fst r.f_type == Param.tmp_type then
-	    Parsing_helper.internal_error "Names should have their arity at this point"
+	    Parsing_helper.input_error ("You are referring to name " ^ s ^ " in this nounif declaration, but this name will never be generated") ext
 	  else
 	    begin
 	      match r.f_cat with 
 		Name { prev_inputs_meaning = sl } ->
 		  List.iter (fun ((s',ext'),_) -> 
-		    if not (List.mem s' sl) then
+		    if not (List.exists (fun m -> Reduction_helper.meaning_encode m = s') sl) then
 		      input_error ("variable " ^ s' ^ " not defined at restriction " ^ s) ext') bl;
-		  let p = List.map2 (fun s'' ty ->
-		    fbinding_find env s'' ty bl) sl (fst r.f_type) 
+		  let p = List.map2 (fun m ty ->
+		    fbinding_find env (Reduction_helper.meaning_encode m) ty bl) sl (fst r.f_type) 
 		  in
 		  (FFunApp(r, p), snd r.f_type)
 	      | _ -> internal_error "name expected here"
@@ -2834,6 +3038,15 @@ and add_fbinding env ((i,ext),t) =
   v.link <- FLink t';
   StringMap.add i (EVar v) env
 
+
+let rec check_table_gformat env (term, ext0) =
+  match term with
+  | PFGFunApp((s,ext),l) -> 
+      (* FunApp: only tables allowed *)
+      let (l', tl') = List.split (List.map (check_gformat env) l) in
+      let f = get_table_fun env (s,ext) tl' in
+      FFunApp(f, l')
+  | _ -> input_error "Table term expected" ext0
 
 let check_gfact_format env ((s, ext), tl, n) =
   match s with
@@ -2893,6 +3106,19 @@ let check_gfact_format env ((s, ext), tl, n) =
               input_error ("Arguments of seq2 should all be of type state") ext;
             let seq2_n = Param.get_pred (SeqBin(if n = -1 then (!Param.max_used_phase) else n)) in
             (seq2_n, [oldl'; newl'; oldr'; newr'])
+      end
+  | "table" ->
+      begin
+        match tl with
+          [t1] ->
+            if n > !Param.max_used_phase then
+              input_warning "nounif declaration for a phase greater than used" ext;
+	    let t1' = check_table_gformat env t1 in
+	    let table_n = Param.get_pred (Table((if n = -1 then (!Param.max_used_phase) else n))) 
+	    in
+	    (table_n, [t1'])
+	| _ -> 
+	    input_error "arity of predicate table should be 1" ext
       end
   | s ->
       if n != -1 then

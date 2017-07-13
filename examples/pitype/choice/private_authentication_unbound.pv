@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -27,8 +27,6 @@
 *)
 (* Private Authentication
    Taken from Delaune, Jacquemard, CSFW'04 *)
-
-set ignoreTypes = true.
 
 (*set simplifyProcess = interactive.*)
 
@@ -64,7 +62,7 @@ let processB(sk_b:bitstring,sk_a:bitstring) =
 	else
 	  out(c,aenc(n_b,pk(sk_b))).
 	  
-let system(sk_a:bitstring,sk_b:bitstring) = !processA(sk_a,sk_b) | !processB(sk_b,sk_a).
+let system(sk_a:bitstring,sk_b:bitstring) = processA(sk_a,sk_b) | processB(sk_b,sk_a).
 
 equivalence
 	new sk_b:bitstring; new sk_a:bitstring; out(c,pk(sk_b)); out(c,pk(sk_a));

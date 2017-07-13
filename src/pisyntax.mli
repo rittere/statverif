@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -34,7 +34,6 @@ val parse_file : string -> process
 val display : unit -> unit
 val transl_query : Piptree.query list -> query list
 val query_to_facts : query list -> fact list
-val update_arity_names : query -> query
 val get_noninterf_queries : unit -> (funsymb * term list option) list list
 val get_weaksecret_queries : unit -> funsymb list
 val get_not : unit -> event list

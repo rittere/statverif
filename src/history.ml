@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -79,9 +79,6 @@ let get_rule_hist descr =
 	  (List.map (fun p' -> Pred(change_type_attacker p' t1, [v])) preds, 
 	   Pred(p, [v;v']), 
 	   [], Elem(preds,p))
-      | RTestUnif ->
-	  ([], Pred(Param.testunif_pred, [Terms.new_var_def Param.any_type; Terms.new_var_def Param.any_type]), 
-	   [], TestUnif)
       | RApplyFunc(f,p) ->
 	  let rec gen_vars n =
 	    if n = 0 then
@@ -153,7 +150,7 @@ module HashFact =
 
     let skeleton_fact = function
 	Pred(p,l) -> SPred(p.p_name, List.map skeleton_term l)
-      |	Out(_,t,_) -> SOut(skeleton_term t)
+      |	Out(t,_) -> SOut(skeleton_term t)
 
     let hash a = a.hash
 
@@ -261,30 +258,30 @@ let rec simplify_tree t =
 
 (* Find hypothesis number n in the history tree *)
 
-type res = Success of fact_tree
-         | Failure of int
+type res = FindSuccess of fact_tree
+         | FindFailure of int
 
 let rec get_desc_rec t n = 
   match t.desc with
-    FEmpty -> if n = 0 then Success(t) else Failure(n-1)
-  | FHAny -> Failure(n)
-  | FRemovedWithProof _ -> Failure(n)
+    FEmpty -> if n = 0 then FindSuccess(t) else FindFailure(n-1)
+  | FHAny -> FindFailure(n)
+  | FRemovedWithProof _ -> FindFailure(n)
   | FRule(_,_,_,l) -> get_desc_list_rec l n
   | FEquation h -> get_desc_rec h n
 
 and get_desc_list_rec l n = 
   match l with
-    [] -> Failure(n)
+    [] -> FindFailure(n)
   | (a::l') ->
       match get_desc_rec a n with
-	Success d -> Success d
-      | Failure n' -> get_desc_list_rec l' n'
+	FindSuccess d -> FindSuccess d
+      | FindFailure n' -> get_desc_list_rec l' n'
 
 
 let get_desc s t n =
   match get_desc_rec t n with
-    Success d -> d
-  | Failure n' -> 
+    FindSuccess d -> d
+  | FindFailure n' -> 
       print_string ("Hypothesis " ^ (string_of_int n) ^ " not found (" ^ s ^ ")\n");
       Display.Text.display_history_tree "" t;
       internal_error ("failed to find history hypothesis (" ^ s ^ ")")
@@ -384,9 +381,157 @@ let rec build_fact_tree = function
       end;
       d.desc <- t1.desc;
       t2
+  | TestUnifTrue(n, h2) ->
+      let t2 = build_fact_tree h2 in
+      let d = get_desc "test_unif_true" t2 n in
+      d.desc <- FRule(-1, TestUnif, [], []);
+      t2
 
+(** [revise_tree step_name recheck tree] checks that the derivation [tree] 
+    is still an attack against the considered property.
+It rechecks inequality constraints.
+It also rechecks that the derivation still contradicts the desired security 
+property.
+For non-interference or weak secrets, that's ok: we still have a 
+derivation of "bad".
+For correspondences, that may be wrong, because unification may
+make arguments of some events equal, for instance.
+In case [tree] does not satisfy these checks, [revise_tree] raises
+[TermsEq.FalseConstraint]. 
+When it does, [revise_tree] returns an updated version of [tree].
 
-let build_history (subgoals, orig_fact, hist_done, constra) =
+    [recheck] is either [None] or [Some recheck_fun], where [recheck_fun] is
+    a function that takes a clause as argument and returns false when
+    the clause contradicts the current query, true when it does not
+    contradict it. **)
+	
+(* [get_clause_from_derivation] rebuilds a Horn clause from a derivation *)
+
+let get_clause_from_derivation tree =
+  let concl = tree.thefact in
+  let hyp = ref [] in
+  let constra = ref [] in
+
+  let rec rebuild_hyp tree =
+    match tree.desc with
+      FEmpty ->
+        if not (List.exists (Termslinks.equal_facts_with_links tree.thefact) (!hyp)) then
+          hyp := tree.thefact :: (!hyp)
+    | FHAny | FRemovedWithProof _ -> ()
+    | FEquation son -> rebuild_hyp son
+    | FRule(_, _, rconstra, sons) ->
+        List.iter rebuild_hyp sons;
+        constra := rconstra @ (!constra)
+  in
+  rebuild_hyp tree;
+
+  let (hyp', concl', constra') = 
+    Terms.auto_cleanup (fun () ->
+      (List.map Terms.copy_fact2 (!hyp),
+       Terms.copy_fact2 concl,
+       List.map Terms.copy_constra2 (!constra)))
+  in
+  let constra'' = 
+    try 
+      Terms.auto_cleanup(fun () ->
+	 TermsEq.simplify_constra_list (concl'::hyp') constra')
+    with TermsEq.FalseConstraint ->
+      Parsing_helper.internal_error "False constraints should have been excluded by revise_tree"
+  in
+  let hist = Rule(-1, LblNone, hyp', concl', constra'') in
+  (hyp', concl', hist, constra'')
+
+exception Loop
+
+let rec find_fact f t =
+  if 
+    (match t.desc with
+      FHAny | FEmpty | FRemovedWithProof _ -> false
+    | _ -> true) && (Reduction_helper.equal_facts_modulo f t.thefact) then t else
+  match t.desc with
+    FEquation son -> find_fact f son
+  | FRule(_,_,_,sons) -> find_fact_list f sons
+  | _ -> raise Not_found
+
+and find_fact_list f = function
+    [] -> raise Not_found
+  | a::l -> 
+      try
+	find_fact f a 
+      with Not_found ->
+	find_fact_list f l
+      
+
+type recheck_t = (reduction -> bool) option
+	  
+let revise_tree stepname recheck tree =
+  let rec revise_tree_rec no_loop t =
+    if List.memq t no_loop then
+      raise Loop
+    else
+      { desc =
+	begin
+	  match t.desc with
+	    FHAny | FEmpty -> 
+	      begin
+		match t.thefact with
+                  Pred(p, l) when List.for_all (fun t' -> (match Reduction_helper.follow_link t' with Var _ -> true | _ -> false)) l -> t.desc
+		| Out _ -> t.desc (* Out facts cannot be proved anyway *)
+		| _ -> 
+		    (* When unification has lead to instantiating a fact that need not be proved before, try to find a proof for it. *)
+	            try
+                      (revise_tree_rec (t::no_loop) (find_fact t.thefact tree)).desc
+                    with Not_found | Loop -> FEmpty
+              end
+	  | FRule(n, tags, constra, sons) -> 
+	      if constra != [] then
+		begin
+		  try 
+		    let constra' = Terms.auto_cleanup (fun () ->
+		      List.map Terms.copy_constra2 constra) in
+		    Terms.auto_cleanup(fun () ->
+		      ignore (TermsEq.simplify_constra_list [] constra'))
+		  with TermsEq.FalseConstraint ->
+		    Display.Def.print_line "Unification made an inequality become false.";
+		    raise TermsEq.FalseConstraint
+		end;
+	      FRule(n, tags, constra, List.map (revise_tree_rec no_loop) sons)
+	  | FRemovedWithProof t ->  FRemovedWithProof t
+	  | FEquation son -> FEquation(revise_tree_rec no_loop son)
+	end;
+	thefact = t.thefact }
+  in
+  let tree' = revise_tree_rec [] tree in
+  match recheck with
+    None -> tree'
+  | Some recheck_fun ->
+      let cl' = get_clause_from_derivation tree' in
+      Display.Def.print_line ("The clause after " ^ stepname ^ " is");
+      if !Param.html_output then
+	Display.Html.display_rule cl'
+      else
+	Display.Text.display_rule cl';
+      if Terms.auto_cleanup (fun () -> recheck_fun cl') then
+	begin
+          (* cl' no longer contradicts the query *)
+          Display.Def.print_line "This clause does not correspond to an attack against the query.";
+	  raise TermsEq.FalseConstraint
+        end
+      else
+        begin
+          Display.Def.print_line "This clause still contradicts the query.";
+          tree'
+        end
+
+(* [build_history recheck clause] builds a derivation for the clause
+   [clause] using the history stored in that clause.
+   When the depth or number of hypotheses of clauses is bounded,
+   it may in fact return a derivation for an instance of [clause].
+   In this case, it uses [recheck] to verify that the obtained
+   clause still contradicts the desired security property.
+   Raises [Not_found] in case of failure *)
+
+let build_history recheck (subgoals, orig_fact, hist_done, constra) =
   assert (!current_bound_vars == []);
   if not (!Param.reconstruct_derivation) then 
     begin
@@ -394,7 +539,7 @@ let build_history (subgoals, orig_fact, hist_done, constra) =
 	Display.Text.print_line "I do not reconstruct derivations.\nIf you want to reconstruct them, add\n   set reconstructDerivation = true. \nto your script."
       else
 	Display.Text.print_line "I do not reconstruct derivations.\nIf you want to reconstruct them, add\n   param reconstructDerivation = true. \nto your script.";
-      { desc = FEmpty; thefact = orig_fact }
+      raise Not_found
     end
   else
   try 
@@ -410,9 +555,10 @@ let build_history (subgoals, orig_fact, hist_done, constra) =
       else
 	new_tree0
     in
+    incr Param.derivation_number;
     if !Param.html_output then
       begin
-	incr Param.derivation_number;
+
 	let qs = string_of_int (!Param.derivation_number) in
 	if !Param.abbreviate_derivation then
 	  begin
@@ -464,7 +610,19 @@ let build_history (subgoals, orig_fact, hist_done, constra) =
 	    Display.Text.display_history_tree "" new_tree1;
 	Display.Text.newline()
       end;
-    new_tree1
+    if ((!Param.max_hyp) >= 0) || ((!Param.max_depth) >= 0) then
+      begin
+	try
+	  revise_tree "construction of derivation" recheck new_tree1 
+	with TermsEq.FalseConstraint ->
+	  print_string "You have probably found a false attack due to the limitations\non depth of terms and/or number of hypotheses.\nI do not know if there is a real attack.\n";
+	  if !Param.html_output then
+	    Display.Html.print_line "You have probably found a false attack due to the limitations\non depth of terms and/or number of hypotheses.\nI do not know if there is a real attack.";
+          cleanup();
+	  raise Not_found
+      end
+    else
+      new_tree1
   with HistoryUnifyError ->
       if ((!Param.max_hyp) >= 0) || ((!Param.max_depth) >= 0) then
       begin
@@ -472,8 +630,342 @@ let build_history (subgoals, orig_fact, hist_done, constra) =
 	if !Param.html_output then
 	  Display.Html.print_line "You have probably found a false attack due to the limitations\non depth of terms and/or number of hypotheses.\nI do not know if there is a real attack.";
         cleanup();
-        { desc = FEmpty; thefact = orig_fact }
+	raise Not_found
       end
       else
         internal_error "Unification failed in history rebuilding"
+
+
+(* [unify_derivation next_f recheck tree] implements a heuristic 
+   to find traces more often, especially with complex protocols:
+   it unifies rules of the derivation [tree] when possible.
+   It calls [next_f] with the obtained derivation.
+   Note that success is not guaranteed; however, when the heuristic fails,
+   the derivation does not correspond to a trace. 
+
+This heuristic can break inequality constraints.
+We recheck them after modifying the derivation tree.
+We also recheck that the derivation still contradicts the security 
+property after unification, using the function [recheck].
+
+When the heuristic fails or these checks fail, we still try to reconstruct
+a trace from the original derivation, by calling [next_f tree]. *)
+  
+(* [simplify_tree] unifies facts with same session identifier *)
+
+(* [first] is true when this is the first call to simplify_tree. 
+   In this case, if we find no unification to do, we do not need to call
+   revise_tree, since the derivation has not been modified at all *)
+
+module HashFactId =
+  struct
+
+    type factIdElem =
+	HypSpec of hypspec
+      |	Term of term
+
+    type t = 
+	{ hash : int;
+	  factId : factIdElem list }
+
+    let equalFactIdElem a b =
+      match (a,b) with
+	HypSpec h, HypSpec h' -> h = h'
+      |	Term t, Term t' -> Termslinks.equal_terms_with_links t t'
+      |	_ -> false
+
+    let equal a b = 
+      (List.length a.factId == List.length b.factId) &&
+      (List.for_all2 equalFactIdElem a.factId b.factId)
+
+    type skel_term =
+	SVar of int
+      |	SFun of string * skel_term list
+
+    type skel_factIdElem =
+	SHypSpec of hypspec
+      |	STerm of skel_term
+
+    let rec skeleton_term = function
+	Var b -> 
+	  begin
+	    match b.link with
+	      TLink t -> skeleton_term t
+	    | NoLink -> SVar(b.vname)
+	    | _ -> Parsing_helper.internal_error "unexpected link in skeleton_term"
+	  end
+      |	FunApp(f,l) -> 
+	  match f.f_cat with
+	    Name _ -> SFun(f.f_name,[])
+	  | _ -> SFun(f.f_name, List.map skeleton_term l)
+
+    let skeleton_factIdElem = function
+	HypSpec x -> SHypSpec x
+      |	Term t -> STerm(skeleton_term t)
+
+    let hash a = a.hash
+
+    (* build a HashFactId.t from a fact id *)
+
+    let build fid = { hash = Hashtbl.hash(List.map skeleton_factIdElem fid);
+		      factId = fid }
+
+  end
+
+module FactHashtbl = Hashtbl.Make(HashFactId)
+
+let rec simplify_tree first recheck tree =
+  let unif_to_do_left = ref [] in
+  let unif_to_do_right = ref [] in
+  let fact_hashtbl = FactHashtbl.create 7 in
+  let done_unif = ref false in
+
+  let unif t1 t2 v =
+    try
+      Terms.occur_check v t2;
+      if !Param.html_output then
+	begin
+	  Display.Html.print_string "Unified ";
+	  Display.Html.WithLinks.term t1;
+	  Display.Html.print_string " with ";
+	  Display.Html.WithLinks.term t2;
+	  Display.Html.newline()
+	end
+      else
+	begin
+	  Display.Text.print_string "Unified ";
+	  Display.Text.WithLinks.term t1;
+	  Display.Text.print_string " with ";
+	  Display.Text.WithLinks.term t2;
+	  Display.Text.newline()
+	end;
+      Terms.link v (TLink t2);
+      done_unif := true
+    with Unify -> 
+      (* When the occur check fails, it might succeed
+	 after rewriting the terms, so try that *)
+      unif_to_do_left := t1 :: (!unif_to_do_left);
+      unif_to_do_right := t2 :: (!unif_to_do_right)
+
+  in
+
+  let rec add_unif_term t1 t2 =
+    match t1, t2 with
+      FunApp(f1, l1), FunApp(f2,l2) when TermsEq.f_has_no_eq f1 && TermsEq.f_has_no_eq f2 ->
+	if f1 == f2 then List.iter2 add_unif_term l1 l2
+	(* When f1 != f2, unification fails; I display no message. *)
+    | Var v, Var v' when v == v' -> ()
+    | Var v, _ -> 
+	begin
+	  match v.link with
+	    NoLink ->
+	      begin
+		match t2 with
+		  Var {link = TLink t2'} -> add_unif_term t1 t2'
+		| Var v' when v.unfailing ->
+             	    unif t1 t2 v
+		| Var v' when v'.unfailing -> 
+             	    unif t2 t1 v'
+		| FunApp (f_symb,_) when f_symb.f_cat = Failure && v.unfailing = false -> ()
+		      (* Unification fails; I display no message *)
+		| _ -> unif t1 t2 v
+	      end
+	  | TLink t1' -> add_unif_term t1' t2
+	  | _ -> Parsing_helper.internal_error "Unexpected link in add_unif_term 1"
+	end
+    | FunApp(f_symb,_), Var v ->
+	begin
+          match v.link with
+             NoLink -> 
+	       if v.unfailing = false && f_symb.f_cat = Failure 
+               then () (* Unification fails; I display no message *)
+               else unif t2 t1 v
+           | TLink t2' -> add_unif_term t1 t2'
+           | _ -> Parsing_helper.internal_error "Unexpected link in add_unif_term 2"
+	end
+    | _ ->
+        (* It is important to check equality *modulo the equational
+	   theory* here. Otherwise, unify_modulo may make the two terms equal
+	   modulo the theory but still syntactically different, which would 
+	   result in an endless iteration of unifyDerivation. *)
+	if not (Reduction_helper.equal_open_terms_modulo t1 t2) then
+	  begin
+	    unif_to_do_left := t1 :: (!unif_to_do_left);
+	    unif_to_do_right := t2 :: (!unif_to_do_right)
+	  end
+  in
+  
+  let add_unif_fact f1 f2 =
+    if (f1 != f2) then
+      match f1, f2 with
+	Pred(p1,l1), Pred(p2,l2) when p1 == p2 ->
+	  List.iter2 add_unif_term l1 l2
+      | Out(t1,_),Out(t2,_) -> 
+	  add_unif_term t1 t2
+      | _ -> 
+	  Display.Def.print_line "Trying to unify incompatible facts in unifyDerivation; skipping this impossible unification."
+
+  in
+
+  let rec check_coherent factId (concl, hyp_spec, name_params, sons) =
+    match hyp_spec with
+      [] -> ()
+    | h1::l1 -> 
+	let factId' = (HashFactId.HypSpec h1) :: factId in
+	match h1 with
+          ReplTag (occ,count_params) -> 
+	    (* the session identifier(s) is(are) part of the fact id *)
+	    check_coherent ((HashFactId.Term (List.nth name_params count_params)) :: factId') 
+	      (concl, l1, name_params, sons) 
+	| OutputTag occ | InsertTag occ | InputPTag occ | OutputPTag occ | BeginEvent occ ->
+	    if l1 == [] then
+	      (* I'm reaching the conclusion *)
+	      let fact_id = HashFactId.build factId' in
+	      try
+		let concl' = FactHashtbl.find fact_hashtbl fact_id in
+		add_unif_fact concl concl'
+	      with Not_found ->
+		FactHashtbl.add fact_hashtbl fact_id concl
+	    else
+	      check_coherent factId' (concl, l1, name_params, sons)
+	| LetTag occ | TestTag occ | LetFilterTag occ | TestUnifTag2 occ | GetTagElse occ ->
+	    check_coherent factId' (concl, l1, name_params, sons)
+	| AssignTag _ | ReadAsTag _ | KnowledgeProgressTag _ | SequenceTag | ReachTag | OpenTag _ ->
+	   check_coherent factId' (concl, l1, name_params, sons)
+	| InputTag _ | GetTag _ | BeginFact | LetFilterFact -> 
+	    let f = (List.hd sons).thefact in
+	    let fact_id = HashFactId.build factId' in
+	    begin
+	      try
+		let f' = FactHashtbl.find fact_hashtbl fact_id in
+		add_unif_fact f f'
+	      with Not_found -> 
+		FactHashtbl.add fact_hashtbl fact_id f
+	    end;
+            check_coherent factId' (concl, l1, name_params, List.tl sons)
+	| TestUnifTag _ -> 
+	    check_coherent factId' (concl, l1, name_params, List.tl sons) 
+  in
+
+  let rec simplify_tree1 t =
+    match t.desc with
+      FRule(_, ProcessRule(hyp_spec, name_params), constra, sons) -> 
+	check_coherent [] (t.thefact, List.rev hyp_spec, List.rev name_params, List.rev sons);
+	List.iter simplify_tree1 sons
+    | FRule(_,_,_,sons) ->
+        List.iter simplify_tree1 sons
+    | FEquation son -> simplify_tree1 son
+    | FHAny -> 
+	begin
+	match t.thefact with
+	  Pred({p_info = [AttackerGuess _ | AttackerBin _]}, [t1;t2]) ->
+	    if t1 != t2 then add_unif_term t1 t2
+	| _ -> ()
+	end
+    | _ -> ()
+  in
+
+  simplify_tree1 tree;
+(*
+  let n = List.length (!coh_tuples) in
+  let nf = float_of_int n in
+  let bf = float_of_int (!Param.unify_derivation_bound) in
+  let n_to_do = ref
+      (if !Param.unify_derivation_bound == 0 then -1 else
+       if nf *. (nf -. 1.) /. 2. > bf then 
+	 let n_to_do = int_of_float (nf -. sqrt(nf *. nf -. 2. *. bf) +. 1.)  in
+	 print_string ((string_of_int n) ^ " tuples to unify, so " ^ (string_of_float (nf *. (nf -. 1.) /. 2.)) ^ " calls to check_coherent!\n");
+	 print_string ("Considering only the first " ^ (string_of_int n_to_do) ^ " tuples for speed.");
+	 print_newline();
+	 n_to_do
+       else -1)
+  in
+  if (!n_to_do == -1) && (n > 1000) then
+    begin
+      print_string ((string_of_int n) ^ " tuples to unify, so " ^ (string_of_float (nf *. (nf -. 1.) /. 2.)) ^ " calls to check_coherent!");
+      print_newline()
+    end;
+  let rec check_coherent_list = function
+      [] -> ()
+    | (tup1::rest) ->
+	decr n_to_do;
+	if (!n_to_do) = 0 then () else
+	begin
+	  List.iter (check_coherent tup1) rest;
+	  check_coherent_list rest
+	end
+  in
+  check_coherent_list (!coh_tuples);
+*)
+  if (!unif_to_do_left) == [] then
+    if !done_unif then
+      begin
+	Display.Def.print_line "Iterating unifyDerivation.";
+        simplify_tree false recheck tree
+      end
+    else if first then
+      begin
+	(* print_string "Nothing to unify.\n"; *)
+	tree
+      end
+    else
+      begin
+	Display.Def.print_line "Fixpoint reached: nothing more to unify.";
+	revise_tree "unifyDerivation" recheck tree
+      end
+  else
+    begin
+      if !Param.html_output then
+	begin
+	  Display.Html.print_string "Trying unification ";
+	  Display.Html.WithLinks.term_list (!unif_to_do_left);
+	  Display.Html.print_string " with ";
+	  Display.Html.WithLinks.term_list (!unif_to_do_right)
+	end
+      else
+	begin
+	  Display.Text.print_string "Trying unification ";
+	  Display.Text.WithLinks.term_list (!unif_to_do_left);
+	  Display.Text.print_string " with ";
+	  Display.Text.WithLinks.term_list (!unif_to_do_right)
+	end;
+      try
+	auto_cleanup (fun () ->
+	  TermsEq.unify_modulo_list (fun () -> 
+	    Display.Def.print_line " succeeded.";
+	    Display.Def.print_line "Iterating unifyDerivation.";
+	    simplify_tree false recheck tree
+	       ) (!unif_to_do_left) (!unif_to_do_right)
+	    )
+      with Unify ->
+        Display.Def.print_line " failed.";
+	revise_tree "unifyDerivation" recheck tree
+    end
+
+let unify_derivation next_f recheck tree =
+  if !Param.unify_derivation then
+    begin
+      (* print_string "Starting unifyDerivation.\n"; *)
+      if !Param.html_output then
+	begin
+	  let qs = string_of_int (!Param.derivation_number) in
+	  Display.Html.print_string ("<A HREF=\"unifyDeriv" ^ qs ^ ".html\" TARGET=\"unifderiv\">Unify derivation</A><br>\n");
+	  Display.LangHtml.openfile ((!Param.html_dir) ^ "/unifyDeriv" ^ qs ^ ".html") ("ProVerif: unifying derivation for query " ^ qs);
+	  Display.Html.print_string "<H1>Unifying the derivation</H1>\n"
+	end;
+      try
+	auto_cleanup (fun () ->
+	  let tree' = simplify_tree true recheck tree in
+	  if !Param.html_output then
+	    Display.LangHtml.close();
+	  next_f tree')
+      with TermsEq.FalseConstraint ->
+	Display.Def.print_line "Trying with the initial derivation tree instead.";
+	if !Param.html_output then
+	  Display.LangHtml.close();
+	next_f tree
+    end
+  else
+    next_f tree
+
 

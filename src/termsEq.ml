@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -32,9 +32,9 @@ open Parsing_helper
 let equationsToRecord = ref false
 
 let equations_list = ref []
-let register_equation eq =
+let register_equation eq_info l =
   equationsToRecord := true;
-  equations_list := eq :: (!equations_list)
+  equations_list := (l,eq_info) :: (!equations_list)
 
 let hasEquations() =
   !equations_list != []
@@ -72,8 +72,8 @@ let rec close_term_eq restwork = function
 	      Terms.auto_cleanup (fun () -> 
 		let (leq', req',_) = copy_red (lhd,rhs,[]) in
 		try
-	          List.iter2 unify l' leq';
-	  	  restwork req'
+		  List.iter2 unify l' leq';
+	          restwork req'
 		with Unify -> ()
 		    )
 	    ) eqlist
@@ -92,7 +92,7 @@ and close_term_list_eq restwork = function
 let close_fact_eq restwork = function
     Pred(p,l) ->
       close_term_list_eq (fun l' -> restwork (Pred(p,l'))) l
-  | Out(_,t,l) ->
+  | Out(t,l) ->
       Parsing_helper.internal_error "Out facts should not appear in TermsEq.close_fact_eq"
       (* restwork (Out(t,l))
 	 If Out facts were present, we might need to
@@ -169,9 +169,11 @@ let rec close_term_destr_eq accu_constra restwork = function
   | FunApp(f,l) ->
       close_term_destr_list_eq accu_constra (fun accu_constra' l' -> 
 	let eqlist = Terms.red_rules_fun f in
+	
 	List.iter (fun red ->
 	  Terms.auto_cleanup (fun () -> 
 	    let (leq', req', side_c') = copy_red red in
+	    
 	    try
 	      List.iter2 unify l' leq';
 	      restwork (side_c' @ accu_constra') req'
@@ -200,7 +202,7 @@ let close_fact_destr_eq accu_constra restwork = function
 	    with Unify -> ()
 		)
 	    ) l
-  | Out(_,t,l) ->
+  | Out(t,l) ->
       Parsing_helper.internal_error "Out facts should not appear in TermsEq.close_fact_destr_eq"
 
 let rec close_fact_destr_list_eq accu_constra restwork = function
@@ -282,6 +284,8 @@ let rec normal_form = function
         [] -> t'
       | ((leq,req)::redl) ->
          try
+	   if not (Terms.equal_types (Terms.get_term_type leq) (Terms.get_term_type t')) then
+      raise NoMatch;
            Terms.match_terms leq t';
            let r = copy_term3 req in
            Terms.cleanup();
@@ -292,12 +296,12 @@ let rec normal_form = function
       in
       find_red (!rewrite_system)
 
-let rec joignable_critical_pairs build_context (leq1, req1) (leq2, req2) =
+let rec joinable_critical_pairs build_context (leq1, req1) (leq2, req2) =
   match leq2 with
     Var v -> true
   | FunApp(f,l) -> 
-      (
-       try
+      ((not (Terms.equal_types (Terms.get_term_type leq1) (Terms.get_term_type leq2))) ||
+       (try
 	 Terms.unify leq1 leq2;
 	 let req1' = copy_term2 (build_context req1) in
 	 let req2' = copy_term2 req2 in
@@ -305,7 +309,7 @@ let rec joignable_critical_pairs build_context (leq1, req1) (leq2, req2) =
 	 let r = Terms.equal_terms (normal_form req1') (normal_form req2') in
 	 (*if not r then
 	   begin
-	     print_string "Non-joignable critical pair:";
+	     print_string "Non-joinable critical pair:";
 	     display_eq (leq1,req1);
 	     print_string " and ";
 	     display_eq (leq2,req2);
@@ -317,7 +321,7 @@ let rec joignable_critical_pairs build_context (leq1, req1) (leq2, req2) =
        with Unify ->
 	 Terms.cleanup();
 	 true
-      )
+      ))
 	&&
       (
        let seen = ref [] in
@@ -326,7 +330,7 @@ let rec joignable_critical_pairs build_context (leq1, req1) (leq2, req2) =
 	 to_see := List.tl (!to_see);
 	 let cur_seen = !seen in 
 	 let cur_to_see = !to_see in
-	 let r = joignable_critical_pairs (fun y -> build_context (
+	 let r = joinable_critical_pairs (fun y -> build_context (
 	   FunApp(f, List.rev_append cur_seen (y :: cur_to_see)))) 
 	     (leq1, req1) (x, req2) in
 	 seen := x :: (!seen);
@@ -337,8 +341,8 @@ let rec joignable_critical_pairs build_context (leq1, req1) (leq2, req2) =
 let rec check_confluent new_rule = function
   [] -> true
 | (a::l) -> 
-    (joignable_critical_pairs (fun x -> x) a new_rule) &&
-    (joignable_critical_pairs (fun x -> x) new_rule a) &&
+    (joinable_critical_pairs (fun x -> x) a new_rule) &&
+    (joinable_critical_pairs (fun x -> x) new_rule a) &&
     (check_confluent new_rule l)
   
 
@@ -369,6 +373,8 @@ and build_rules_eq_list leq req f get_rule = function
 let rec implies_eq (leq1, req1) (leq2, req2) =
   assert (!current_bound_vars == []);
   try
+    if not (Terms.equal_types (Terms.get_term_type leq1) (Terms.get_term_type leq2)) then
+      raise NoMatch;
     Terms.match_terms leq1 leq2;
     Terms.match_terms req1 req2;
     cleanup();
@@ -578,15 +584,56 @@ let rec add_order = function
 	order := (List.map (fun f2 -> (f1,f2)) new_symbols) @ (!order)
   | _ -> ()
 
+let rec get_symbols_t accu = function
+    FunApp(f,l) -> 
+      if not (List.memq f (!accu)) then
+	accu := f :: (!accu);
+      List.iter (get_symbols_t accu) l
+  | Var _ -> ()
+
+let get_symbols accu equations =
+  List.iter (fun (t1,t2) ->
+    get_symbols_t accu t1;
+    get_symbols_t accu t2) equations
+
+let rec convert_to_symbols symbols = function 
+    [] -> []
+  | ((s,ext)::l) ->
+      try 
+	let f = List.find (fun f -> f.f_name = s) symbols in
+	f::(convert_to_symbols symbols l)
+      with Not_found ->
+	convert_to_symbols symbols l
+
+let rec convert_to_pairs ext = function
+    [] | [_] -> []
+  | a::((b::l) as l') ->
+      if List.memq a l' then
+	Parsing_helper.input_error ("Ordering of function symbols contain a duplicate element " ^ a.f_name ^ ".\n") ext;
+      (a,b)::(convert_to_pairs ext l')
+
+let order_from_string (s,ext0) equations =
+  let symbols = ref [] in
+  List.iter (fun (eq, _) -> get_symbols symbols eq) equations;
+  let lexbuf = Lexing.from_string s in
+  let order =
+    try
+      Pitparser.order Pitlexer.token lexbuf
+    with Parsing.Parse_error ->
+      Parsing_helper.input_error "Syntax error in ordering" 
+	(Parsing_helper.combine_extent ext0 (Parsing_helper.extent lexbuf))
+  in
+  let order = convert_to_symbols (!symbols) order in
+  convert_to_pairs ext0 order
+
 let rec greater_lpo t1 t2 = match (t1,t2) with
   (Var v1, _) -> false
 | (t1, Var v2) -> occurs_var v2 t1
 | (FunApp(f1,l1), FunApp(f2,l2)) ->
-    (List.exists (fun t1' -> greater_lpo t1' t2) l1) ||
+    (List.exists (fun t1' -> equal_terms t1' t2 || greater_lpo t1' t2) l1) ||
     ((f1 != f2) && (not (check_no_path f1 f2)) && 
      (List.for_all (greater_lpo t1) l2)) ||
-    ((f1 == f2) && (List.for_all (greater_lpo t1) l2) &&
-     (greater_lpo_lex l1 l2))
+    ((f1 == f2) && (greater_lpo_lex l1 l2))
 
 and greater_lpo_lex l1 l2 = match (l1,l2) with
   ([], []) -> false
@@ -611,7 +658,27 @@ let rec unionlist l1 = function
       else
 	a::(unionlist l1 l)
 
-let buildblocks eqlist =
+let disjoint_list l1 l2 =
+  List.for_all (fun x1 -> not (List.memq x1 l2)) l1
+
+let buildblocks eqlists =
+  (* Group the blocks of equations into two sets:
+     no_info_block: all equations with no specific information
+     other_blocks: the groups of equations with specific information *)
+  let no_info_block = ref [] in
+  let other_blocks = ref [] in
+  List.iter (fun (eqlist, eqinfo) ->
+    if eqinfo = EqNoInfo then
+      no_info_block := eqlist @ (!no_info_block)
+    else
+      let flist = ref [] in
+      List.iter (fun (eq1,eq2) ->
+	get_fun_symb flist eq1;
+	get_fun_symb flist eq2) eqlist;
+      other_blocks := (!flist, eqlist, eqinfo) :: (!other_blocks)
+						    ) eqlists;
+  (* Split no_info_block into groups of equations with disjoint
+     function symbols *)
   let blocks = ref [] in
   List.iter (fun eq ->
     let flist = ref [] in
@@ -632,30 +699,70 @@ let buildblocks eqlist =
 	blocks := (bfunsymb, beq) :: (!blocks)
       ) tmpblocks;
     blocks := (!cur_block) :: (!blocks);
-    ) eqlist;
-  List.map snd (!blocks)
+    ) (!no_info_block);
+  (* Check that the other groups of equations (!other_blocks) 
+     use pairwise disjoint sets of function symbols *)
+  List.iter (fun (f1,l1,_) ->
+    List.iter (fun (f2,l2) ->
+      if not (disjoint_list f1 f2) then
+	begin
+	  print_string "Error: the following sets of equations";
+	  Display.Text.display_item_list Display.Text.display_eq l1;
+	  print_string "and";
+	  Display.Text.display_item_list Display.Text.display_eq l2;
+	  print_string "use common function symbols.\n";
+	  Parsing_helper.user_error "Error: Blocks of equations marked [convergent] or [linear] should use function symbols disjoint from equations not marked [convergent] or [linear].\n"
+	end
+	  ) (!blocks)
+      ) (!other_blocks);
+  let rec check_disj = function
+      [] -> ()
+    | (f1,l1,_)::l ->
+	List.iter (fun (f2,l2,_) ->
+	  if not (disjoint_list f1 f2) then
+	    begin
+	      print_string "Error: the following sets of equations";
+	      Display.Text.display_item_list Display.Text.display_eq l1;
+	      print_string "and";
+	      Display.Text.display_item_list Display.Text.display_eq l2;
+	      print_string "use common function symbols.\n";
+	      Parsing_helper.user_error "Error: Blocks of equations marked [convergent] or [linear] should use function symbols disjoint from each other.\n"
+	    end
+	      ) l;
+	check_disj l
+  in
+  check_disj (!other_blocks);
+  (* Return the blocks of equations, with associated eqinfo *)
+  (List.map (fun (_,eqlist) -> (eqlist, EqNoInfo)) (!blocks))
+    @ (List.map (fun (_,eqlist,eqinfo) -> (eqlist,eqinfo)) (!other_blocks))
 
 (* Check block convergent *)
 
 exception Nontermination of equation
 exception Nonconfluent of equation * equation
 
-let check_convergent block = 
+let check_term block =
   (* Check termination *) 
   List.iter (fun ((leq, req) as eq) -> if not (greater_lpo leq req) then 
-    raise (Nontermination eq)) block;
+    raise (Nontermination eq)) block
+
+let check_confluent block =
   (* Check confluence *)
   rewrite_system := block;
   List.iter (fun r1 ->
     let r1 = copy_eq r1 in
     List.iter (fun r2 ->
-      if not (joignable_critical_pairs (fun x -> x) r1 r2) then
+      if not (joinable_critical_pairs (fun x -> x) r1 r2) then
 	begin
 	  rewrite_system := [];
 	  raise (Nonconfluent(r1,r2))
 	end) block
 	) block;
   rewrite_system := []
+
+let check_convergent block = 
+  check_term block;
+  check_confluent block
 
 (* Check block linear *)
 
@@ -685,44 +792,92 @@ let record_eqs () =
    begin
     (*print_string "Building order...";
     Display.Text.newline();*)
-    List.iter add_order (!equations_list);
-    (*print_string "Building blocks...";
+     begin
+       match !Param.symb_order with
+	 None -> List.iter (fun (l, _) -> List.iter add_order l) (!equations_list)
+       | Some sext ->
+	   order := order_from_string sext (!equations_list)
+     end;
+    (*print_string "Order:\n";
+    List.iter (fun (f1,f2) -> print_string (f1.f_name ^ " > " ^ f2.f_name ^ "\n")) (!order);
+    print_string "Building blocks...";
     Display.Text.newline();*)
     let blocks = buildblocks (!equations_list) in
     (*print_string "Separating convergent/linear...";
     Display.Text.newline();*)
     let convergent_part = ref [] in
     let linear_part = ref [] in
-    List.iter (fun block ->
-      try 
-	check_convergent block;
-        convergent_part := block @ (!convergent_part)
-      with
-	(Nontermination _ | Nonconfluent _) as e ->
-	  if is_linear block then
-            linear_part := block @ (!linear_part)
-	  else
-            begin
-              print_string "Error: Cannot handle the following equations:";
-              Display.Text.display_item_list Display.Text.display_eq block;
-	      print_string "This block of equations is not linear and could not be proved convergent.\n";
-	      begin
-		match e with
-		  Nontermination eq -> 
-		    print_string "(I could not prove that\n";
-		    Display.Text.display_eq eq;
-		    print_string "\nis decreasing in a lexicographic path ordering.)\n"
-		| Nonconfluent(eq1,eq2) ->
-		    print_string "(The system is not confluent because of a critical pair between\n";
-		    Display.Text.display_eq eq1;
-		    print_string "\nand\n";
-		    Display.Text.display_eq eq2;
-		    print_string ".)\n"
-		| _ -> Parsing_helper.internal_error "TermsEq: added to avoid warning for non-exhaustive pattern-matching"
-	      end;
-              Parsing_helper.user_error "These equations cannot be handled.\n"
+    List.iter (fun (block,eqinfo) ->
+      match eqinfo with
+	EqNoInfo ->
+	  begin
+	  try 
+	    check_convergent block;
+            convergent_part := block @ (!convergent_part)
+	  with
+	    (Nontermination _ | Nonconfluent _) as e ->
+	      if is_linear block then
+		linear_part := block @ (!linear_part)
+	      else
+		begin
+		  print_string "Error: Cannot handle the following equations:";
+		  Display.Text.display_item_list Display.Text.display_eq block;
+		  print_string "This block of equations is not linear and could not be proved convergent.\n";
+		  begin
+		    match e with
+		      Nontermination eq -> 
+			print_string "(I could not prove that\n";
+			Display.Text.display_eq eq;
+			print_string "\nis decreasing in a lexicographic path ordering.)\n"
+		    | Nonconfluent(eq1,eq2) ->
+			print_string "(The system is not confluent because of a critical pair between\n";
+			Display.Text.display_eq eq1;
+			print_string "\nand\n";
+			Display.Text.display_eq eq2;
+			print_string ".)\n"
+		    | _ -> Parsing_helper.internal_error "TermsEq: added to avoid warning for non-exhaustive pattern-matching"
+		  end;
+		  Parsing_helper.user_error "These equations cannot be handled.\n"
+		end
         end
-       ) blocks;
+      | EqLinear ->
+	  if is_linear block then
+	    linear_part := block @ (!linear_part)
+	  else
+	    begin
+	      print_string "Error: Cannot handle the following equations:";
+	      Display.Text.display_item_list Display.Text.display_eq block;
+	      print_string "This block of equations is declared linear but it is not.\n";
+	      Parsing_helper.user_error "These equations cannot be handled.\n"
+	    end
+      |	EqConvergent ->
+	  begin
+	    try 
+	      check_term block
+	    with Nontermination _ ->
+	      print_string "Warning: the following equations";
+	      Display.Text.display_item_list Display.Text.display_eq block;
+	      print_string "are declared convergent. I could not prove termination.\n";
+	      print_string "I assume that they really terminate.\n";
+	      print_string "Expect problems (such as ProVerif going into a loop) if they do not!\n";
+	      flush stdout
+	  end;
+	  begin
+	    try
+	      check_confluent block 
+	    with Nonconfluent(eq1,eq2) ->
+	      print_string "Error: Cannot handle the following equations:";
+	      Display.Text.display_item_list Display.Text.display_eq block;
+	      print_string "This block of equations is declared convergent but it is not\n";
+	      print_string "confluent because of a critical pair between\n";
+	      Display.Text.display_eq eq1;
+	      print_string "\nand\n";
+	      Display.Text.display_eq eq2;
+	      print_string ".)\n";
+	      Parsing_helper.user_error "These equations cannot be handled.\n"
+	  end;
+          convergent_part := block @ (!convergent_part)
+	) blocks;
 
     if !Param.html_output then
       begin
@@ -805,8 +960,12 @@ let record_eqs () =
    else
    begin
     (* Old, non-proved treatment of equations.
-       Kept just in case it is useful... *)
-    List.iter find_rewrite_system (!equations_list);
+       Kept just in case it is useful... 
+       Just ignore the convergent/linear information. *)
+     let eq_list = ref [] in
+     List.iter (fun (eqlist,_) ->
+       eq_list := eqlist @ (!eq_list)) (!equations_list);
+    List.iter find_rewrite_system (!eq_list);
     if !Param.verbose_eq then
       begin
         print_string "Rewriting system:";
@@ -814,7 +973,7 @@ let record_eqs () =
       end;
 
     List.iter (fun eq -> add_eq eq;
-                         add_eq (swap_eq eq)) (!equations_list);
+                         add_eq (swap_eq eq)) (!eq_list);
     print_string "Completing equations...";
     Display.Text.newline();
     let resulting_equations = complete_eq true in
@@ -846,90 +1005,6 @@ let record_eqs () =
    end
   end
 
- 
-
-
-
-(****** Closure of terms modulo the equational theory. *******
-   First calls restwork with one possible equal term.
-   When restwork raises Unify, calls it again with another possible
-   equal term, and so on. *)
-
-let rec close_term_eq_exc restwork = function
-    Var x ->
-      begin
-        match x.link with
-          TLink t -> close_term_eq_exc restwork t
-        | NoLink -> restwork (Var x)
-        | _ -> internal_error "unexpected link in close_term_eq_exc"
-      end
-  | FunApp(f,l) when (non_syntactic f).f_cat = Failure -> restwork (FunApp(f,l))
-  | FunApp(f,l) ->
-      close_term_list_eq_exc (fun l' -> 
-	let curr_bound_vars = !current_bound_vars in
-	current_bound_vars := [];
-	try
-          restwork (FunApp(f,l'));
-	  cleanup();
-	  current_bound_vars := curr_bound_vars
-	with Unify ->
-	  cleanup();
-	  current_bound_vars := curr_bound_vars;
-          match f.f_cat with
-            Eq eqlist ->
-	      let rec reweqlist = function
-		  (leq, req) :: lrew ->
-		    let curr_bound_vars = !current_bound_vars in
-		    current_bound_vars := [];
-		    let leq' = List.map copy_term leq in
-		    let req' = copy_term req in
-		    cleanup();
-		    begin
-                      try
-			List.iter2 unify l' leq';
-			restwork req';
-			cleanup();
-			current_bound_vars := curr_bound_vars
-                      with Unify -> 
-			(* Try another rewriting when Unify is raised *)
-			cleanup();
-			current_bound_vars := curr_bound_vars;
-			reweqlist lrew
-		    end
-		| [] -> raise Unify
-	      in
-              reweqlist eqlist
-          | _ -> raise Unify
-                ) l
-
-and close_term_list_eq_exc restwork = function
-    [] -> restwork []
-  | (a::l) ->
-      close_term_eq_exc (fun a' ->
-        close_term_list_eq_exc (fun l' ->
-          restwork (a'::l')) l) a
-
-
-(*
-
-let unify_modulo restwork t1 t2 =
-  close_term_eq_exc (fun t1' ->
-    close_term_eq_exc (fun t2' ->
-      Terms.unify t1' t2';
-      restwork ()) t2) t1
-
-let rec unify_modulo_list restwork l1 l2 = 
-  match (l1, l2) with
-    [], [] -> restwork ()
-  | (a1::l1'), (a2::l2') ->
-      unify_modulo (fun () -> unify_modulo_list restwork l1' l2') a1 a2
-  | _ -> internal_error "Lists should have same length in unify_modulo_list"
-
-let remove_syntactic = copy_term2
-let remove_syntactic_fact f = f
-let remove_syntactic_constra c = c
-
-*)
 
 (****** Unification modulo the equational theory ******)
 
@@ -987,7 +1062,7 @@ let copy_remove_syntactic_pair = fun (v,t) -> (v, copy_remove_syntactic t)
 
 let copy_remove_syntactic_fact = function
     Pred(chann, t) -> Pred(chann, List.map copy_remove_syntactic t)
-  | Out(ty,t,l) -> Out(ty, copy_remove_syntactic t, List.map copy_remove_syntactic_pair l)
+  | Out(t,l) -> Out(copy_remove_syntactic t, List.map copy_remove_syntactic_pair l)
 
 let rec copy_remove_syntactic_constra c = List.map (function
     Neq(t1,t2) -> Neq(copy_remove_syntactic t1, copy_remove_syntactic t2)) c
@@ -1005,79 +1080,71 @@ let remove_syntactic_pair = fun (v,t) -> (v, remove_syntactic_term t)
 
 let remove_syntactic_fact = function
     Pred(chann, t) -> Pred(chann, List.map remove_syntactic_term t)
-  | Out(ty,t,l) -> Out(ty, remove_syntactic_term t, List.map remove_syntactic_pair l)
+  | Out(t,l) -> Out(remove_syntactic_term t, List.map remove_syntactic_pair l)
 
 let rec remove_syntactic_constra c = List.map (function
     Neq(t1,t2) -> Neq(remove_syntactic_term t1, remove_syntactic_term t2)
 	) c
 
+(* Collect variables that are not defined yet *)
+
+let rec collect_unset_vars accu = function
+    FunApp(f,l) -> List.iter (collect_unset_vars accu) l
+  | Var v ->
+      match v.link with
+	NoLink -> 
+	  if not (List.memq v (!accu)) then
+	    accu := v :: (!accu)
+      | TLink t -> collect_unset_vars accu t
+      | _ -> internal_error "unexpected link in collect_unset_vars"
+
 (* Unification modulo itself *)
 
+let f_has_no_eq f =
+  match f.f_cat with
+    Eq [] -> true
+  | Eq _ -> false
+  | _ -> true
+
+exception NoBacktrack of binder list ref
+
 let rec close_term_eq_synt restwork = function
-  | Var x ->
+  | (Var x) as t ->
     begin
       match x.link with
 	| TLink t -> close_term_eq_synt restwork t
-	| NoLink -> restwork (Var x)
+	| NoLink -> restwork t
 	| _ -> internal_error "unexpected link in close_term_eq_synt"
     end
-  | FunApp(f,l) ->
-      let curr_bound_vars = !current_bound_vars in
-      current_bound_vars := [];
-
+  | (FunApp(f,l) as t) when f_has_no_eq f ->
+      (* Distinguishing this case explicitly helps avoiding a 
+	 stack overflow: the stack does not grow in this case
+	 because we make a tail call. *)
+      restwork t
+  | (FunApp(f,l) as t) ->
       try
-      	let res = restwork (FunApp(f,l)) in
-	cleanup();
-	current_bound_vars := curr_bound_vars;
-	res
-      with 
-        Unify ->
-	  cleanup();
-	  current_bound_vars := curr_bound_vars;
-	  close_term_list_eq_synt (fun l' -> 
-	    match f.f_cat with
-	      | Eq eqlist ->
-		    	
-		  let rec reweqlist = function
-		    | (leq, req) :: lrew ->
-		        let curr_bound_vars = !current_bound_vars in
-			current_bound_vars := [];
-			let leq' = List.map put_syntactic leq in
-			let req' = put_syntactic req in
-			cleanup();
-			begin
-			  try
-			    let res = unify_modulo_list (fun () -> restwork req')  l' leq' in
-			    cleanup();
-			    current_bound_vars := curr_bound_vars;
-			    res
-			  with 
-			    Unify -> 
-			      (* Try another rewriting when Unify is raised *)
-			      cleanup();
-			      current_bound_vars := curr_bound_vars;
-			      reweqlist lrew
-			   | x ->
-			      cleanup();
-			      current_bound_vars := curr_bound_vars;
-			      raise x
-			end
-		    | [] -> raise Unify in
-
-		  reweqlist eqlist
-	      | _ -> raise Unify
-	  ) l
-      | x ->
-	 cleanup();
-	 current_bound_vars := curr_bound_vars;
-	 raise x
-
-and close_term_list_eq_synt restwork = function
-    [] -> restwork []
-  | (a::l) ->
-      close_term_eq_synt (fun a' ->
-        close_term_list_eq_synt (fun l' ->
-          restwork (a'::l')) l) a
+      	auto_cleanup (fun () -> restwork t)
+      with Unify ->
+	match f.f_cat with
+	| Eq eqlist ->
+	    let rec reweqlist = function
+	      | (leq, req) :: lrew ->
+		  let leq', req'  = auto_cleanup (fun () ->
+		    List.map put_syntactic leq,
+		    put_syntactic req)
+		  in
+		  begin
+		    try
+		      auto_cleanup (fun () ->
+			unify_modulo_list (fun () -> restwork req')  l leq')
+		    with Unify -> 
+		      (* Try another rewriting when Unify is raised *)
+		      reweqlist lrew
+		  end
+	      | [] -> raise Unify 
+	    in
+	    reweqlist eqlist
+	| _ -> Parsing_helper.internal_error "close_term_eq_synt: cases other than Eq should have been treated before"
 
 and unify_modulo restwork t1 t2 =
   close_term_eq_synt (fun t1 ->
@@ -1127,12 +1194,99 @@ and unify_modulo restwork t1 t2 =
     ) t2
   ) t1
 
-and unify_modulo_list restwork l1 l2 = 
+and unify_modulo_list_internal restwork l1 l2 = 
   match (l1, l2) with
   | [], [] -> restwork ()
   | (a1::l1'), (a2::l2') ->
-      unify_modulo (fun () -> unify_modulo_list restwork l1' l2') a1 a2
+      begin
+	let unset_vars = ref [] in
+	collect_unset_vars unset_vars a1;
+	collect_unset_vars unset_vars a2;
+	try 
+	  unify_modulo (fun () -> 
+	    if not (List.exists (fun v -> v.link != NoLink) (!unset_vars))  then
+              (* No variable of a1, a2 defined by unification modulo.
+                 In this case, we do not need to backtrack on the choices made
+                 in unify_modulo (...) a1 a2 when a subsequent unification fails. *)
+	      raise (NoBacktrack unset_vars)
+	    else
+	      unify_modulo_list_internal restwork l1' l2'
+		) a1 a2;
+	with NoBacktrack unset_vars' when unset_vars == unset_vars' ->
+	  unify_modulo_list_internal restwork l1' l2'
+      end
   | _ -> internal_error "Lists should have same length in unify_modulo_list"
+
+(* Optimized version of unification modulo: try to decompose
+   the root symbols as much as possible when they do not use an
+   equational theory. *)
+
+and unify_modulo_list restwork l1 l2 =
+  let unif_to_do_left = ref [] in
+  let unif_to_do_right = ref [] in
+  let rec add_unif_term t1 t2 =
+    match t1, t2 with
+      FunApp(f1, l1), FunApp(f2,l2) when f_has_no_eq f1 && f_has_no_eq f2 ->
+  	if (non_syntactic f1) != (non_syntactic f2) then raise Unify;
+	List.iter2 add_unif_term l1 l2
+    | Var v, Var v' when v == v' -> ()
+    | (Var v, _) -> 
+	  begin
+	    match v.link with
+	    | NoLink ->
+		begin
+		  match t2 with
+		  | Var {link = TLink t2'} -> add_unif_term t1 t2'
+		  | Var v' when v.unfailing ->
+		      link v (TLink t2)
+		  | Var v' when v'.unfailing -> 
+		      link v' (TLink t1)
+		  | FunApp (f_symb,_) when (non_syntactic f_symb).f_cat = Failure && v.unfailing = false -> raise Unify
+		  | _ -> 
+		      try 
+			occur_check v t2;
+             		link v (TLink t2)
+		      with Unify -> 
+			(* When the occur check fails, it might succeed
+			   after rewriting the terms, so try that *)
+			unif_to_do_left := t1 :: (!unif_to_do_left);
+			unif_to_do_right := t2 :: (!unif_to_do_right)
+		end
+	    | TLink t1' -> add_unif_term t1' t2
+	    | _ -> internal_error "Unexpected link in unify_modulo_list (optimized) 1"
+	  end
+      | (FunApp(f,_), Var v) ->
+	  begin
+	    match v.link with
+	    | NoLink -> 
+		if v.unfailing = false && (non_syntactic f).f_cat = Failure 
+		then raise Unify
+		else
+		  begin
+		    try
+		      occur_check v t1;
+		      link v (TLink t1)
+		    with Unify -> 
+		      (* When the occur check fails, it might succeed
+			 after rewriting the terms, so try that *)
+		      unif_to_do_left := t1 :: (!unif_to_do_left);
+		      unif_to_do_right := t2 :: (!unif_to_do_right)
+		  end
+	    | TLink t2' -> add_unif_term t1 t2'
+	    | _ -> internal_error "Unexpected link in unify_modulo_list (optimized) 2"
+	  end
+      | _ ->
+	  unif_to_do_left := t1 :: (!unif_to_do_left);
+	  unif_to_do_right := t2 :: (!unif_to_do_right)
+  in
+  auto_cleanup (fun () ->
+    List.iter2 add_unif_term l1 l2;
+    unify_modulo_list_internal restwork (!unif_to_do_left) (!unif_to_do_right))
+
+let unify_modulo restwork t1 t2 =
+  unify_modulo_list restwork [t1] [t2]
+
+(* Unification of environments, modulo an equational theory *)
 
 let rec get_list l1 l2 = 
   match (l1,l2) with
@@ -1659,6 +1813,8 @@ let simp_eq t =
               [] -> ()
 	    | ((leq,req)::redl) ->
 		try
+		  if not (Terms.equal_types (Terms.get_term_type leq) (Terms.get_term_type t)) then
+		    raise NoMatch;
 		  Terms.match_terms leq t;
 		  (*let r = copy_term3 req in*)
 		  Terms.cleanup();

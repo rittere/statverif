@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -40,8 +40,8 @@ Terminates with an attack.
 (Types are ignored, we use function symbols host/getkey to model the 
 table of keys, in order to obtain termination.)
 
-*)
 set ignoreTypes = true.
+*)
 
 free c: channel.
 

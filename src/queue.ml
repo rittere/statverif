@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -25,6 +25,10 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
+(*  All functions that traverse the queue are tail-recursive,
+    and that is important to avoid a stack overflow with
+    very large sets of clauses. *)
+
 type 'a queue = { mutable next : 'a queue option;
                   elem : 'a }
 
@@ -56,13 +60,13 @@ let get queue =
               queue.qstart <- q.next;
               Some q.elem
 
+let rec lengthq l q =
+  match q with
+    None -> l
+  | Some q' -> lengthq (1+l) (q'.next)
+
 let length queue =
-  let rec lengthq q =
-    match q with
-      None -> 0
-    | Some q' -> 1 + lengthq (q'.next)
-  in
-  lengthq queue.qstart
+  lengthq 0 queue.qstart
 
 let exists queue f = 
   let rec existsrec q =
@@ -72,21 +76,33 @@ let exists queue f =
   in
   existsrec queue.qstart
 
+type 'a previous_elem =
+    Start 
+  | Elem of 'a queue
+    
 let filter queue f =
-  let rec filterrec q =
+  let rec filterrec prev q =
     match q with
-      None -> None
+      None ->
+	begin
+	  match prev with
+	    Start -> queue.qstart <- None; queue.qend <- None
+	  | Elem pelem -> pelem.next <- None; queue.qend <- Some pelem
+	end
     | Some q' -> 
-	let rnext = filterrec q'.next in
 	if f q'.elem then
-	  let r = Some { next = rnext; elem = q'.elem } in
-	  if rnext == None then queue.qend <- r;
-	  r
+	  begin
+	    begin
+	      match prev with
+		Start -> queue.qstart <- Some q'
+	      | Elem pelem -> pelem.next <- Some q'
+	    end;
+	    filterrec (Elem q') q'.next
+	  end
 	else
-	  rnext
+	  filterrec prev q'.next
   in
-  queue.qstart <- filterrec queue.qstart;
-  if queue.qstart == None then queue.qend <- None
+  filterrec Start queue.qstart
 
 let iter queue f =
   let rec iterrec q =

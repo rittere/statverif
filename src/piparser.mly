@@ -3,9 +3,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -49,6 +49,7 @@ exception Syntax
 %token OUT
 %token IN
 %token <Piptree.ident> IDENT
+%token <Piptree.ident> STRING
 %token <int> INT
 %token REPL
 %token IF
@@ -82,6 +83,7 @@ exception Syntax
 %token COLON
 %token NOUNIF
 %token PHASE
+%token BARRIER
 %token AMONG
 %token WEAKSECRET
 %token CANTEXT
@@ -105,6 +107,7 @@ exception Syntax
 /* Precedence (from low to high) and associativities */
 %right BAR 
 %right WEDGE 
+%nonassoc REPL
 
 %start all
 %type <Piptree.decl list * Piptree.process> all
@@ -120,8 +123,8 @@ lib:
 	{ (FunDecl($3, $5, $1)) :: $7 }
 |       DATA IDENT SLASH INT DOT lib
 	{ (DataFunDecl($2, $4)) :: $6 }
-|	EQUATION term EQUAL term DOT lib
-	{ (Equation($2, $4)) :: $6 }
+|	EQUATION eqlist DOT lib
+	{ (Equation($2)) :: $4 }
 |	privateopt REDUCTION term EQUAL term SEMI reduc lib
 	{ (Reduc(($3,$5)::$7, $1)) :: $8 }
 	
@@ -137,6 +140,8 @@ lib:
 |       NOUNIF gfactformat optint foptbindingseq DOT lib
         { (NoUnif ($2,$3,$4)) :: $6 } 
 |       PARAM IDENT EQUAL IDENT DOT lib
+        { (Param($2,S $4)) :: $6 }
+|       PARAM IDENT EQUAL STRING DOT lib
         { (Param($2,S $4)) :: $6 }
 |       PARAM IDENT EQUAL INT DOT lib
         { (Param($2,I $4)) :: $6 }
@@ -207,7 +212,15 @@ reducmayfailseq:
 |	reducmayfail
 	{ [$1] }
        
-	
+
+/* Equations */
+
+eqlist:
+        term EQUAL term
+        { [($1, $3)] }
+|       term EQUAL term SEMI eqlist
+	{ ($1, $3) :: $5 }
+
 /* Terms */
 
 term:
@@ -472,7 +485,7 @@ process:
 	{ $2 }
 |	IDENT
 	{ PLetDef $1 }
-|	REPL process
+|	REPL process %prec REPL
 	{ PRepl $2 }
 |	INT 
 	{ let x = $1 in
@@ -503,7 +516,19 @@ process:
 |       EVENT IDENT LPAREN termseq RPAREN optprocess
         { PEvent($2, $4, $6) }
 |       PHASE INT optprocess
-        { PPhase($2, $3) }
+        { if ($2) <= 0 then
+	    input_error "Phases should be positive integers in processes" (parse_extent());
+          PPhase($2, $3) }
+|       BARRIER INT optprocess
+        { if ($2) <= 0 then
+	    input_error "Sync numbers should be positive integers" (parse_extent());
+          Param.has_barrier := true;
+	  PBarrier($2, None, $3) }
+|       BARRIER INT LBRACKET IDENT RBRACKET optprocess
+        { if ($2) <= 0 then
+	    input_error "Sync numbers should be positive integers" (parse_extent());
+          Param.has_barrier := true;
+	  PBarrier($2, Some $4, $6) }
 |       LOCK LPAREN neidentseq RPAREN optprocess
         { PLock($3, $5) }
 |       UNLOCK LPAREN neidentseq RPAREN optprocess

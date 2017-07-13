@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -34,7 +34,7 @@
 in G from a random bitstring. (The adversary decrypts the first message
 with h(P') for the guessed password P' and concludes that the guess is
 good if the result is an element of G.) *)
-set ignoreTypes = true.
+(* set ignoreTypes = true. *)
 
 free c: channel.
 

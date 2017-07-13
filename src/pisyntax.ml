@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -194,11 +194,15 @@ let check_may_fail_term env (mterm,ext) = match mterm with
              
 (* Equations *)  
   
-let check_equation (t1, t2) =
-   let var_env = Hashtbl.create 7 in
-   let t1' = check_eq_term f_eq_tuple false false var_env t1 in
-   let t2' = check_eq_term f_eq_tuple false false var_env t2 in
-   TermsEq.register_equation (t1',t2')
+let check_equation l =
+   let l' = 
+     List.map (fun (t1,t2) ->
+       let var_env = Hashtbl.create 7 in
+       let t1' = check_eq_term f_eq_tuple false false var_env t1 in
+       let t2' = check_eq_term f_eq_tuple false false var_env t2 in
+       (t1',t2')) l
+   in
+   TermsEq.register_equation EqNoInfo l'
    
 (* Definition of the destructors using Otherwise. *)
 
@@ -394,7 +398,7 @@ let add_rule hyp concl constra tag =
   Param.red_rules := (hyp, concl, constra, tag) :: (!Param.red_rules)
 
 
-let equal_pred = Param.get_pred (Equal(Param.any_type))
+let equal_pred = Param.build_pred_memo (Equal(Param.any_type))
 
 let check_cterm env (p,t) =
    (get_pred p (List.length t), List.map (check_eq_term f_any  false true env) t)
@@ -441,11 +445,9 @@ let check_clause (cl, may_fail_env) =
 
 (* Environment of a process.
    May contain function symbols, names and variables.
-   Is a map from strings to the description of the ident *)
-
-(*type envElement = EFun of funsymb
-                | EVar of binder
-  | EName of funsymb *)
+   The elements of the environment are of type Types.envElement,
+   but only the cases EFun, EVar, and EName are used in the untyped 
+   front-end. *)
 
 let glob_table = Hashtbl.create 7
 
@@ -533,7 +535,7 @@ let rec check_ni_term varenv (term,ext) =
 		  internal_error "Arity of a name uninitialized"
 		else
 		  FunApp (r, Terms.var_gen (fst r.f_type))
-	    | EFun _ | EVar _ -> internal_error "should not find var/fun here"
+	    | _ -> internal_error "should not find var/fun here"
 	  with Not_found ->
 	    Var (get_var varenv s)
       end
@@ -562,6 +564,7 @@ let get_ident_any s env ext =
 	     input_error ("function " ^ s ^ " has arity " ^ 
 			  (string_of_int f_arity) ^
 			  " but is used without parameters") ext
+       | _ -> internal_error "Only Var, Name, Fun should occur in the environment in the untyped front-end"
    with Not_found ->
      FunApp(free_name s ext, [])
 
@@ -678,7 +681,7 @@ let add_cell (s,ext) opt_init env =
        
 
 let rec check_process env = function 
-    PNil -> Nil
+    PNil -> Nil 
   | PPar (p1,p2) -> 
       let p1' = check_process env p1 in
       let p2' = check_process env p2 in
@@ -705,10 +708,12 @@ let rec check_process env = function
 	    Test(FunApp(Terms.diff_fun Param.any_type, [check_term env t1; check_term env t2]),
 		 p1', p2', occ')
       end
+(* s : string avec le nom, va chercher dans la table l'expansion *)
+(* Definir un NamedProcess (s, [], check_process env (Hashtbl.find pdeftbl s))*)
   | PLetDef (s,ext) ->
       begin
 	try
-          check_process env (Hashtbl.find pdeftbl s)
+          NamedProcess(s, [], check_process env (Hashtbl.find pdeftbl s))
         with Not_found ->
           input_error ("process " ^ s ^ " not defined") ext
       end
@@ -717,7 +722,7 @@ let rec check_process env = function
       Hashtbl.add glob_table s (EName r);
       if (StringMap.mem s env) && (!Param.tulafale != 1) then
 	input_warning ("identifier " ^ s ^ " rebound") ext;
-      Restr(r, check_process (StringMap.add s (EName r) env) p, 
+      Restr(r, (None, env), check_process (StringMap.add s (EName r) env) p, 
 	    Terms.new_occurrence())
   | PInput(tc,pat,p) ->
       let (pat',env') = check_pat env env pat in
@@ -756,13 +761,21 @@ let rec check_process env = function
   | PEvent((i,ext),l,p) ->
       if !Param.key_compromise == 0 then
 	let f = get_event_fun i (List.length l) ext in
-	Event(FunApp(f, List.map (check_term env) l), check_process env p, Terms.new_occurrence())
+	Event(FunApp(f, List.map (check_term env) l), (None, env), check_process env p, Terms.new_occurrence())
       else
 	let f = get_event_fun i (1+List.length l) ext in
-	Event(FunApp(f, (Terms.new_var_def Param.any_type) :: (List.map (check_term env) l)), check_process env p, Terms.new_occurrence())
+	Event(FunApp(f, (Terms.new_var_def Param.any_type) :: (List.map (check_term env) l)), (None, env), check_process env p, Terms.new_occurrence())
   | PPhase(n, p) ->
       let occ' = Terms.new_occurrence() in
       Phase(n, check_process env p, occ')
+  | PBarrier(n, tag, p) ->
+      let occ' = Terms.new_occurrence() in
+      let tag' = 
+	match tag with
+	  None -> None
+	| Some (s,_) -> Some s
+      in
+      Barrier(n, tag', check_process env p, occ')
    | PLock(st,p) ->
        Lock(List.map get_cell_from_ident st,
          check_process env p, Terms.new_occurrence())
@@ -958,6 +971,7 @@ let rec check_one = function
 	| "verboseClauses", S ("short",_) -> Param.verbose_explain_clauses := Param.Clauses
 	| "verboseClauses", S ("none",_) -> Param.verbose_explain_clauses := Param.NoClauses
 	| "explainDerivation", _ -> Param.boolean_param Param.explain_derivation p ext v
+	| "removeUselessClausesBeforeDisplay", _ -> Param.boolean_param Param.remove_subsumed_clauses_before_display p ext v
 	| "predicatesImplementable", S("check",_) -> Param.check_pred_calls := true
 	| "predicatesImplementable", S("nocheck",_) -> Param.check_pred_calls := false
 	| "eqInNames", _ -> Param.boolean_param Param.eq_in_names p ext v
@@ -969,6 +983,8 @@ let rec check_one = function
 	| "traceDisplay", S ("none",_) -> Param.trace_display := Param.NoDisplay
 	| "traceDisplay", S ("short",_) -> Param.trace_display := Param.ShortDisplay
 	| "traceDisplay", S ("long",_) -> Param.trace_display := Param.LongDisplay
+	| "interactiveSwapping", _ -> Param.boolean_param Param.interactive_swapping p ext v
+	| "swapping", S sext -> Param.set_swapping := Some sext
 	| _, _ -> Param.common_parameters p ext v
       end
   
@@ -977,26 +993,32 @@ let rec check_one = function
 
 let rec set_max_used_phase = function
     Nil -> ()
+  | NamedProcess(_, _, p) -> set_max_used_phase p
   | Par(p1,p2) -> set_max_used_phase p1; set_max_used_phase p2
   | Repl (p,_) ->  set_max_used_phase p
-  | Restr(n,p,_) -> set_max_used_phase p
+  | Restr(n,_,p,_) -> set_max_used_phase p
   | Test(_,p1,p2,_) -> set_max_used_phase p1; set_max_used_phase p2
   | Input(_,_, p,_) -> set_max_used_phase p
   | Output(_,_,p,_) -> set_max_used_phase p
   | Let(_,_,p1, p2,_) -> set_max_used_phase p1; set_max_used_phase p2
   | LetFilter(_,_,p,q,_) -> set_max_used_phase p; set_max_used_phase q
-  | Event(_,p,_) -> set_max_used_phase p
+  | Event(_,_,p,_) -> set_max_used_phase p
   | Get _ | Insert _ -> Parsing_helper.internal_error "get/insert only in typed front-end"
   | Phase(n,p,_) ->
       if n > !Param.max_used_phase then
 	Param.max_used_phase := n;
       set_max_used_phase p
+  | Barrier(_,_,p,_) ->
+      set_max_used_phase p
+  | AnnBarrier _ ->
+      Parsing_helper.internal_error "Annotated barriers should not occur in the initial process"
   | Lock(_,p,_) | Unlock(_,p,_)
   | Assign(_,p,_) | ReadAs(_,p,_) -> set_max_used_phase p
 
       
       
 let parse_file s = 
+  Param.set_ignore_types true;
   let decl,p = parse s in
   List.iter check_one decl;
   let r = check_process (init_env()) p in
@@ -1024,7 +1046,7 @@ let non_compromised_session = FunApp(Param.session1, [])
    update_arity_names should be called after the translation of the
    process to update it.  *)
 
-let get_ident_any s ext =
+let rec get_ident_any names_must_be_encoded s ext =
    try
      match Hashtbl.find glob_table s  with
          EVar b -> 
@@ -1037,18 +1059,23 @@ let get_ident_any s ext =
        | EName r -> 
 	   check_single ext s;
 	   if fst r.f_type == Param.tmp_type then 
-	     let v = Terms.new_var Param.def_var_name Param.any_type in
-	     v.link <- PGLink (PGIdent(s, ext),ext);
-	     Var v
+	     begin
+	       if names_must_be_encoded then
+		 input_error ("You are referring to name " ^ s ^ " in this query or secrecy assumption, but this name will never be generated") ext
+	       else
+		 begin
+		   let v = Terms.new_var Param.def_var_name Param.any_type in
+		   v.link <- PGLink (fun () -> check_query_term true (PGIdent(s, ext),ext));
+		   Var v
+		 end
+	     end
 	   else
 	     begin
 	       match r.f_cat with 
 		 Name { prev_inputs_meaning = sl } ->
-		   let p = List.map (fun s'' ->
-		     if s'' = "!comp" then 
-		       non_compromised_session 
-		     else
-		       Terms.new_var_def Param.any_type) sl in
+		   let p = List.map (function
+		       MCompSid -> non_compromised_session 
+		     | _ -> Terms.new_var_def Param.any_type) sl in
 		   let r_arity = List.length (fst r.f_type) in
 		   if List.length p != r_arity then
 		     internal_error ("name " ^ s ^ " expects " ^ (string_of_int r_arity) ^ " arguments, but has " ^ (string_of_int (List.length p)) ^ " elements in prev_inputs_meaning");
@@ -1063,14 +1090,15 @@ let get_ident_any s ext =
 	     input_error ("function " ^ s ^ " has arity " ^ 
 			  (string_of_int f_arity) ^
 			  " but is used without parameters") ext
+       | _ -> internal_error "Only Var, Name, Fun should occur in the environment in the untyped front-end"
    with Not_found ->
      let b = Terms.new_var s Param.any_type in
      Hashtbl.add glob_table s (EVar b);
      Var b
 
-let rec check_query_term (term, ext0) =
+and check_query_term names_must_be_encoded (term, ext0) =
   match term with
-    PGIdent (s,ext) -> get_ident_any s ext  
+    PGIdent (s,ext) -> get_ident_any names_must_be_encoded s ext  
   | PGFunApp((s,ext),l) -> 
       begin
         try
@@ -1081,7 +1109,7 @@ let rec check_query_term (term, ext0) =
                | _ ->  input_error ("function " ^ s ^ " is defined by reduction. Such a function should not be used in a query") ext);
 	      let f_arity = List.length (fst f.f_type) in
 	      if f_arity = List.length l then 
-		FunApp(f, List.map check_query_term l)
+		FunApp(f, List.map (check_query_term names_must_be_encoded) l)
 	      else
 		input_error ("function " ^ s ^ " has arity " ^ 
 			     (string_of_int f_arity) ^
@@ -1093,7 +1121,7 @@ let rec check_query_term (term, ext0) =
           input_error ("function " ^ s ^ " not defined") ext
       end
   | PGTuple l -> FunApp(Terms.get_tuple_fun (List.map (fun _ -> Param.any_type) l),
-                        List.map check_query_term l)
+                        List.map (check_query_term names_must_be_encoded) l)
   | PGName ((s,ext),bl) -> 
      try
        match Hashtbl.find glob_table s  with
@@ -1101,20 +1129,27 @@ let rec check_query_term (term, ext0) =
 	   check_single ext s;
 	   if fst r.f_type == Param.tmp_type then
 	     begin
-	       let v = Terms.new_var Param.def_var_name Param.any_type in
-	       v.link <- PGLink (term,ext0);
-	       Var v
+	       if names_must_be_encoded then
+		 input_error ("You are referring to name " ^ s ^ " in this query or secrecy assumption, but this name will never be generated") ext
+	       else
+		 begin
+		   let v = Terms.new_var Param.def_var_name Param.any_type in
+		   v.link <- PGLink (fun () -> check_query_term true (term,ext0));
+		   Var v
+		 end
 	     end
            else
 	     begin
 	       match r.f_cat with 
 		 Name { prev_inputs_meaning = sl } ->
 		   List.iter (fun ((s',ext'),_) -> 
-		     if not (List.mem s' sl) then
+		     if not (List.exists (function m -> Reduction_helper.meaning_encode m = s') sl) then
 		       input_error ("variable " ^ s' ^ " not defined at restriction " ^ s) ext') bl;
-		   let p = List.map (fun s'' ->
-		     if s'' = "!comp" then non_compromised_session else
-		     binding_find s'' bl) sl in
+		   let p = List.map (function 
+		       MCompSid -> non_compromised_session 
+		     | m -> binding_find names_must_be_encoded (Reduction_helper.meaning_encode m) bl
+			   ) sl 
+		   in
 		   let r_arity = List.length (fst r.f_type) in
 		   if List.length p != r_arity then
 		     internal_error ("name " ^ s ^ " expects " ^ (string_of_int r_arity) ^ " arguments, but has " ^ (string_of_int (List.length p)) ^ " elements in prev_inputs_meaning");
@@ -1125,20 +1160,20 @@ let rec check_query_term (term, ext0) =
      with Not_found ->
        input_error (s ^ " should be a name") ext
 
-and binding_find s = function
+and binding_find names_must_be_encoded s = function
     [] -> Terms.new_var_def Param.any_type
   | ((s',_),t)::l ->
       if s' = s then
-	check_query_term t
+	check_query_term names_must_be_encoded t
       else
-	binding_find s l
+	binding_find names_must_be_encoded s l
 
-let add_binding ((i,e),t) =
+let add_binding names_must_be_encoded ((i,e),t) =
   if Hashtbl.mem glob_table i then
     input_error ("Variable " ^ i ^ " defined after used.") e
   else
     let v = Terms.new_var i Param.any_type in
-    v.link <- TLink (check_query_term t);
+    v.link <- TLink (check_query_term names_must_be_encoded t);
     Hashtbl.add glob_table i (EVar v)
 
 let find_event_arity s e'' arity =
@@ -1156,14 +1191,20 @@ let find_event_arity s e'' arity =
   with Not_found ->
     input_error ("unknown event " ^s) e''
 
-let check_event ((f,e),n) =
+let check_event names_must_be_encoded ((f,e),n) =
   match f with
     PGNeq(t1,t2) ->
-      if n = -1 then QNeq(check_query_term t1,check_query_term t2) else
-      input_error "inequalities do not depend on phases, so no phase should be specified in inequality facts in queries" e
+      if n = -1 then 
+	QNeq(check_query_term names_must_be_encoded t1,
+	     check_query_term names_must_be_encoded t2) 
+      else
+	input_error "inequalities do not depend on phases, so no phase should be specified in inequality facts in queries" e
   | PGEqual(t1,t2) ->
-      if n = -1 then QEq(check_query_term t1,check_query_term t2) else
-      input_error "equalities do not depend on phases, so no phase should be specified in equality facts in queries" e
+      if n = -1 then 
+	QEq(check_query_term names_must_be_encoded t1,
+	    check_query_term names_must_be_encoded t2) 
+      else
+	input_error "equalities do not depend on phases, so no phase should be specified in equality facts in queries" e
   | PGSimpleFact(("ev",e'),tl0) ->
       begin
 	match tl0 with
@@ -1171,10 +1212,11 @@ let check_event ((f,e),n) =
 	    if n = -1 then 
 	      if !Param.key_compromise == 0 then
 		QSEvent(false, FunApp((find_event_arity s e'' (List.length tl)),
-				      List.map check_query_term tl))
+				      List.map (check_query_term names_must_be_encoded) tl))
 	      else
 		QSEvent(false, FunApp((find_event_arity s e'' (1+List.length tl)),
-				      (Terms.new_var_def Param.any_type)::(List.map check_query_term tl)))
+				      (Terms.new_var_def Param.any_type)::
+				      (List.map (check_query_term names_must_be_encoded) tl)))
 	    else
 	      input_error "events have no phases, so no phase should be specified in events in queries" e
 	| _ -> input_error "predicate ev should have one argument, which is a function application" e'
@@ -1186,10 +1228,11 @@ let check_event ((f,e),n) =
 	    if n = -1 then 
 	      if !Param.key_compromise == 0 then
 		QSEvent(true, FunApp((find_event_arity s e'' (List.length tl)), 
-				     List.map check_query_term tl))
+				     List.map (check_query_term names_must_be_encoded) tl))
 	      else
 		QSEvent(true, FunApp((find_event_arity s e'' (1+List.length tl)), 
-				     (Terms.new_var_def Param.any_type)::(List.map check_query_term tl)))
+				     (Terms.new_var_def Param.any_type)::
+				     (List.map (check_query_term names_must_be_encoded) tl)))
 	    else
 	      input_error "events have no phases, so no phase should be specified in events in queries" e
 	| _ -> input_error "predicate evinj should have one argument, which is a function application" e'
@@ -1203,7 +1246,7 @@ let check_event ((f,e),n) =
 	  Param.max_used_phase := n;
 	end;
       let att_n = Param.get_pred (Attacker((if n = -1 then (!Param.max_used_phase) else n), Param.any_type)) in
-      QFact(att_n, List.map check_query_term tl)
+      QFact(att_n, List.map (check_query_term names_must_be_encoded) tl)
   | PGSimpleFact(("mess",_), tl) ->
       if List.length tl != 2 then
 	input_error "arity of predicate mess should be 2" e;
@@ -1213,16 +1256,16 @@ let check_event ((f,e),n) =
 	  Param.max_used_phase := n;
 	end;
       let mess_n = Param.get_pred (Mess((if n = -1 then (!Param.max_used_phase) else n), Param.any_type)) in
-      QFact(mess_n, List.map check_query_term tl)
+      QFact(mess_n, List.map (check_query_term names_must_be_encoded) tl)
   | PGSimpleFact(p, tl) ->
       if n != -1 then
 	input_error "declared predicates do not depend on phases, so no phase should be specified in such facts in queries" e;
       let p = get_pred p (List.length tl) in
-      QFact(p, List.map check_query_term tl)
+      QFact(p, List.map (check_query_term names_must_be_encoded) tl)
 
 let rec check_real_query = function
     PBefore(ev, hypll) ->
-      let ev' = check_event ev in
+      let ev' = check_event false ev in
       (
        match ev' with
 	 QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur before ==> in queries\n"
@@ -1232,7 +1275,7 @@ let rec check_real_query = function
       Before(ev', hypll')
 
 and check_hyp = function
-    PQEvent(ev) -> [[QEvent(check_event ev)]]
+    PQEvent(ev) -> [[QEvent(check_event false ev)]]
   | PNestedQuery(q) -> [[NestedQuery(check_real_query q)]]
   | PFalse -> []
   | POr(he1,he2) -> 
@@ -1244,7 +1287,7 @@ and check_hyp = function
 
 let check_real_query_top = function
     PBefore(ev, hypll) ->
-      let ev' = check_event ev in
+      let ev' = check_event false ev in
       let ev'' = 
 	match ev' with
 	  QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur before ==> in queries\n"
@@ -1274,7 +1317,7 @@ let check_query = function
       in
       PutBegin(i',l') 
   | PBinding(i,t) ->
-      add_binding (i,t);
+      add_binding false (i,t);
       PutBegin(false,[])
 
 
@@ -1366,43 +1409,6 @@ let query_to_facts q =
 	    ) q;
   !facts
 
-(* After its translation, the names in the query are considered of arity 0.
-   The exact arity of each name function symbol is computed during the translation
-   of the process. The following functions scan the query to update the names
-   with their real arity. *)
-
-let rec update_arity_names_t = function
-    Var v ->
-      begin
-	match v.link with
-	  PGLink t -> 
-	    let t' = check_query_term t in
-	    v.link <- TLink t';
-	    t'
-	| TLink t -> t
-	| NoLink -> Var v
-	| _ -> internal_error "unexpected link in update_arity_names_t"
-      end
-  | FunApp(f,l) -> FunApp(f, List.map update_arity_names_t l)
-      
-
-let update_arity_names_e = function
-    QSEvent(b,t) -> QSEvent(b, update_arity_names_t t)
-  | QFact(p,tl) -> QFact(p, List.map update_arity_names_t tl)
-  | QNeq(t1,t2) -> QNeq(update_arity_names_t t1, update_arity_names_t t2)
-  | QEq(t1,t2) -> QEq(update_arity_names_t t1, update_arity_names_t t2)
-
-let rec update_arity_names_r = function
-    Before(ev,hypll) -> Before(update_arity_names_e ev, List.map (List.map update_arity_names_h) hypll)
-
-and update_arity_names_h = function
-    QEvent(ev) -> QEvent(update_arity_names_e ev)
-  | NestedQuery(q) -> NestedQuery(update_arity_names_r q)
-
-let update_arity_names = function
-    PutBegin(b,l) -> PutBegin(b,l)
-  | RealQuery q -> RealQuery(update_arity_names_r q)
-
 let get_noninterf_queries () =
   !noninterf_list
 
@@ -1412,8 +1418,8 @@ let get_weaksecret_queries () =
 let get_not() =
   List.map (fun (ev,b) -> 
     clear_var_env();
-    List.iter add_binding b;
-    check_event ev) (!not_list)
+    List.iter (add_binding true) b;
+    check_event true ev) (!not_list)
 
 (* For Nounif. Very similar to queries, except that *v is allowed
    and events are not allowed *)
@@ -1431,12 +1437,12 @@ let fget_ident_any s ext =
        | EName r -> 
 	   check_single ext s;
 	   if fst r.f_type == Param.tmp_type then 
-	     Parsing_helper.internal_error "Names should have their arity at this point"
+	     Parsing_helper.input_error ("You are referring to name " ^ s ^ " in this nounif declaration, but this name will never be generated") ext
 	   else
 	     begin
 	       match r.f_cat with 
 		 Name { prev_inputs_meaning = sl } ->
-		   let p = List.map (fun s'' ->
+		   let p = List.map (fun _ ->
 		     FAny (Terms.new_var Param.def_var_name Param.any_type)) sl in
 		   let r_arity = List.length (fst r.f_type) in
 		   if List.length p != r_arity then
@@ -1452,6 +1458,7 @@ let fget_ident_any s ext =
 	     input_error ("function " ^ s ^ " has arity " ^ 
 			  (string_of_int f_arity) ^
 			  " but is used without parameters") ext
+       | _ -> internal_error "Only Var, Name, Fun should occur in the environment in the untyped front-end"
    with Not_found ->
      let b = Terms.new_var s Param.any_type in
      Hashtbl.add glob_table s (EVar b);
@@ -1507,16 +1514,16 @@ let rec check_gformat (term, ext0) =
 	 EName r ->
 	   check_single ext s;
 	   if fst r.f_type == Param.tmp_type then
-	     Parsing_helper.internal_error "Names should have their arity at this point"
+	     Parsing_helper.input_error ("You are referring to name " ^ s ^ " in this nounif declaration, but this name will never be generated") ext
            else
 	     begin
 	       match r.f_cat with 
 		 Name { prev_inputs_meaning = sl } ->
 		   List.iter (fun ((s',ext'),_) -> 
-		     if not (List.mem s' sl) then
+		     if not (List.exists (fun m -> Reduction_helper.meaning_encode m = s') sl) then
 		       input_error ("variable " ^ s' ^ " not defined at restriction " ^ s) ext') bl;
-		   let p = List.map (fun s'' ->
-		     fbinding_find s'' bl) sl in
+		   let p = List.map (fun m ->
+		     fbinding_find (Reduction_helper.meaning_encode m) bl) sl in
 		   let r_arity = List.length (fst r.f_type) in
 		   if List.length p != r_arity then
 		     internal_error ("name " ^ s ^ " expects " ^ (string_of_int r_arity) ^ " arguments, but has " ^ (string_of_int (List.length p)) ^ " elements in prev_inputs_meaning");

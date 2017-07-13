@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -59,6 +59,7 @@ type info =
   | Equal of typet
   | Table of int
   | TableBin of int
+  | TestUnifP of typet
   | PolymPred of string * int(*value of p_prop*) * typet list
 
 type predicate = { p_name: string;
@@ -66,27 +67,21 @@ type predicate = { p_name: string;
 		   mutable p_prop: int;
 		   mutable p_info: info list }
 
+type when_include = 
+    Always
+  | IfQueryNeedsIt
+
+type eq_info =
+    EqNoInfo
+  | EqConvergent
+  | EqLinear
+
 type binder = { sname : string;
                 vname : int;
                 unfailing : bool;
 		btype : typet;
 		mutable link : linktype }
 		
-(* Environment elements; environments are needed for terms in queries
-   that cannot be expanded before process translation, see link PGTLink
-   below *)
-
-and envElement = 
-    EFun of funsymb
-  | EVar of binder
-  | EName of funsymb
-  | ECell of funsymb
-  | EPred of predicate
-  | EEvent of funsymb
-  | EType of typet
-  | ETable of funsymb
-  | ELetFun of (term list -> (term -> process) -> process) * (typet list) * typet
-
 (* Processes: patterns *)
 
 and pattern = 
@@ -96,37 +91,28 @@ and pattern =
 
 (* Processes themselves *)
 
-and process = 
-    Nil
-  | Par of process * process
-  | Repl of process * occurrence
-  | Restr of funsymb * process * occurrence
-  | Test of term * process * process * occurrence
-  | Input of term * pattern * process * occurrence
-  | Output of term * term * process * occurrence
-  | Let of pattern * term * process * process * occurrence
-  | LetFilter of binder list * fact * process * process * occurrence
-  | Event of term  * process * occurrence
-  | Insert of term * process * occurrence
-  | Get of pattern * term * process * process * occurrence
-  | Phase of int * process * occurrence
-  | Lock of funsymb list * process * occurrence
-  | Unlock of funsymb list * process * occurrence
-  | Open of funsymb list * process * occurrence
-  | ReadAs of (funsymb * pattern) list * process * occurrence
-  | Assign of (funsymb * term) list * process * occurrence
-  
 and linktype = 
     NoLink
   | VLink of binder
   | TLink of term
   | TLink2 of term (* used only in reduction.ml *)
   | FLink of format (* used only in syntax.ml *)
-  | PGLink of Piptree.gterm_e (* used only in pisyntax.ml *)
-  | PGTLink of envElement StringMap.t * Pitptree.gterm_e (* used only in pitsyntax.ml *)
+  | PGLink of (unit -> term) (* used only in pisyntax.ml and pitsyntax.ml *)
+
+(* Meaning of arguments of names *)
+
+and arg_meaning =
+    MUnknown
+  | MSid of int (* The argument represents a session identifier *)
+  | MCompSid
+  | MAttSid
+  | MVar of binder * string option
+	(* The argument represents a variable.
+	   The string option is [Some x] when the argument can be 
+	   designated by the string [x] in "new a[x = ....]" *)
 
 and name_info = { mutable prev_inputs : term option;
-		  mutable prev_inputs_meaning : string list }
+		  mutable prev_inputs_meaning : arg_meaning list }
 
 and funcats = 
     Red of rewrite_rules
@@ -166,12 +152,68 @@ and format =
   | FFunApp of funsymb * format list
   | FAny of binder
 
-and fact_format = predicate * format list
+type fact_format = predicate * format list
 
-and fact = 
+type fact = 
     Pred of predicate * term list
-  | Out of typet list * term * (binder * term) list
+  | Out of term * (binder * term) list
 
+(* Environment elements; environments are needed for terms in queries
+   that cannot be expanded before process translation, see link PGTLink
+   below *)
+
+type envElement = 
+    EFun of funsymb
+  | EVar of binder
+  | EName of funsymb
+  | ECell of funsymb
+  | EPred of predicate
+  | EEvent of funsymb
+  | EType of typet
+  | ETable of funsymb
+  | ELetFun of (term list -> (term -> process) -> process) * (typet list) * typet
+
+
+(* Each restriction "new" is annotated with
+   - optionally, the identifiers given between brackets after the "new",
+   which serve to determine the arguments in the internal representation
+   of the name
+   - the current environment at the restriction, which serves to determine
+   which variables to use in queries of the form "new a[x = ...]" 
+
+Events may also be annotated with identifiers between brackets.
+They serve to determine the variables to include in the environment
+used for proving injective correspondences.
+*)
+
+and new_args = binder list option * envElement StringMap.t
+
+(* Processes *)
+  
+and process = 
+    Nil
+  | Par of process * process
+  | Repl of process * occurrence
+  | Restr of funsymb * new_args * process * occurrence
+  | Test of term * process * process * occurrence
+  | Input of term * pattern * process * occurrence
+  | Output of term * term * process * occurrence
+  | Let of pattern * term * process * process * occurrence
+  | LetFilter of binder list * fact * process * process * occurrence
+  | Event of term  * new_args * process * occurrence
+  | Insert of term * process * occurrence
+  | Get of pattern * term * process * process * occurrence
+  | Phase of int * process * occurrence
+  | Barrier of int * string option * process * occurrence
+  | AnnBarrier of int * string * funsymb * funsymb * (binder * term) list * process * occurrence
+  | NamedProcess of string * term list * process
+  | Lock of funsymb list * process * occurrence
+  | Unlock of funsymb list * process * occurrence
+  | Open of funsymb list * process * occurrence
+  | ReadAs of (funsymb * pattern) list * process * occurrence
+  | Assign of (funsymb * term) list * process * occurrence
+  
+  
 (* The following constraints are simple constraints.
    A list of simple constraints is a constraint, and represents the OR
    of the simple constraints.
@@ -183,13 +225,12 @@ and fact =
 *)
 
 type constraints = 
-	| Neq of term * term
+  | Neq of term * term
 	
 (* Rule descriptions for History.get_rule_hist *)
 
 type rulespec =
   | RElem of predicate list * predicate
-  | RTestUnif
   | RApplyFunc of funsymb * predicate
   | RApplyProj of funsymb * int * predicate  (* For projections corresponding to data constructors *)
 
@@ -268,6 +309,7 @@ type history =
   | Empty of fact
   | HEquation of int * fact * fact * history
   | Resolution of history * int * history
+  | TestUnifTrue of int * history
 
 type reduction = fact list * fact * history * constraints list list
 

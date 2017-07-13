@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -127,6 +127,7 @@ type process =
   | PLetFilter of ident list * fact_e * process * process
   | PEvent of ident * term_e list * process
   | PPhase of int * process
+  | PBarrier of int * ident option * process
   | PLock of ident list * process
   | PUnlock of ident list * process
   | POpen of ident list * process
@@ -141,7 +142,7 @@ type decl =
   | DataFunDecl of ident * int
   | Reduc of fundef * bool
   | ReducFail of (term_e * term_e * ident list) list * bool
-  | Equation of equation
+  | Equation of equation list
   | PredDecl of ident * int * ident list
   | Param of ident * Ptree.pval
   | PDef of ident * process

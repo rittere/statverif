@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -86,11 +86,12 @@ let elim_att_guess_xx next_stage repeat_next_stage (hyp, concl, hist, constra) =
     | (Pred({ p_info = [AttackerGuess _]}, [Var v1; Var v2])) :: l when v1 == v2 ->
 	assert false (* Not updated for states. *)
 	(*redo_all_optim := true;
-	hist' := Resolution(List.assq (if !Param.ignore_types then Param.any_type else v1.btype) (!attrulenum), n, !hist'); 
-	(Pred(Param.get_pred (Attacker(!Param.max_used_phase, v1.btype)), [Var v1])) :: (f (n+1) l)*)
+	hist' := Resolution(List.assq (Param.get_type v1.btype) (!attrulenum), n, !hist'); 
+	  (Pred(Param.get_pred (Attacker(!Param.max_used_phase, v1.btype)), [Var v1])) :: (f (n+1) l) *)
     | fact :: l -> fact :: (f (n+1) l)
   in
-  let r' = (f 0 hyp, concl, !hist', constra) in
+  let hyp' = f 0 hyp in
+  let r' = (hyp', concl, !hist', constra) in
   if !redo_all_optim then
     repeat_next_stage r'
   else

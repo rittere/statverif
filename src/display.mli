@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -37,6 +37,17 @@ val proverifurl : string ref
 val openfile : string -> string -> unit
 val close : unit -> unit
 end
+
+
+module LangGviz :
+sig
+val close : unit -> unit
+val openfile : string -> string -> unit
+val write_state_to_dot_file :
+      'a Pitypes.reduc_state -> unit
+end
+
+
 
 (* Write HTML code in a file *)
 

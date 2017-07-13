@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -62,7 +62,30 @@ let active_attacker = ref true
 let key_compromise = ref 0
 
 let typed_frontend = ref false
-let ignore_types = ref true
+type ignore_t =
+    NotSet
+  | Ignore
+  | NotIgnore
+let ignore_types = ref NotSet
+
+let get_ignore_types() = 
+  match !ignore_types with
+    NotSet -> Parsing_helper.internal_error "ignore_types read before set"
+  | Ignore -> true
+  | NotIgnore -> false
+
+let set_ignore_types b =
+  begin
+  match !ignore_types with
+    NotSet -> ()
+  | _ -> print_string "Warning: ignore_types set twice\n"
+  end;
+  ignore_types := if b then Ignore else NotIgnore
+
+let default_set_ignore_types() =
+  match !ignore_types with
+    NotSet -> ignore_types := Ignore
+  | _ -> ()
 
 let html_output = ref false
 let html_dir = ref ""
@@ -72,7 +95,11 @@ let derivation_number = ref 0
 let inside_query_number = ref 0
 let process_number = ref 0
 
+let expand_if_terms_to_terms = ref false
+let expand_simplify_if_cst = ref true
 let simplify_process = ref 1
+let reject_choice_true_false = ref true
+let reject_no_simplif = ref true
 
 let verbose_rules = ref false
 type explain_clauses = NoClauses | Clauses | ExplainedClauses
@@ -83,6 +110,7 @@ let verbose_eq = ref true
 let verbose_destr = ref false
 let verbose_term = ref true
 let abbreviate_clauses = ref true
+let remove_subsumed_clauses_before_display = ref true  
 let unselectable_state = ref false
 
 let reconstruct_derivation = ref true
@@ -126,14 +154,32 @@ let check_pred_calls = ref true
 let eq_in_names = ref false
 
 let simpeq_remove = ref true
+let simpeq_final = ref true
 
 type eqtreatment = ConvLin | NonProved
 let eqtreatment = ref ConvLin
 
+let symb_order = ref None
+
 type trace_display = NoDisplay | ShortDisplay | LongDisplay
 let trace_display = ref ShortDisplay
 
+(* for trace graph *)
+type trace_display_graphicx = TextDisplay | GraphDisplay
+let trace_display_graphicx = ref TextDisplay
+
+
+let command_line_graph = ref "dot -Tpdf %1.dot -o %1.pdf"
+let command_line_graph_set = ref false
+
+let graph_output = ref false
+  
 let tulafale = ref 0
+
+(* For swapping at barriers *)
+
+let interactive_swapping = ref false
+let set_swapping = ref None
 
 let boolean_param flag p ext v =
   match v with
@@ -172,8 +218,10 @@ let common_parameters p ext v =
   | "redundantHypElim", S (("false"|"no"),_) -> redundant_hyp_elim := false
   | "simpEq", S ("remove",_) -> simpeq_remove := true
   | "simpEq", S ("reduce",_) -> simpeq_remove := false
+  | "simpEqFinal", _ ->  boolean_param simpeq_final p ext v
   | "eqTreatment", S ("convLin",_) -> eqtreatment := ConvLin
   | "eqTreatment", S ("nonProved",_) -> eqtreatment := NonProved (* Undocumented! *)
+  | "symbOrder", S sext -> symb_order := Some sext
   | "reconstructDerivation", _ -> boolean_param reconstruct_derivation p ext v
   | "simplifyDerivation", _ -> boolean_param simplify_derivation p ext v
   | "displayDerivation", _ -> boolean_param display_derivation p ext v
@@ -197,6 +245,9 @@ let state_type = { tname = "state" }
 
 let tmp_type = [{ tname = "temporary_type_should_be_removed" }]
 
+let get_type ty =
+  if get_ignore_types() then any_type else ty
+    
 (* predicates *)
 
 let get_suffix i =
@@ -321,6 +372,10 @@ let build_pred = function
 	p_type = tl;
 	p_prop = i;
 	p_info = [PolymPred(s,i,tl)] }
+  | TestUnifP(t) ->
+      { p_name = "testunif" ^ (get_type_suffix t); p_type = [t; t]; 
+	p_prop = pred_BLOCKING;
+	p_info = [TestUnifP(t)] }
 
 let memo f =
   let table = Hashtbl.create 7 in
@@ -336,7 +391,7 @@ let build_pred_memo = memo build_pred
 
 let get_pred info =
   let info = 
-    if !ignore_types then
+    if get_ignore_types() then
       match info with
 	Attacker(i,t) -> Attacker(i,any_type)
       |	Mess(i,t) -> Mess(i,any_type)
@@ -346,6 +401,7 @@ let get_pred info =
       |	Compromise(t) -> Compromise(any_type)
       |	Equal(t) -> Equal(any_type)
       |	PolymPred(s,i,tl) -> PolymPred(s,i, List.map (fun _ -> any_type) tl)
+      |	TestUnifP(t) -> TestUnifP(any_type)
       |	x -> x
     else
       info
@@ -358,11 +414,13 @@ let mid_pred_inj = { p_name = "mid"; p_type = [bool_type]; p_prop = 0; p_info = 
 let end_pred_inj = { p_name = "end"; p_type = [sid_type; event_type] ; p_prop = 0; p_info = [] }
 
 (* For non-interference *)
-let testunif_pred = { p_name = "testunif"; p_type = [any_type; any_type]; 
-		      p_prop = pred_BLOCKING;
-		      p_info = [] }
+
 let bad_pred = { p_name = "bad"; p_type = []; p_prop = pred_BLOCKING;
 		 p_info = [] }
+
+(* Predicate used as replacement for the conclusion in backward search *)
+
+let dummy_pred = { p_name = "dummy"; p_type = []; p_prop = 0; p_info = [] }
 
 (* Special variables *)
 
@@ -384,9 +442,10 @@ let choice_fun_memo = memo (fun t ->
     f_options = 0 })
 
 let choice_fun t = 
-  choice_fun_memo (if !ignore_types then any_type else t)
+  choice_fun_memo (get_type t)
 
 let has_choice = ref false
+let has_barrier = ref false
 let equivalence = ref false
 
 (* Values computed from the input file *)

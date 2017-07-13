@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -62,9 +62,10 @@ let rec occurs_var_pat v = function
 
 let rec occurs_var_proc v = function
     Nil -> false
+  | NamedProcess(_, _, p) -> occurs_var_proc v p
   | Par(p1,p2) -> (occurs_var_proc v p1) || (occurs_var_proc v p2)
   | Repl(p,_) -> occurs_var_proc v p
-  | Restr(_,p,_) -> occurs_var_proc v p
+  | Restr(_,_,p,_) -> occurs_var_proc v p
   | Test(t,p1,p2,_) -> 
       (Terms.occurs_var v t) || 
       (occurs_var_proc v p1) || (occurs_var_proc v p2)
@@ -80,14 +81,22 @@ let rec occurs_var_proc v = function
   | LetFilter(_,f,p1,p2,_) ->
       (Terms.occurs_var_fact v f) ||
       (occurs_var_proc v p1) || (occurs_var_proc v p2)
-  | Event(t,p,_) ->
-      (Terms.occurs_var v t) || (occurs_var_proc v p)
+  | Event(t,(args,_),p,_) ->
+      (Terms.occurs_var v t) || 
+      (match args with 
+	None -> false
+      |	Some l -> List.memq v l) || 
+      (occurs_var_proc v p)
   | Insert(t,p,_) ->
       (Terms.occurs_var v t) || (occurs_var_proc v p)
   | Get(pat,t,p,q,_) ->
       (occurs_var_pat v pat) || (Terms.occurs_var v t) || 
       (occurs_var_proc v p) || (occurs_var_proc v q)
   | Phase(_,p,_) -> occurs_var_proc v p
+  | Barrier _ | AnnBarrier _ ->
+     Parsing_helper.internal_error "Barriers should not appear here (13)"
+
+(* Functions for finding the arguments to include in names *)
 
 (* Determine which variables should be included as arguments of names,
    so that queries can be answered *)
@@ -108,16 +117,172 @@ let get_need_vars s =
   let rec get_need_list_rec = function
       [] -> []
     | (s1,s2,e)::l ->
-	if s = s1 then
-	  (s2,e) :: (get_need_list_rec l)
+	let rest = get_need_list_rec l in
+	if (s = s1) && (not (List.exists (fun (s2',_) -> s2 = s2') rest)) then
+	  (s2,e) :: rest
 	else
-	  get_need_list_rec l
+	  rest
   in 
   get_need_list_rec (!need_vars_in_names)
 
+(* Gives the string [x] to use in the construct "new a[x = ...]"
+   to designate an argument of a name with that meaning *)
+
+let meaning_encode = function
+    MUnknown -> ""
+  | MSid n -> "!" ^ (string_of_int n)
+  | MCompSid -> "!comp"
+  | MAttSid -> "!att"
+  | MVar(_,None) -> ""
+  | MVar(_,Some s) -> s
+
+(* Variant of [meaning_encode] more suitable for generating the
+   name of a fresh variable *)
+
+let meaning_name = function
+    MUnknown -> Param.def_var_name
+  | MSid n -> "!" ^ (string_of_int n)
+  | MCompSid -> "!comp"
+  | MAttSid -> "!att"
+  | MVar(b,_) -> b.sname
+
+(* Add a counter to each element of a list *)
+
+let add_count l = 
+  List.map (fun x -> (x, ref 0)) l
+
+(* Build the include information used by include_arg and final_check,
+   by adding counters when needed *)
+
+type include_info_t = 
+  envElement Stringmap.StringMap.t * 
+  (binder * int ref) list option * 
+  (Ptree.ident * int ref) list
+
+let prepare_include_info env args need_list =
+  let args' = match args with
+    None -> None
+  | Some l -> Some (add_count l)
+  in 
+  (env, args', add_count need_list)
+
+(* Find an element, and increase its counter if found *)
+
+let rec find_count s = function
+  [] -> false
+| (((a,ext),n)::l) ->
+    if s = a then
+      begin
+        incr n;
+        true
+      end
+    else
+      find_count s l
+
+(* Find an element (comparison with physical equality), and increase its counter if found *)
+
+let rec findq_count s = function
+  [] -> false
+| ((a,n)::l) ->
+    if s == a then
+      begin
+        incr n;
+        true
+      end
+    else
+      findq_count s l
+
+(* Does the string [s] correspond to the variable [b]? *)
+
+let is_var env s b =
+  try 
+    match Stringmap.StringMap.find s env with
+      EVar b' -> b' == b
+    | _ -> false
+  with Not_found -> false
+
+(* Determine if an argument should be included in the internal representation
+   of a name or not *)
+
+let include_arg (env, args, need_list) m always = 
+match m with
+  MVar(b,_) ->
+    let found_in_need_list = (is_var env b.sname b) && (find_count b.sname need_list) in
+    let new_meaning =
+      if found_in_need_list then MVar(b, Some b.sname) else MVar(b, None) 
+    in
+    begin
+    match args with
+      None -> 
+        if (always = Always) || found_in_need_list then Some(new_meaning) else None
+    | Some args_content ->
+        let found_in_args = findq_count b args_content in
+        if found_in_args || found_in_need_list then Some(new_meaning) else None
+    end
+| m -> Some m
+
+(* Check that all needed variables have been found *)
+
+let final_check (env, args, need_list) sf =
+  List.iter (fun ((s,ext), n) ->
+    if !n = 0 then
+      Parsing_helper.input_error ("variable " ^ s ^ " not defined at restriction " ^ sf) ext) need_list;
+  match args with
+    None -> ()
+  | Some args_content -> 
+    List.iter (fun (b, n) ->
+      if !n = 0 then
+        Parsing_helper.internal_error ("variable " ^ (Display.Text.varname b) ^ " not found at restriction " ^ sf)) args_content
+
+let rec count_name_params = function
+    [] -> 0
+  | (_,_,Always)::l -> 1+count_name_params l
+  | (_,_,IfQueryNeedsIt)::l -> count_name_params l
+
+let rec extract_name_params_noneed = function
+    [] -> []
+  | (_,t,Always)::l ->
+      t::(extract_name_params_noneed l)
+  | (_,t,IfQueryNeedsIt)::l ->
+      extract_name_params_noneed l
+
+let rec extract_name_params sf include_info = function
+    [] -> 
+      final_check include_info sf;
+      []
+  | (m,t,always)::l ->
+      match include_arg include_info m always with
+	Some _ -> t::(extract_name_params sf include_info l)
+      | None -> extract_name_params sf include_info l
+
+let rec extract_name_params_meaning sf include_info = function
+    [] -> 
+      final_check include_info sf;
+      []
+  | (m,_,always)::l ->
+      match include_arg include_info m always with
+	Some m' -> 
+	  m'::(extract_name_params_meaning sf include_info l)
+      | None ->
+	  extract_name_params_meaning sf include_info l
+
+let rec extract_name_params_types sf include_info l lt = 
+  match (l,lt) with
+    [],[] -> 
+      final_check include_info sf;
+      []
+  | (m,_,always)::l, ty::lt ->
+      begin
+      match include_arg include_info m always with
+	Some _ -> 
+	  ty::(extract_name_params_types sf include_info l lt)
+      | None ->
+	  extract_name_params_types sf include_info l lt
+      end
+  | _ -> Parsing_helper.internal_error "lists should have same length in extract_name_params_types"
+
 (*====================================================================*)
-(* Functions to help trace reconstruction algorithms
-   by Xavier Allamigeon and Bruno Blanchet *)
+(* Functions to help trace reconstruction algorithms *)
 
 (* Find an element of the list x such that f x is true and
    return (index of x in the list, x). The first element of the list
@@ -207,15 +372,15 @@ let rec get_name_charac t =
       let rec find_first_sid sl l =
 	match (sl,l) with
 	  [],[] -> [f]
-	| (sid_meaning::sl',sid::l') ->
-	    if (String.length sid_meaning > 0) && (sid_meaning.[0] = '!') then 
-	      begin
-		match sid with
-		  FunApp(fsid,[]) -> [f;fsid]
-		| Var {link = TLink t} -> find_first_sid [sid_meaning] [t]
-		| _ -> Parsing_helper.internal_error "a session identifier should be a function symbol without argument"
-	      end
-	    else find_first_sid sl' l'
+	| (((MSid _ | MCompSid | MAttSid) as sid_meaning)::_,sid::_) ->
+	    begin
+	      match sid with
+		FunApp(fsid,[]) -> [f;fsid]
+	      | Var {link = TLink t} -> find_first_sid [sid_meaning] [t]
+	      | _ -> Parsing_helper.internal_error "a session identifier should be a function symbol without argument"
+	    end
+	| (_::sl', _::l') ->
+	    find_first_sid sl' l'
 	| _ -> Parsing_helper.internal_error "different length in find_first_sid"
       in
       find_first_sid sl l
@@ -303,7 +468,7 @@ let corresp_att_mess_bin p1 p2 =
 
 let match_equiv next_f f1 f2 =
   match (f1,f2) with
-    Out(_,t1,l1), Out(_,t2,l2) -> match_modulo next_f t2 t1 
+    Out(t1,l1), Out(t2,l2) -> match_modulo next_f t2 t1 
   | Pred(p1,l1), Pred(p2,l2) when p1 == p2 -> match_modulo_list next_f l2 l1 
   | Pred(p1,[t1]), Pred(p2, [t2';t2]) 
         when (corresp_att_mess p1 p2) 
@@ -329,7 +494,7 @@ let term_subst t n1 n2 =
 let fact_subst f n1 n2 = 
   match f with
     Pred(p,l) -> Pred(p, List.map (fun t -> term_subst t n1 n2) l)
-  | Out(ty,t,l) -> Out(ty,term_subst t n1 n2, List.map(fun (b,t) -> (b, term_subst t n1 n2)) l)
+  | Out(t,l) -> Out(term_subst t n1 n2, List.map(fun (b,t) -> (b, term_subst t n1 n2)) l)
 
 let rec pat_subst p n1 n2 = 
   match p with
@@ -340,18 +505,23 @@ let rec pat_subst p n1 n2 =
 let rec process_subst p n1 n2 = 
   match p with
     Nil -> Nil
+  | NamedProcess(s, tl, p) ->
+      NamedProcess(s, List.map (fun t -> term_subst t n1 n2) tl, process_subst p n1 n2)
   | Par(p1,p2) -> Par(process_subst p1 n1 n2, process_subst p2 n1 n2)
-  | Restr(n,p,occ) -> Restr(n, process_subst p n1 n2,occ)
+  | Restr(n,args,p,occ) -> Restr(n, args, process_subst p n1 n2,occ)
   | Repl(p,occ) -> Repl(process_subst p n1 n2, occ)
   | Let(pat,t,p,q,occ) -> Let(pat_subst pat n1 n2, term_subst t n1 n2, process_subst p n1 n2, process_subst q n1 n2,occ)
   | Input(t, pat, p, occ) -> Input(term_subst t n1 n2, pat_subst pat n1 n2, process_subst p n1 n2, occ)
   | Output(tc, t, p, occ) -> Output(term_subst tc n1 n2, term_subst t n1 n2, process_subst p n1 n2, occ)
   | Test(t, p, q, occ) -> Test(term_subst t n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ)
-  | Event(t, p, occ) -> Event(term_subst t n1 n2, process_subst p n1 n2, occ)
+  | Event(t, args, p, occ) -> Event(term_subst t n1 n2, args, process_subst p n1 n2, occ)
   | Insert(t, p, occ) -> Insert(term_subst t n1 n2, process_subst p n1 n2, occ)
   | Get(pat, t, p, q, occ) -> Get(pat_subst pat n1 n2, term_subst t n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ)
   | Phase(n,p,occ) -> Phase(n,process_subst p n1 n2,occ)
   | LetFilter(bl, f, p, q, occ) -> LetFilter(bl, fact_subst f n1 n2, process_subst p n1 n2, process_subst q n1 n2, occ) 
+  | Barrier(n,tag,p,occ) -> Barrier(n,tag,process_subst p n1 n2,occ)
+  | AnnBarrier _ ->
+     Parsing_helper.internal_error "Annotated barriers should not appear here (14)"
   | Lock(st, p, occ) -> Lock(st, process_subst p n1 n2, occ)
   | Unlock(st, p, occ) -> Unlock(st, process_subst p n1 n2, occ)
   | ReadAs(sp, p, occ) -> ReadAs(List.map (fun (s,p) -> s,pat_subst p n1 n2) sp, process_subst p n1 n2, occ)
@@ -369,6 +539,26 @@ let copy_binder b =
       b'
   | _ -> Parsing_helper.internal_error "unexpected link in copy_binder"
 
+let update_env env =
+  Stringmap.StringMap.map (function
+      (EVar b) as x ->
+	begin
+	match b.link with
+	  VLink b' -> EVar b'
+	| _ -> x
+	end
+    | x -> x) env
+
+let update_args_opt lopt = 
+  match lopt with
+    None -> None 
+  | Some l -> Some (List.map (fun b ->
+	begin
+	match b.link with
+	  VLink b' -> b'
+	| _ -> b
+	end) l)
+    
 let rec copy_pat = function
     PatVar b -> PatVar (copy_binder b)
   | PatTuple(f,l) -> PatTuple(f, List.map copy_pat l)
@@ -376,18 +566,22 @@ let rec copy_pat = function
 
 let rec copy_process = function
     Nil -> Nil
+  | NamedProcess(s, tl, p) ->
+      NamedProcess(s, List.map (fun t -> copy_term2 t) tl, copy_process p) 
   | Par(p1,p2) -> Par(copy_process p1, copy_process p2)
-  | Restr(n,p,occ) -> Restr(n, copy_process p,occ)
+  | Restr(n,(args,env),p,occ) -> Restr(n, (update_args_opt args,update_env env), copy_process p,occ)
   | Repl(p,occ) -> Repl(copy_process p, occ)
   | Let(pat, t, p, q, occ) -> let pat' = copy_pat pat in Let(pat', copy_term2 t, copy_process p, copy_process q, occ)
   | Input(t, pat, p, occ) -> let pat' = copy_pat pat in Input(copy_term2 t, pat', copy_process p, occ)
   | Output(tc,t,p, occ) -> Output(copy_term2 tc, copy_term2 t, copy_process p, occ)
   | Test(t,p,q,occ) -> Test(copy_term2 t, copy_process p, copy_process q,occ)
-  | Event(t, p, occ) -> Event(copy_term2 t, copy_process p, occ)
+  | Event(t, (args, env), p, occ) -> Event(copy_term2 t, (update_args_opt args,update_env env), copy_process p, occ)
   | Insert(t, p, occ) -> Insert(copy_term2 t, copy_process p, occ)
   | Get(pat, t, p, q, occ) -> let pat' = copy_pat pat in Get(pat', copy_term2 t, copy_process p, copy_process q, occ)
   | Phase(n,p,occ) -> Phase(n, copy_process p,occ)
   | LetFilter(bl, f, p, q, occ) -> let bl' = List.map copy_binder bl in LetFilter(bl', copy_fact2 f, copy_process p, copy_process q, occ)
+  | Barrier _ | AnnBarrier _ ->
+     Parsing_helper.internal_error "Barriers should not appear here (15)"
   | Lock(cells, p, occ) -> Lock(cells, copy_process p, occ)
   | Unlock(cells, p, occ) -> Unlock(cells, copy_process p, occ)
   | Open(cells, p, occ) -> Open(cells, copy_process p, occ)
@@ -418,7 +612,7 @@ let rec close_term = function
 
 let close_fact = function
     Pred(p,l) -> List.iter close_term l
-  | Out(_,t,l) -> close_term t; List.iter (fun (_,t') -> close_term t') l
+  | Out(t,l) -> close_term t; List.iter (fun (_,t') -> close_term t') l
 
 let rec close_tree tree =
   close_fact tree.thefact;
@@ -473,7 +667,7 @@ let equal_facts_modulo f1 f2 =
   match f1, f2 with
     Pred(p1,l1), Pred(p2,l2) ->
       (p1 == p2) && (List.for_all2 equal_open_terms_modulo l1 l2)
-  | Out(_,t1,_),Out(_,t2,_) -> 
+  | Out(t1,_),Out(t2,_) -> 
       equal_open_terms_modulo t1 t2
   | _ -> false
 
@@ -527,7 +721,7 @@ and rev_name_subst_list l = List.map rev_name_subst l
 
 let rev_name_subst_fact = function
     Pred(p,l) -> Pred(p, rev_name_subst_list l)
-  | Out(ty,t,l) -> Out(ty,rev_name_subst t, List.map (fun (v,t') -> (v,rev_name_subst t')) l)
+  | Out(t,l) -> Out(rev_name_subst t, List.map (fun (v,t') -> (v,rev_name_subst t')) l)
 
 (* Check if a term is an allowed channel *)
 
@@ -558,7 +752,7 @@ let rec close_term_collect_links links = function
 
 let close_fact_collect_links links = function
     Pred(p,l) -> List.iter (close_term_collect_links links) l
-  | Out(_,t,l) -> close_term_collect_links links t; List.iter (fun (_,t') -> close_term_collect_links links t') l
+  | Out(t,l) -> close_term_collect_links links t; List.iter (fun (_,t') -> close_term_collect_links links t') l
 
 let rec close_tree_collect_links links tree =
   close_fact_collect_links links tree.thefact;
@@ -600,6 +794,17 @@ let disequation_evaluation (t1,t2) =
 let is_fail = function  
   | FunApp(f,[]) when f.f_cat = Failure -> true
   | _ -> false
+
+(* Update the value of name_params after pattern-matching *)
+
+let rec update_name_params put_var name_params = function
+    PatVar b -> (MVar(b, None), copy_closed_remove_syntactic (Var b), put_var)::name_params
+  | PatTuple(f,l) -> update_name_params_list put_var name_params l
+  | PatEqual _ -> name_params
+
+and update_name_params_list put_var name_params = function
+    [] -> name_params
+  | (a::l) -> update_name_params_list put_var (update_name_params put_var name_params a) l
 
 (* Check is a term may be represented by several patterns,
    equal modulo the equational theory. In this case, if
@@ -647,3 +852,72 @@ let rec reduction_check_several_patterns occ =
   (!Param.eq_in_names) &&
   (List.mem occ (!terms_to_add_in_name_params))
 
+(* After the translation of the query in pisyntax/pitsyntax, 
+   bound names used in the query may not be fully translated,
+   because we need first to generate clauses to know the exact arguments of
+   the names. The following functions translate the remaining names *)
+
+let rec check_delayed_names_t = function
+    Var v ->
+      begin
+	match v.link with
+	  PGLink f -> 
+	    let t' = f() in
+	    v.link <- TLink t';
+	    t'
+	| TLink t -> t
+	| NoLink -> Var v
+	| _ -> Parsing_helper.internal_error "unexpected link in check_delayed_names_t"
+      end
+  | FunApp(f,l) -> FunApp(f, List.map check_delayed_names_t l)
+      
+
+let check_delayed_names_e = function
+    QSEvent(b,t) -> QSEvent(b, check_delayed_names_t t)
+  | QFact(p,tl) -> QFact(p, List.map check_delayed_names_t tl)
+  | QNeq(t1,t2) -> QNeq(check_delayed_names_t t1, check_delayed_names_t t2)
+  | QEq(t1,t2) -> QEq(check_delayed_names_t t1, check_delayed_names_t t2)
+
+let rec check_delayed_names_r = function
+    Before(ev,hypll) -> Before(check_delayed_names_e ev, List.map (List.map check_delayed_names_h) hypll)
+
+and check_delayed_names_h = function
+    QEvent(ev) -> QEvent(check_delayed_names_e ev)
+  | NestedQuery(q) -> NestedQuery(check_delayed_names_r q)
+
+let check_delayed_names = function
+    PutBegin(b,l) -> PutBegin(b,l)
+  | RealQuery q -> RealQuery(check_delayed_names_r q)
+
+
+(* create a pdf file representing the trace in final_state *)
+let create_pdf_trace inj_string final_state =
+  if !Param.html_output && !Param.graph_output then
+    Parsing_helper.user_error ("\"-html\" and \"-graph\" options have both been specified. This is not allowed.\n")
+  else
+    if !Param.trace_backtracking && (((!Param.html_output)
+				      || (!Param.trace_display_graphicx = Param.GraphDisplay))&& (!Param.trace_display <> Param.NoDisplay)) then
+      begin
+	if (Sys.command ("cd " ^ !Param.html_dir)) <> 0 then
+	  Parsing_helper.user_error ("Error: The directory that you specified, " ^ (!Param.html_dir) ^ ", probably does not exist.\n")
+	else
+	  begin
+	    let qs = string_of_int (!Param.derivation_number) in
+	    Display.LangGviz.openfile ((!Param.html_dir) ^ "/trace" ^ inj_string ^ qs ^ ".dot") "";
+	    ignore (Display.LangGviz.write_state_to_dot_file final_state);
+	    Display.LangGviz.close();
+	    let replace input output =
+	      Str.global_replace (Str.regexp_string input) output in
+	    let output = (!Param.html_dir ^ "/trace" ^ inj_string ^ qs) in
+	    let command = replace "%1" output !Param.command_line_graph in
+	    let dot_err = Sys.command command in
+	    if dot_err <> 0 then
+	      if String.compare !Param.command_line_graph ("dot -Tpdf %1.dot -o %1.pdf") = 0 then
+		print_string ("Warning: Could not create PDF version of the trace.\nPlease verify that graphviz is installed in your computer.\n")
+	      else
+		print_string ("Warning: The command line you specified to create the graph trace from the dot file does not seem to work.\n");
+	    dot_err
+	  end;
+      end
+    else
+      -1

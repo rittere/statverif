@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -65,9 +65,11 @@ let keyword_table =
   "suchthat", SUCHTHAT;
   "nounif", NOUNIF;
   "phase", PHASE;
+  "sync", BARRIER;
   "among", AMONG;
   "weaksecret", WEAKSECRET;
   "choice", CHOICE;
+  "diff", CHOICE;
   "otherwise", OTHERWISE;
   "can", CANTEXT;
   "fail", FAIL;
@@ -93,6 +95,10 @@ rule token = parse
            Not_found ->
              IDENT (s, extent lexbuf)
      }
+| '\"' (( [ ' ' '!' '#'-'[' ']'-'~' '\192'-'\214' '\216'-'\246' '\248'-'\255' ] )*) '\"'
+    { let s = Lexing.lexeme lexbuf in
+      STRING (String.sub s 1 (String.length s - 2), extent lexbuf)
+    } 
 | ([ '0'-'9' ]) +
     { 
       try 

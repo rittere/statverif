@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -80,11 +80,13 @@ let keyword_table =
   "suchthat", SUCHTHAT;
   "nounif", NOUNIF;
   "phase", PHASE;
+  "sync", BARRIER;
   "among", AMONG;
   "weaksecret", WEAKSECRET;
   "equivalence", EQUIVALENCE;
   "otherwise", OTHERWISE;
   "choice", CHOICE;
+  "diff", CHOICE;
   "cell", CELL;
   "lock", LOCK;
   "unlock", UNLOCK;
@@ -107,7 +109,11 @@ rule token = parse
            Not_found ->
              IDENT (s, extent lexbuf)
      }
-| '\"' (( [ '!' '#'-'[' ']'-'~' '\192'-'\214' '\216'-'\246' '\248'-'\255' ] )*) '\"'
+| '@' (( [ 'a'-'z' 'A'-'Z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255' '\'' '0'-'9' ] )*)
+     { let s = Lexing.lexeme lexbuf in
+        ATIDENT (s, extent lexbuf)
+     }
+| '\"' (( [ ' ' '!' '#'-'[' ']'-'~' '\192'-'\214' '\216'-'\246' '\248'-'\255' ] )*) '\"'
     { let s = Lexing.lexeme lexbuf in
       STRING (String.sub s 1 (String.length s - 2), extent lexbuf)
     } 
@@ -145,6 +151,7 @@ rule token = parse
 | "<=>" { EQUIVEQ } 
 | "<>" { DIFF }
 | "==>" { BEFORE }
+| ">" { GREATER }
 | ":=" { ASSIGN }
 | "inj-event" { INJEVENT }
 | eof { EOF }	

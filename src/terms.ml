@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -32,7 +32,7 @@ let tuple_table = Hashtbl.create 1
 
 let get_tuple_fun tl =
   let tl = 
-    if !Param.ignore_types then
+    if Param.get_ignore_types() then
       List.map (fun t -> Param.any_type) tl
     else
       tl
@@ -53,6 +53,9 @@ let get_tuple_fun tl =
 let get_term_type = function
     Var b -> b.btype
   | FunApp(f,_) -> snd f.f_type
+  
+let equal_types t1 t2 =
+  (Param.get_ignore_types()) || t1 == t2
   
 (* Get the type of a pattern *)
 
@@ -237,6 +240,15 @@ let new_unfailing_var s t =
 let new_var_noren s t =
   { sname = s; vname = -1; unfailing = false; btype = t;  link = NoLink }
 
+(* [new_var_noren_with_fail s t may_fail] creates a fresh variable with 
+   name [s], type [t], and may_fail value [may_fail].
+   The name of this variable is exactly [s], without renaming it to
+   a fresh name even if s is already used. Such variables should never
+   be displayed. *)
+
+let new_var_noren_with_fail s t may_fail =
+  { sname = s; vname = -1; unfailing = may_fail; btype = t;  link = NoLink }
+
 (* [copy_var v] creates a fresh variable with the same sname and type as [v] 
    Invariant: if vname = 0, then sname never contains N_xxx where xxx is a non-zero 
    number of at most 9 digits. As a consequence, we don't need to split v.sname
@@ -288,13 +300,21 @@ let rec occurs_f_pat f = function
 
 let occurs_f_fact f = function
     Pred(_,l) -> List.exists (occurs_f f) l
-  | Out(_, t, l) -> 
+  | Out(t, l) -> 
       (occurs_f f t) || 
       (List.exists(fun (_,t) -> occurs_f f t) l)
 
 let is_may_fail_term = function 
   | FunApp(f,[]) when f.f_cat = Failure -> true
   | Var(v) when v.unfailing -> true
+  | _ -> false
+  
+let is_unfailing_var = function
+  | Var(v) when v.unfailing -> true
+  | _ -> false
+  
+let is_failure = function 
+  | FunApp(f,[]) when f.f_cat = Failure -> true
   | _ -> false
 
 (* Equality tests *)
@@ -309,10 +329,10 @@ let equals_term_pair (v, t) (v', t') = (v == v') && (equal_terms t t')
 
 let equal_facts f1 f2 = 
   match (f1,f2) with
-  | Pred(chann1, t1),Pred(chann2, t2) ->
-     (chann1 == chann2) && (List.for_all2 equal_terms t1 t2)
-  | Out(ty1,t1,l1),Out(ty2,t2,l2) ->
-     (ty1 == ty2) && (equal_terms t1 t2) && (List.length l1 = List.length l2) 
+    Pred(chann1, t1),Pred(chann2, t2) ->
+      (chann1 == chann2) && (List.for_all2 equal_terms t1 t2)
+  | Out(t1,l1),Out(t2,l2) ->
+      (equal_terms t1 t2) && (List.length l1 = List.length l2) 
 	&& (List.for_all2 equals_term_pair l1 l2)
   | _ -> false
 
@@ -344,8 +364,15 @@ let link v l =
 	  (* NoLink should not be used with function link,
 	     it is set by cleanup *)
 	  assert false
-      |	FLink _ | PGLink _ | PGTLink _ -> ()
+      |	FLink _ | PGLink _ -> ()
     end;
+  (* Check that types are correct, when they are not ignored *)
+  begin
+    match l with
+      VLink v' -> assert (equal_types v.btype v'.btype)
+    | TLink t -> assert (equal_types v.btype (get_term_type t))
+    | _ -> ()
+  end;
   current_bound_vars := v :: (!current_bound_vars);
   v.link <- l
   
@@ -484,7 +511,7 @@ let copy_term_pair = fun (v,t) -> (v, copy_term t)
 
 let copy_fact = function
     Pred(chann, t) -> Pred(chann, List.map copy_term t)
-  | Out(ty, t, l) -> Out(ty, copy_term t, List.map copy_term_pair l)
+  | Out(t, l) -> Out(copy_term t, List.map copy_term_pair l)
 
 let copy_constra c = List.map (function
       Neq(t1,t2) -> Neq(copy_term t1, copy_term t2)) c
@@ -522,9 +549,21 @@ let rec occur_check v t =
       end
   | (FunApp(_,l)) -> List.iter (occur_check v) l
 
-   
+let term_string = function
+    FunApp(f,l) -> if l = [] then f.f_name else f.f_name ^ "(...)"
+  | Var(b) -> b.sname ^ "_" ^ (string_of_int b.vname)
    
 let rec unify t1 t2 =
+  (* Commented out this typing checking test for speed 
+  if not (Param.get_ignore_types()) then
+  begin
+    if get_term_type t1 != get_term_type t2 then
+      Parsing_helper.internal_error 
+	("Type error in unify: " ^
+	 (term_string t1) ^ " has type " ^ (get_term_type t1).tname ^
+	 " while " ^
+	 (term_string t2) ^ " has type " ^ (get_term_type t2).tname)
+  end; *)
   match (t1,t2) with
     (Var v, Var v') when v == v' -> ()
   | (Var v, _) -> 
@@ -539,7 +578,7 @@ let rec unify t1 t2 =
               | Var v' when v'.unfailing -> 
              	  link v' (TLink t1)
               | FunApp (f_symb,_) when f_symb.f_cat = Failure && v.unfailing = false -> raise Unify
-              | Var v' when String.sub v'.sname 0 1 = Param.def_var_name ->
+              | Var v' when v'.sname = Param.def_var_name ->
                   link v' (TLink t1)
               | _ ->
                   occur_check v t2;
@@ -577,8 +616,7 @@ let unify_facts f1 f2 =
     Pred(chann1, t1),Pred(chann2,t2) ->
       if chann1 != chann2 then raise Unify;
       List.iter2 unify t1 t2
-  | Out(ty1,t1,l1),Out(ty2,t2,l2) ->
-      (* Warning: not checking types *)
+  | Out(t1,l1),Out(t2,l2) ->
       unify t1 t2;
       (* Warning: this might be a bit insecure? 
 	 if List.length l1 != List.length l2 then raise Unify; *)
@@ -617,7 +655,7 @@ let copy_term2_pair = fun (v,t) -> (v, copy_term2 t)
 
 let copy_fact2 = function
     Pred(chann, t) -> Pred(chann, List.map copy_term2 t)
-  | Out(ty,t,l) -> Out(ty, copy_term2 t, List.map copy_term2_pair l)
+  | Out(t,l) -> Out(copy_term2 t, List.map copy_term2_pair l)
 
 let rec copy_constra2 c = List.map (function
       Neq(t1,t2) -> Neq(copy_term2 t1, copy_term2 t2)) c
@@ -635,6 +673,16 @@ let copy_rule2 (hyp, concl, hist, constra) =
 exception NoMatch
 
 let rec match_terms t1 t2 =
+  (* Commented out this typing checking test for speed 
+  if not (Param.get_ignore_types()) then 
+  begin
+    if get_term_type t1 != get_term_type t2 then
+      Parsing_helper.internal_error 
+	("Type error in match_terms: " ^
+	 (term_string t1) ^ " has type " ^ (get_term_type t1).tname ^
+	 " while " ^
+	 (term_string t2) ^ " has type " ^ (get_term_type t2).tname)
+  end; *)
    match (t1,t2) with
      (Var v), t -> 
        begin
@@ -662,8 +710,7 @@ let match_facts f1 f2 =
     Pred(chann1, t1),Pred(chann2, t2) ->
       if chann1 != chann2 then raise NoMatch;
       List.iter2 match_terms t1 t2
-  | Out(ty1,t1,l1),Out(ty2,t2,l2) ->
-      (* Warning: not checking types here *)
+  | Out(t1,l1),Out(t2,l2) ->
       match_terms t1 t2;
       let len1 = List.length l1 in
       let len2 = List.length l2 in
@@ -715,7 +762,9 @@ let matchafactstrict finst fgen =
        an infinite number of different terms obtained by 
        iterating the substitution. We should adjust the selection
        function to avoid this non-termination. *)
-    if List.exists (fun v -> match v.link with
+    if List.exists (fun v ->
+      if v.vname = 212 then Printf.printf "%s\n" "Variable found";
+      match v.link with
     | TLink (Var _) -> false
     | TLink t -> occurs_test_loop (ref []) v t
     | _ -> false) (!current_bound_vars) then
@@ -749,7 +798,7 @@ let rec term_pair_list_size = function
 
 let fact_size = function
     Pred(_, tl) -> 1 + term_list_size tl
-  | Out(_,t,l) -> term_size t + term_pair_list_size l
+  | Out(t,l) -> term_size t + term_pair_list_size l
 
 
 
@@ -829,7 +878,7 @@ let get_vars_constra vlist = function
 
 let get_vars_fact vlist = function
     Pred(_,l) -> List.iter (get_vars vlist) l
-  | Out(_,t,l) ->
+  | Out(t,l) ->
       get_vars vlist t;
       List.iter(fun (_,t') -> get_vars vlist t') l
 
@@ -844,7 +893,7 @@ let rec copy_term3 = function
 
 let copy_fact3 = function
     Pred(p,l) -> Pred(p, List.map copy_term3 l)
-  | Out(ty,t,l) -> Out(ty,copy_term3 t, List.map (fun (x,t') -> (x, copy_term3 t')) l)
+  | Out(t,l) -> Out(copy_term3 t, List.map (fun (x,t') -> (x, copy_term3 t')) l)
 
 let rec copy_constra3 c = List.map (function
   | Neq(t1,t2) -> Neq(copy_term3 t1, copy_term3 t2)
@@ -890,7 +939,7 @@ let is_unselectable = function
 
 (* Helper functions for decomposition of tuples *)
       
-let rec reorganize_list (l: 'a list list): 'a list list =
+let rec reorganize_list l =
   let rec get_first = function
       [] -> ([], [])
     | (a ::l)::l' -> 
@@ -928,11 +977,12 @@ let get_fail_symb_memo = Param.memo (fun ty ->
   })
   
 let get_fail_symb ty = 
-  get_fail_symb_memo (if !Param.ignore_types then Param.any_type else ty)
+  get_fail_symb_memo (Param.get_type ty)
   
 let get_fail_term ty = FunApp(get_fail_symb ty, [])  
   
-let fail_bool = get_fail_term Param.bool_type
+let fail_bool() = get_fail_term Param.bool_type
+    (* fail_bool must be recomputed once Param.ignore_types is correctly set *)
 
 (* Boolean Constants *)
 
@@ -958,16 +1008,20 @@ let false_term = FunApp(false_cst, [])
 (* is_true destructor: returns true when its argument is true,
    fails otherwise *)
 
-let is_true_fun = 
+let is_true_ref = ref None
+let is_true_fun() = 
+  match !is_true_ref with
+    Some f -> f
+  | None ->
   let x = new_var_def Param.bool_type in
   
   let semantics = Red
     [
       [true_term], true_term, [];
-      [x], fail_bool, [(x,true_term)];
-      [fail_bool], fail_bool, []
+      [x], fail_bool(), [(x,true_term)];
+      [fail_bool()], fail_bool(), []
     ] in
-  
+  let f = 
   {
     f_name = "is-true";
     f_type = [Param.bool_type], Param.bool_type;
@@ -976,6 +1030,9 @@ let is_true_fun =
     f_private = false;
     f_options = 0
   }
+  in
+  is_true_ref := Some f;
+  f
   
 (* Boolean Functions *)
 
@@ -989,8 +1046,8 @@ let equal_memo = Param.memo (fun ty ->
     [
       [x;x], true_term, [];
       [x;y], false_term, [(x,y)];
-      [fail;u], fail_bool, [];
-      [x;fail], fail_bool, []
+      [fail;u], fail_bool(), [];
+      [x;fail], fail_bool(), []
     ] in
   
   { f_name = "=";
@@ -1001,7 +1058,7 @@ let equal_memo = Param.memo (fun ty ->
     f_options = 0 })
     
 let equal_fun t =
-  equal_memo (if !Param.ignore_types then Param.any_type else t)
+  equal_memo (Param.get_type t)
     
 let diff_memo = Param.memo (fun ty -> 
   let x = new_var_def ty
@@ -1013,8 +1070,8 @@ let diff_memo = Param.memo (fun ty ->
     [
       [x;x], false_term, [];
       [x;y], true_term, [(x,y)];
-      [fail;u], fail_bool, [];
-      [x;fail], fail_bool, []
+      [fail;u], fail_bool(), [];
+      [x;fail], fail_bool(), []
     ] in
   
   { f_name = "<>";
@@ -1026,65 +1083,108 @@ let diff_memo = Param.memo (fun ty ->
     
 
 let diff_fun t =
-  diff_memo (if !Param.ignore_types then Param.any_type else t)
+  diff_memo (Param.get_type t)
 
-let and_fun =
+let and_ref = ref None
+let and_fun() =
+  match !and_ref with
+    Some f ->f
+  | None ->
   let u = new_unfailing_var_def Param.bool_type
-  and x = new_var_def Param.bool_type
-  and y = new_var_def Param.bool_type in
+  and x = new_var_def Param.bool_type in
 
   let semantics = Red 
     [
-      [true_term; y], y, [];
-      [x;y], false_term, [(x,true_term)];
-      [fail_bool; u], fail_bool, [];
-      [x; fail_bool], fail_bool, []
+    (* When the first conjunct is "false", the second conjunct is not evaluated,
+       so the conjunction is "false" even if the second conjunct fails *)
+      [true_term; u], u, [];
+      [x;u], false_term, [(x,true_term)];
+      [fail_bool(); u], fail_bool(), []
     ] in
-    
+  let f = 
   { f_name = "&&";
     f_type = [Param.bool_type; Param.bool_type], Param.bool_type;
     f_cat = semantics;
     f_initial_cat = semantics;
     f_private = false;
     f_options = 0 }
-    
-let or_fun =
+  in
+  and_ref := Some f;
+  f
+
+let or_ref = ref None
+let or_fun() =
+  match !or_ref with
+    Some f -> f
+  | None ->
   let u = new_unfailing_var_def Param.bool_type
-  and x = new_var_def Param.bool_type
-  and y = new_var_def Param.bool_type in
+  and x = new_var_def Param.bool_type in
 
   let semantics = Red 
     [
-      [true_term; x], true_term, [];
-      [x;y], y, [(x,true_term)]; 
-      [fail_bool; u], fail_bool, [];
-      [x; fail_bool], fail_bool, []
+    (* When the first disjunct is "true", the second disjunct is not evaluated,
+       so the disjunction is "true" even if the second disjunct fails *)
+      [true_term; u], true_term, [];
+      [x;u], u, [(x,true_term)]; 
+      [fail_bool(); u], fail_bool(), []
     ] in
-    
+  let f =
   { f_name = "||";
     f_type = [Param.bool_type; Param.bool_type], Param.bool_type;
     f_cat = semantics;
     f_initial_cat = semantics;
     f_private = false;
     f_options = 0 }
+  in
+  or_ref := Some f;
+  f
 
-let not_fun =
+let not_ref = ref None
+let not_fun() =
+  match !not_ref with
+    Some f -> f
+  | None ->
   let x = new_var_def Param.bool_type in
   
   let semantics = Red 
     [
       [true_term], false_term, [];
       [x], true_term, [(x,true_term)];
-      [fail_bool], fail_bool, []
+      [fail_bool()], fail_bool(), []
     ] in
-  
+  let f = 
   { f_name = "not";
     f_type = [Param.bool_type], Param.bool_type;
     f_cat = semantics;
     f_initial_cat = semantics;
     f_private = false;
     f_options = 0 }
-         
+  in
+  not_ref := Some f;
+  f
+
+(* [make_not a] returns the negation of the term [a] *)
+
+let make_not a =
+  let not_fun = not_fun() in
+  match a with
+    FunApp(f, [a']) when f == not_fun -> a'
+  | _ -> FunApp(not_fun, [a])
+
+(* [and_list l] returns the conjunction of the terms in [l] *)
+
+let rec and_list = function
+    [] -> true_term
+  | [a] -> a
+  | a::l -> FunApp(and_fun(), [a; and_list l])
+
+(* [or_not_list l] returns the disjunction of the negation of the terms in [l] *)
+
+let rec or_not_list = function
+    [] -> false_term
+  | [a] -> make_not a
+  | a::l -> FunApp(or_fun(), [make_not a; or_not_list l]) 
+
 (* The Let in else operators *)
 
 let glet_constant_memo = Param.memo (fun ty ->
@@ -1098,7 +1198,7 @@ let glet_constant_memo = Param.memo (fun ty ->
   
   
 let glet_constant_fun t =
-  glet_constant_memo (if !Param.ignore_types then Param.any_type else t)
+  glet_constant_memo (Param.get_type t)
 
 let glet_constant_never_fail_memo = Param.memo (fun ty ->
   { f_name = "never-fail";
@@ -1110,7 +1210,7 @@ let glet_constant_never_fail_memo = Param.memo (fun ty ->
   }) 
   
 let glet_constant_never_fail_fun t =
-  glet_constant_never_fail_memo (if !Param.ignore_types then Param.any_type else t)
+  glet_constant_never_fail_memo (Param.get_type t)
 
   
 let glet_memo = Param.memo (fun ty -> 
@@ -1133,7 +1233,7 @@ let glet_memo = Param.memo (fun ty ->
     
 
 let glet_fun t =
-  glet_memo (if !Param.ignore_types then Param.any_type else t)
+  glet_memo (Param.get_type t)
 
 
 (* The success operators *)
@@ -1157,7 +1257,7 @@ let success_memo = Param.memo (fun ty ->
   )
    
 let success_fun t =
-  success_memo (if !Param.ignore_types then Param.any_type else t)
+  success_memo (Param.get_type t)
   
 let not_caught_fail_memo = Param.memo (fun ty -> 
   let x = new_var_def ty
@@ -1168,7 +1268,7 @@ let not_caught_fail_memo = Param.memo (fun ty ->
     [
       [x], true_term, [(x,FunApp(c_o,[]))];
       [FunApp(c_o,[])], false_term, [];
-      [fail], fail_bool, []
+      [fail], fail_bool(), []
     ] in
     
   { f_name = "not-caught-fail";
@@ -1180,7 +1280,7 @@ let not_caught_fail_memo = Param.memo (fun ty ->
   )
    
 let not_caught_fail_fun t =
-  not_caught_fail_memo (if !Param.ignore_types then Param.any_type else t)
+  not_caught_fail_memo (Param.get_type t)
   
   
 let gtest_memo = Param.memo (fun ty -> 
@@ -1193,7 +1293,7 @@ let gtest_memo = Param.memo (fun ty ->
     [
       [true_term;u;v], u, [];
       [x;u;v], v, [(x, true_term)];
-      [fail_bool;u;v], fail, []
+      [fail_bool();u;v], fail, []
     ] 
   in
   { f_name = "if-then-else";
@@ -1205,7 +1305,7 @@ let gtest_memo = Param.memo (fun ty ->
     
 
 let gtest_fun t =
-  gtest_memo (if !Param.ignore_types then Param.any_type else t)
+  gtest_memo (Param.get_type t)
 
 (* The projection operator *)
 
@@ -1234,13 +1334,21 @@ let red_rules_fun f =
   match f.f_cat with 
     Eq red_rules -> (red_rules_constructor f) @ (List.map (fun (lhs,rhs) -> (lhs, rhs, [])) red_rules) 
   | Red red_rules -> red_rules
+  | Name _ -> [([],FunApp(f,[]),[])]
+	(* This is ok because this function is called 
+	   either not with names (calls from Pitransl/Pitranslweak
+	   and from TermsEq.close_term_destr_eq when it is used on
+	   clauses that define LetFilter predicates)
+	   or only with names from processes (calls from 
+	   TermsEq.close_term_destr_eq that come from Simplify).
+	   We never have name function symbols here. *)
   | _ -> red_rules_constructor f
 
 let get_function_name f =
   match f.f_cat with
     Tuple when f.f_name = "" -> 
       let arity = List.length (fst f.f_type) in
-      if (arity = 0) || (!Param.ignore_types) then
+      if (arity = 0) || (Param.get_ignore_types()) then
 	(string_of_int arity) ^ "-tuple"
       else
 	(tl_to_string "-" (fst f.f_type)) ^ "-tuple"
@@ -1300,7 +1408,7 @@ let rec clauses_for_function clauses_for_red_rules s f =
   if (not f.f_private) &&
     (* Don't generate clauses for type converter functions when we ignore types
        (These functions disappear.) *)
-    (not ((f.f_options land Param.fun_TYPECONVERTER != 0) && (!Param.ignore_types))) 
+    (not ((f.f_options land Param.fun_TYPECONVERTER != 0) && (Param.get_ignore_types()))) 
   then
     match f.f_cat with 
       Eq red_rules -> 
@@ -1320,7 +1428,7 @@ let rec clauses_for_function clauses_for_red_rules s f =
 (* Names *)  
   
 let new_name_memo = Param.memo (fun t ->
-  let cat = Name { prev_inputs = None; prev_inputs_meaning = ["!att"] } in
+  let cat = Name { prev_inputs = None; prev_inputs_meaning = [MAttSid] } in
   { f_name = "new-name" ^ (Param.get_type_suffix t);
     f_type = [Param.sid_type], t;
     f_cat = cat;
@@ -1329,7 +1437,7 @@ let new_name_memo = Param.memo (fun t ->
     f_options = 0 })
 
 let new_name_fun t =
-  new_name_memo (if !Param.ignore_types then Param.any_type else t)
+  new_name_memo (Param.get_type t)
   
 
 (*********************************************
@@ -1345,6 +1453,10 @@ let new_occurrence () =
   incr occ_count;
   !occ_count
 
+let rec put_lets p = function
+    [] -> p
+  | (v,t)::l -> put_lets (Let(PatVar v,t,p,Nil,new_occurrence())) l
+	
 (*********************************************
                        New names
 **********************************************)

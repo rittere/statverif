@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -35,7 +35,7 @@ A -> B : { c2, A, K_ab }_Kbs, { N_B }_Kab
 *)
 
 set keyCompromise = strict.
-set ignoreTypes = true.
+(*set ignoreTypes = true.*)
 
 free c: channel.
 

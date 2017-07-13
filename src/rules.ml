@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -70,7 +70,7 @@ let rec get_vars_rep vlist = function
 
 let get_vars_rep_fact vlist = function
     Pred(p,l) -> List.iter (get_vars_rep vlist) l
-  | Out(_,t,l) -> get_vars_rep vlist t;
+  | Out(t,l) -> get_vars_rep vlist t;
       List.iter (fun (_,t') -> get_vars_rep vlist t') l
 
 let is_in_list vlist v =
@@ -140,7 +140,7 @@ let rec limit_depth n t =
 
 let limit_depth_fact n = function
     Pred(chann,t) -> Pred(chann, List.map (limit_depth n) t)
-  | Out(ty,t,l) -> Out(ty, limit_depth n t, List.map (fun (v,t) -> (v, limit_depth n t)) l)
+  | Out(t,l) -> Out(limit_depth n t, List.map (fun (v,t) -> (v, limit_depth n t)) l)
 
 let rec limit_depth_constra n c = List.map (function
     Neq(t1,t2) -> Neq(limit_depth n t1, limit_depth n t2)) c
@@ -209,13 +209,6 @@ let is_exempt_from_dectuple (_,_,h,_) =
   | Rule (_,LblEquiv,_,_,_) -> true
   | _ -> false
 	
-let rec find_f_dectuple l0 lbool = 
-  match (l0,lbool) with
-  | (_::l1,false::lbool1) -> find_f_dectuple l1 lbool1
-  | (FunApp(f,_)::_, true::_) when f.f_cat = Tuple -> f
-  | (_::_,true::_) -> raise Not_found
-  | _ -> Parsing_helper.internal_error "dec_partial.find_f"
-
 let rec decompose_hyp_rec accu hypl = 
   List.fold_right (fun hyp1 (hypl,nl,histl) ->
     let default() = 
@@ -286,7 +279,7 @@ let rec term_occur_count v = function
 
 let fact_occur_count v = function
     Pred(chann, l) -> list_add (term_occur_count v) l
-  | Out(_,t,l) ->
+  | Out(t,l) ->
       term_occur_count v t + list_add (fun (_,t2) -> term_occur_count v t2) l
 
 let occur_count v l = list_add (fact_occur_count v) l
@@ -415,7 +408,7 @@ let rec has_unbound_var = function
 
 let fact_has_unbound_var = function
     Pred(_, tl) -> List.exists has_unbound_var tl
-  | Out(_,t,l) -> (has_unbound_var t) || (List.exists 
+  | Out(t,l) -> (has_unbound_var t) || (List.exists 
       (fun (v,t) -> has_unbound_var t) l)
 
 let rank f =
@@ -433,36 +426,6 @@ let reorder hyp =
     List.map (fun (f,_) -> f) hyp_sorted
   else
     hyp
-
-(* Reversed version of match_fact_with_hyp, where we check existence
-   of fact2 in hyp2 that subsumes fact1 *)
-let rec match_fact_with_hyp_rev nextf fact1 hyp2 passed_hyp = 
-  match hyp2 with
-  | [] -> raise NoMatch
-  | (fact2::fact_l) -> 
-      try
-        Terms.auto_cleanup (fun () ->
-	  Terms.match_facts fact2 fact1;
-          nextf (passed_hyp @ fact_l) 
-        )
-      with NoMatch ->
-	match_fact_with_hyp nextf fact1 fact_l (fact2 :: passed_hyp)
-
-(* Checks that all noelim facts in hyp2 are also present in hyp1,
-   otherwise raise NoMatch *)
-let rec find_noelim_fact hyp1 hyp2 =
-  match hyp2 with
-  | [] -> ()
-  | (Out(p_type, FunApp(_,_),_) as f2) :: hyp
-  | (Pred({ p_type = p_type },_) as f2) :: hyp ->
-     begin
-       try
-	 let _ = List.find ((=) Param.noelim_type) p_type in
-	 match_fact_with_hyp_rev (function _ -> find_noelim_fact hyp1 hyp) f2 hyp1 []
-       with Not_found ->
-	 find_noelim_fact hyp1 hyp
-     end
-  | _ :: hyp -> find_noelim_fact hyp1 hyp
 
 (* 3. The final function for subsumption test *)
 
@@ -487,7 +450,6 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r2
       match_hyp
 	(TermsEq.implies_constra_list (concl2 :: hyp2) constr2 constr1)
   	(reorder hyp1) hyp2;
-      find_noelim_fact hyp1 hyp2;
       if !Param.profiling_subsumption then begin 
 	let t1 = Unix.times() in
 	if t1.Unix.tms_utime -. t0.Unix.tms_utime > 1.0 then
@@ -554,7 +516,7 @@ let check_constra_fail = function
       check_no_fail t2
 
 let check_fact_fail = function
-    Pred(p, [t1;t2]) when p == Param.testunif_pred ->
+    Pred({p_info = [TestUnifP _]}, [t1;t2]) ->
       begin
 	(* testunif: allow fail at the top, plus possibly inside a tuple *)
 	match (t1,t2) with
@@ -582,7 +544,7 @@ let check_fact_fail = function
 	    List.iter check_no_fail l
 	| _ -> Parsing_helper.internal_error "Terms.check_rule: unexpected predicate info"
       end
-  | Out(_,t,l) ->
+  | Out(t,l) ->
       check_no_fail t;
       List.iter (fun (_,t) -> check_no_fail t) l
 
@@ -874,11 +836,11 @@ let check_occurs_fact p0 v = function
   | Pred(p, [t1; Var v']) when p.p_prop land Param.pred_ELEM != 0 && p == p0
 	      && v == v' -> occurs_var v t1
   | Pred(p, tl) -> List.exists (occurs_var v) tl
-  | Out(_, t, env) -> (occurs_var v t) || (List.exists (fun (_, t) -> occurs_var v t) env)
+  | Out(t, env) -> (occurs_var v t) || (List.exists (fun (_, t) -> occurs_var v t) env)
 
 let check_occurs_concl v = function
   | Pred(p, tl) -> List.exists (occurs_var v) tl
-  | Out(_, t, env) -> internal_error "Out fact should not occur in conclusion"
+  | Out(t, env) -> internal_error "Out fact should not occur in conclusion"
 
 let check_occurs_constra v c = List.exists 
     (function Neq(t1,t2) -> occurs_var v t1 || occurs_var v t2) c
@@ -1010,7 +972,8 @@ let elim_redundant_hyp next_stage repeat_next_stage ((hyp, _, _, _) as r) =
   if (!Param.redundant_hyp_elim) && 
     ((not (!Param.redundant_hyp_elim_begin_only)) ||
      (List.exists (function 
-	 Pred(p,_) -> (p.p_prop land Param.pred_BLOCKING != 0) && (p != Param.testunif_pred)
+         Pred({p_info = [TestUnifP _]}, _) -> false
+       | Pred(p,_) -> p.p_prop land Param.pred_BLOCKING != 0
        | Out _ -> true) hyp))
   then
     let r' = copy_rule r in
@@ -1183,8 +1146,7 @@ let compos next_stage (hyp1, concl1, hist1,constra1) ((hyp2, concl2, hist2,const
    and other rules in [rulelist].
 *)
 
-let dummy_channel = { p_name = "dummy"; p_type = []; p_prop = 0; p_info = [] }
-let dummy_fact = Pred(dummy_channel, [])
+let dummy_fact = Pred(Param.dummy_pred, [])
 
 exception Redundant
 
@@ -1386,7 +1348,11 @@ let query_goal g =
 	    Display.Html.print_string "goal reachable: ";
 	    Display.Html.display_rule rule
 	  end;
-	ignore (History.build_history rule);
+	begin
+	  try 
+	    ignore (History.build_history None rule)
+	  with Not_found -> ()
+	end;
 	cleanup()
 		) l;
       print_string "RESULT goal reachable: ";
@@ -1422,7 +1388,11 @@ let query_goal_not g =
 	    Display.Html.print_string "goal reachable: ";
 	    Display.Html.display_rule rule
 	  end;
-	ignore (History.build_history rule);
+	begin
+	  try 
+	    ignore (History.build_history None rule)
+	  with Not_found -> ()
+	end;
 	cleanup()
 		) l;
       if !Param.html_output then

@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -36,6 +36,7 @@ let seq_weight = 8000
 let match_concl_weight = -7000
 let default_add_no_unif_weight = -5000
 let default_user_no_unif_weight = -6000
+let dummy_weight = -4000
 
 let no_unif_set = ref ([] : (fact_format * int) list)
 let add_no_unif f n =
@@ -246,7 +247,7 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
 		  let format = compute_match_format_fact h concl in
 		  if not (List.exists (format_equal_fact format) (!no_unif_set)) then
 		    begin
-		      no_unif_set := (format, default_add_no_unif_weight) :: !no_unif_set;
+		       		      no_unif_set := (format, default_add_no_unif_weight) :: !no_unif_set; 
 		      if !Param.verbose_term then
 			begin
 			  print_string "nounif "; 
@@ -260,11 +261,10 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
         if (!Param.verbose_term) && (((wold < 0) && (nold >= 0)) (* || (wold < -1) *) ) then
 	  begin
 	    print_string "Termination warning: ";
-	  end;
-	if !Param.debug_output then begin 
-	  print_string ("Selecting " ^ (string_of_int nold));
-	  Display.Text.newline()
-        end;
+	    Display.Text.display_rule rule;
+	    print_string ("Selecting " ^ (string_of_int nold));
+	    Display.Text.newline()
+          end;
         nold
     | (f::l) when is_unselectable f -> begin
 	  (* Guarantee that p(x) is never selected when we decompose data
@@ -318,9 +318,12 @@ let selection_fun_weight ((hyp, concl, _, _) as rule) =
       never_select_weight
     end
     else
-      (* The conclusion can be selected if we don't find better in
-	 the hypothesis *)
-      if List.exists (fun h -> matchafactstrict h concl) hyp then match_concl_weight else -1
+      match concl with
+	Pred(p, []) when p == Param.dummy_pred -> dummy_weight
+      |	_ ->
+          (* The conclusion can be selected if we don't find better in
+	     the hypothesis *)
+	  if List.exists (fun h -> matchafactstrict h concl) hyp then match_concl_weight else -1
   in
   if !Param.debug_output then begin 
     Printf.printf "selection_fun_weight applied to rule\n";

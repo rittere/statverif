@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -109,11 +109,14 @@ let rec check_eq_term varenv = function
 | (PTuple l) -> FunApp(Terms.get_tuple_fun (List.map (fun _ -> Param.any_type) l), 
                        List.map (check_eq_term varenv) l)
 
-let check_equation (t1, t2) =
+let check_equation l =
+  let l' = List.map (fun (t1, t2) ->
    let var_env = Hashtbl.create 7 in
    let t1' = check_eq_term var_env t1 in
    let t2' = check_eq_term var_env t2 in
-   TermsEq.register_equation (t1',t2')
+   (t1',t2')) l 
+  in
+  TermsEq.register_equation EqNoInfo l'
 
 
 let rule_counter = ref 0
@@ -325,7 +328,7 @@ let query_facts = ref ([] : fact list)
 let rec check_all = function
     (FunDecl (f,i))::l -> check_fun_decl false f i; check_all l
   | (DataFunDecl(f,i))::l -> check_fun_decl true f i; check_all l
-  | (Equation(t1,t2))::l -> check_equation (t1,t2); check_all l
+  | (Equation(eql))::l -> check_equation eql; check_all l
   | (Query fact) :: l -> 
       let env = Hashtbl.create 7 in
       query_facts := (check_simple_fact env fact) :: (!query_facts);
@@ -357,5 +360,7 @@ let rec check_all = function
       !rules
   | _ -> internal_error "The first reduc part is not the last element of the file"
 
-let parse_file s = check_all (parse s)
+let parse_file s = 
+  Param.set_ignore_types true;
+  check_all (parse s)
 

@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -65,7 +65,7 @@ type pval =
 type decl = 
     FunDecl of ident * int
   | DataFunDecl of ident * int
-  | Equation of term * term
+  | Equation of (term * term) list
   | Query of fact_e
   | NoUnif of format_fact * int
   | Not of fact_e
@@ -83,7 +83,7 @@ type tdecl =
   | TNameDecl of ident * ident(*type*)
   | TFunDecl of ident * ident list(*argument types*) * ident(*result type*) * ident list(*options*)
   | TConstDecl of ident * ident(*type*) * ident list(*options*)
-  | TEquation of envdecl * term * term
+  | TEquation of (envdecl * term * term) list * ident list(*options*)
   | TQuery of envdecl * fact_e
   | TNoUnif of envdecl * format_fact * int
   | TNot of envdecl * fact_e

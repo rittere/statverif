@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -39,6 +39,17 @@ val occurs_var_proc : binder -> process -> bool
 
 val need_vars_in_names : (string * string * Parsing_helper.extent) list ref
 val get_need_vars : string -> (string * Parsing_helper.extent) list
+val meaning_encode : arg_meaning -> string
+val meaning_name : arg_meaning -> string
+
+type include_info_t 
+val prepare_include_info : 
+    envElement Stringmap.StringMap.t -> binder list option -> Ptree.ident list -> include_info_t
+val count_name_params : Pitypes.name_param_info list -> int
+val extract_name_params_noneed : Pitypes.name_param_info list -> term list
+val extract_name_params : string -> include_info_t -> Pitypes.name_param_info list -> term list
+val extract_name_params_meaning : string -> include_info_t -> Pitypes.name_param_info list -> arg_meaning list
+val extract_name_params_types : string -> include_info_t -> Pitypes.name_param_info list -> typet list -> typet list
 
 val findi : ('a -> bool) -> 'a list -> int * 'a
 val skip : int -> 'a list -> 'a list
@@ -93,5 +104,12 @@ val getphase : predicate -> int
 val disequation_evaluation : term * term -> bool
 val is_fail : term -> bool
 
+val update_name_params : when_include -> Pitypes.name_param_info list -> 
+  pattern -> Pitypes.name_param_info list
+
 val transl_check_several_patterns : Pitypes.term_occ -> term -> bool
 val reduction_check_several_patterns : Pitypes.term_occ -> bool
+
+val check_delayed_names : Pitypes.query -> Pitypes.query
+
+val create_pdf_trace : string -> 'a Pitypes.reduc_state -> int

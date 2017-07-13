@@ -2,9 +2,9 @@
  *                                                           *
  *  Cryptographic protocol verifier                          *
  *                                                           *
- *  Bruno Blanchet, Xavier Allamigeon, and Vincent Cheval    *
+ *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, LIENS, MPII 2000-2013               *
+ *  Copyright (C) INRIA, CNRS 2000-2016                      *
  *                                                           *
  *************************************************************)
 
@@ -32,6 +32,7 @@ val merge_ext : extent -> extent -> extent
 val next_line : Lexing.lexbuf -> unit
 val extent : Lexing.lexbuf -> extent
 val parse_extent : unit -> extent
+val combine_extent : extent -> extent -> extent
 val input_error : string -> extent -> 'a
 val input_warning : string -> extent -> unit
 val user_error : string -> 'a
