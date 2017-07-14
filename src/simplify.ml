@@ -78,7 +78,11 @@ and normalised_process_R =
   | InsertNorm of term * normalised_process_Q
   | GetNorm of binder * term * normalised_process_P * normalised_process_P
   | PhaseNorm of int * normalised_process_R
+  | LockNorm of funsymb list * normalised_process_P
+  | UnlockNorm of funsymb list * normalised_process_P
+  | OpenNorm of funsymb list * normalised_process_P
   | ReadAsNorm of (funsymb * binder) list * normalised_process_P
+  | AssignNorm of (funsymb * term) list * normalised_process_Q
 
 (************************************************
 	Display of normalized processes 
@@ -233,6 +237,27 @@ and display_norm_R align = function
       print_string ".";
       print_newline();
       display_norm_R align p
+  | LockNorm(cells,proc) ->
+     print_string align;
+    Display.Text.display_keyword "Lock";
+    print_string " ";
+    Display.Text.display_list (fun cell -> print_string cell.f_name) "," cells;
+    print_newline();
+    display_norm_P align proc
+  | UnlockNorm(cells,proc) ->
+     print_string align;
+    Display.Text.display_keyword "Unlock";
+    print_string " ";
+    Display.Text.display_list (fun cell -> print_string cell.f_name) "," cells;
+    print_newline();
+    display_norm_P align proc
+  | OpenNorm(cells,proc) ->
+     print_string align;
+    Display.Text.display_keyword "Open";
+    print_string " ";
+    Display.Text.display_list (fun cell -> print_string cell.f_name) "," cells;
+    print_newline();
+    display_norm_P align proc
   | ReadAsNorm(items,proc) ->
      print_string align;
     Display.Text.display_keyword "read";
@@ -245,6 +270,15 @@ and display_norm_R align = function
     print_string ";";
     print_newline();
     display_norm_P align proc
+  | AssignNorm(items,proc) ->
+     print_string align;
+    Display.Text.display_list (fun (cell,_) -> print_string cell.f_name) "," items;
+    print_string " := ";
+    Display.Text.display_term_list (List.map snd items);
+    print_string ";";
+    print_newline();
+    display_norm_Q align proc
+
       
 (*********************************************
              Copy of a process
@@ -474,12 +508,21 @@ let rec follow_process = function
   | Phase(n, proc,occ) -> Phase(n, follow_process proc, occ)
   | Barrier _ | AnnBarrier _ ->
      Parsing_helper.internal_error "Barriers should not appear here (8)"
+  | Lock(cells,proc,occ) -> Lock(cells,follow_process proc,occ)
+  | Unlock(cells,proc,occ) -> Unlock(cells,follow_process proc,occ)
+  | Open(cells,proc,occ) -> Open(cells,follow_process proc,occ)
   | ReadAs(items,proc,occ) ->
      let (cells, pats) = List.split items in
      let pats' = List.map follow_pattern pats in
      let proc' = follow_process proc in
      ReadAs(List.combine cells pats', proc',occ)
+  | Assign(items,proc,occ) ->
+     let (cells, terms) = List.split items in
+     let terms' = List.map Terms.copy_term3 terms in
+     let proc' = follow_process proc in
+     Assign(List.combine cells terms', proc', occ)
 
+     
 let rec follow_process_P proc = 
   { proc with
     seq_lets = List.map (fun (b,t) -> (b, Terms.copy_term3 t)) proc.seq_lets;
@@ -506,7 +549,11 @@ and follow_process_R = function
   | InsertNorm(t,q) -> InsertNorm(Terms.copy_term3 t,follow_process_Q q)
   | GetNorm(x,t,p1,p2) -> GetNorm(x,Terms.copy_term3 t,follow_process_P p1,follow_process_P p2)
   | PhaseNorm(n,r) -> PhaseNorm(n,follow_process_R r)
+  | LockNorm(cells,p) -> LockNorm(cells,follow_process_P p)
+  | UnlockNorm(cells,p) -> UnlockNorm(cells,follow_process_P p)
+  | OpenNorm(cells,p) -> OpenNorm(cells,follow_process_P p)
   | ReadAsNorm(items,p) -> ReadAsNorm(items,follow_process_P p)
+  | AssignNorm(items,p) -> AssignNorm(items,follow_process_Q p)
   
 (*********************************************
 	      Helper functions 
@@ -1106,6 +1153,7 @@ and canonical_process process acc_unify = match process with
      Parsing_helper.internal_error "Barriers should not appear here (9)"
   | Lock(cells,proc,occ) -> Lock(cells, canonical_process proc acc_unify, occ)
   | Unlock(cells, proc, occ) -> Unlock(cells, canonical_process proc acc_unify, occ)
+  | Open(cells, proc, occ) -> Open(cells, canonical_process proc acc_unify, occ)
   | ReadAs(items,proc,occ) ->
      let rec processPattern pats proc =
        match pats with
@@ -1199,8 +1247,9 @@ and exists_term_R f = function
   | InsertNorm(t, q) -> (f t) || (exists_term_Q f q)
   | GetNorm(x,t,p1,p2) -> (f t) || (exists_term_P f p1) || (exists_term_P f p2)
   | PhaseNorm(n,r) -> exists_term_R f r
-  | ReadAsNorm(items,p) -> exists_term_P f p
-
+  | LockNorm(_,p) | UnlockNorm(_,p) | OpenNorm(_,p) -> exists_term_P f p
+  | ReadAsNorm(_,p) -> exists_term_P f p
+  | AssignNorm(_,p)-> exists_term_Q f p
 (* Apply [f] to each subprocess of a decision tree *)
 
 let rec map_D f = function
@@ -1288,8 +1337,16 @@ and rename_R subst_vars subst_names = function
 	      rename_P subst_vars subst_names p2)
   | PhaseNorm(n,p) ->
      PhaseNorm(n, rename_R subst_vars subst_names p)
+  | LockNorm(cells,p) ->
+     LockNorm(cells,rename_P subst_vars subst_names p)
+  | UnlockNorm(cells,p) ->
+     UnlockNorm(cells,rename_P subst_vars subst_names p)
+  | OpenNorm(cells,p) ->
+     OpenNorm(cells,rename_P subst_vars subst_names p)
   | ReadAsNorm(items,p) ->
      ReadAsNorm(items, rename_P subst_vars subst_names p)
+  | AssignNorm(items,p) ->
+     AssignNorm(items, rename_Q subst_vars subst_names p)
 
 (* [put_lets p l] adds the sequence of lets in [l] on top
    of process [p], removing the lets that are not used in [p]. *)
@@ -1541,6 +1598,16 @@ let rec norm phase proc = match proc with
       end
   | Barrier _ | AnnBarrier _ ->
      Parsing_helper.internal_error "Barriers should not appear here (10)"
+  | Lock(cells,proc,_) ->
+     let next_norm_p = norm None proc in
+          { seq_names = []; seq_lets = []; seq_cond = NormProc([ put_phase phase (LockNorm(cells ,next_norm_p))],None) }
+  | Unlock(cells,proc,_) ->
+     let next_norm_p = norm None proc in
+          { seq_names = []; seq_lets = []; seq_cond = NormProc([ put_phase phase (UnlockNorm(cells ,next_norm_p))],None) }
+  | Open(cells,proc,_) ->
+     let next_norm_p = norm None proc in
+          { seq_names = []; seq_lets = []; seq_cond = NormProc([ put_phase phase (OpenNorm(cells ,next_norm_p))],None) }
+
   | ReadAs(items,proc,_) ->
      let (cells, pats) = List.split items in
      let rec procPatterns pats =
@@ -1552,7 +1619,11 @@ let rec norm phase proc = match proc with
      let vars = procPatterns pats in
      let next_norm_p = norm None proc in
      { seq_names = []; seq_lets = []; seq_cond = NormProc([ put_phase phase (ReadAsNorm(List.combine cells vars ,next_norm_p))],None) }
-	  
+  | Assign(items,proc,_) ->
+     let next_norm_p = norm None proc in
+     { next_norm_p with
+       seq_cond = map_D(fun q -> ([put_phase phase (AssignNorm(items,q))], None)) next_norm_p.seq_cond
+      }
   | _ -> internal_error "Filter and Event should not happen"
         
 (*********************************************
@@ -2248,7 +2319,12 @@ and mergebranches_R proc_R acc_unify next_f = match proc_R with
         )
       )
   | PhaseNorm(n,r) -> mergebranches_R r acc_unify (fun r' -> next_f (PhaseNorm(n,r')))
+  | LockNorm(cells,p) -> mergebranches_P p acc_unify (fun p' -> next_f (LockNorm(cells,p')))
+  | UnlockNorm(cells,p) -> mergebranches_P p acc_unify (fun p' -> next_f (UnlockNorm(cells,p')))
+  | OpenNorm(cells,p) -> mergebranches_P p acc_unify (fun p' -> next_f (OpenNorm(cells,p')))
   | ReadAsNorm(items,p) -> mergebranches_P p acc_unify (fun p' -> next_f (ReadAsNorm(items,p')))
+  | AssignNorm(items,p) -> mergebranches_Q p acc_unify (fun p' -> next_f (AssignNorm(items,p')))
+
   
 (*********************************************
                Get process 
@@ -2294,10 +2370,14 @@ and get_proc_R = function
   | InsertNorm(t,q) -> Insert(t,get_proc_Q q,new_occurrence ())
   | GetNorm(x,t,pthen,pelse) -> Get(PatVar x, t, get_proc_P pthen, get_proc_P pelse,new_occurrence ())
   | PhaseNorm(n,r) -> Phase(n,get_proc_R r,new_occurrence ())
+  | LockNorm(cells,p) -> Lock(cells,get_proc_P p, new_occurrence())
+  | UnlockNorm(cells,p) -> Unlock(cells,get_proc_P p, new_occurrence())
+  | OpenNorm(cells,p) -> Open(cells,get_proc_P p, new_occurrence())
   | ReadAsNorm(items,p) ->
      let (cells, binders) = List.split items in
      ReadAs(List.combine cells (List.map (fun x -> PatVar x) binders), get_proc_P p, new_occurrence())
-
+  | AssignNorm(items,p) ->
+     Assign(items,get_proc_Q p, new_occurrence())
 
 (*******************************************************
    [verify_process [] proc] verifies that the process [proc] is closed.
@@ -2366,6 +2446,20 @@ let rec verify_process free_var proc =
       verify_term new_free_var t;
       verify_process new_free_var p;
       verify_process new_free_var q
+  | Lock(_,proc,_) | Unlock(_,proc,_) | Open(_,proc,_)->
+     verify_process free_var proc
+  | ReadAs(items,proc,_) ->
+     let (cells,pats) = List.split items in
+     let rec convert2binders b pats =
+       match pats with
+	 [] -> b
+       | p::ps -> convert2binders (b@(verify_pattern free_var p)) ps in
+     let binders = convert2binders [] pats in
+     verify_process (binders@free_var) proc
+  | Assign(items,proc,_) ->
+     let (_, terms) = List.split items in
+     List.iter (verify_term free_var) terms;
+     verify_process free_var proc
 
 (*********************************************
 	       Move_new 
@@ -2448,7 +2542,16 @@ let rec move_new_lets accu = function
       Phase(n, move_new_lets accu p,occ)
   | Barrier _ | AnnBarrier _ ->
      Parsing_helper.internal_error "Barriers should not appear here (12)"
-
+  | Lock(cells,proc,occ) ->
+     Lock(cells, move_new_lets accu proc, occ)  
+  | Unlock(cells,proc,occ) ->
+     Unlock(cells, move_new_lets accu proc, occ)  
+  | Open(cells,proc,occ) ->
+     Lock(cells, move_new_lets accu proc, occ)  
+  | ReadAs(items,proc,occ) ->
+     ReadAs(items, move_new_lets accu proc, occ)  
+  | Assign(items,proc,occ) ->
+     Assign(items, move_new_lets accu proc, occ)  
 
 (*********************************************
                Simplify process 
