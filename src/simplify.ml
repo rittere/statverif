@@ -77,7 +77,8 @@ and normalised_process_R =
   | OutNorm of term * term * normalised_process_Q
   | InsertNorm of term * normalised_process_Q
   | GetNorm of binder * term * normalised_process_P * normalised_process_P
-  | PhaseNorm of int * normalised_process_R    
+  | PhaseNorm of int * normalised_process_R
+  | ReadAsNorm of (funsymb * binder) list * normalised_process_P
 
 (************************************************
 	Display of normalized processes 
@@ -232,8 +233,19 @@ and display_norm_R align = function
       print_string ".";
       print_newline();
       display_norm_R align p
-
-  
+  | ReadAsNorm(items,proc) ->
+     print_string align;
+    Display.Text.display_keyword "read";
+    print_string " ";
+    Display.Text.display_list (fun (cell,_) -> print_string cell.f_name) "," items;
+    print_string " ";
+    Display.Text.display_keyword "as";
+    print_string " ";
+    Display.Text.display_list (fun (_, b) -> print_string (Display.Text.varname b)) "," items;
+    print_string ";";
+    print_newline();
+    display_norm_P align proc
+      
 (*********************************************
              Copy of a process
 **********************************************) 
@@ -462,6 +474,11 @@ let rec follow_process = function
   | Phase(n, proc,occ) -> Phase(n, follow_process proc, occ)
   | Barrier _ | AnnBarrier _ ->
      Parsing_helper.internal_error "Barriers should not appear here (8)"
+  | ReadAs(items,proc,occ) ->
+     let (cells, pats) = List.split items in
+     let pats' = List.map follow_pattern pats in
+     let proc' = follow_process proc in
+     ReadAs(List.combine cells pats', proc',occ)
 
 let rec follow_process_P proc = 
   { proc with
@@ -489,6 +506,7 @@ and follow_process_R = function
   | InsertNorm(t,q) -> InsertNorm(Terms.copy_term3 t,follow_process_Q q)
   | GetNorm(x,t,p1,p2) -> GetNorm(x,Terms.copy_term3 t,follow_process_P p1,follow_process_P p2)
   | PhaseNorm(n,r) -> PhaseNorm(n,follow_process_R r)
+  | ReadAsNorm(items,p) -> ReadAsNorm(items,follow_process_P p)
   
 (*********************************************
 	      Helper functions 
@@ -754,13 +772,13 @@ let rec get_occ_rec accu = function
   | Input(_,_,_,occ) | Output(_,_,_,occ) | Let(_,_,_,_,occ) 
   | LetFilter(_,_,_,_,occ) | Event(_,_,_,occ) | Insert(_,_,occ)
   | Get(_,_,_,_,occ) | Phase(_,_,occ) | Barrier(_,_,_,occ)
-  | AnnBarrier(_,_,_,_,_,_,occ) -> 
+  | AnnBarrier(_,_,_,_,_,_,occ)
+  | Lock(_,_,occ) | Unlock(_,_,occ) | Open(_,_,occ) | ReadAs(_,_,occ) | Assign(_,_,occ) -> 
       let occ_str = "{" ^(string_of_int occ) ^"}" in
       if accu = "" then 
 	occ_str
       else
         accu ^ ", " ^ occ_str
-
 let get_occ_string p =
   let res = get_occ_rec "" p in
   if res = "" then "(parallel composition of 0) " else "at occurrence(s) " ^ res ^ " "
@@ -1086,41 +1104,71 @@ and canonical_process process acc_unify = match process with
   | Phase(n,proc,occ) -> Phase(n,canonical_process proc acc_unify,occ)
   | Barrier _ | AnnBarrier _ ->
      Parsing_helper.internal_error "Barriers should not appear here (9)"
+  | Lock(cells,proc,occ) -> Lock(cells, canonical_process proc acc_unify, occ)
+  | Unlock(cells, proc, occ) -> Unlock(cells, canonical_process proc acc_unify, occ)
   | ReadAs(items,proc,occ) ->
-      begin match  with
-        | PatVar _ -> 
-            if is_term_always_succeed term acc_unify
-            then Input(term,pat,canonical_process proc acc_unify,occ)
-            else
-              let type_term = Terms.get_term_type term in
-              let x = Terms.new_var Param.def_var_name type_term in
-              let catch = FunApp(Terms.glet_fun type_term,[term]) in
-              let test = FunApp(Terms.not_caught_fail_fun type_term,[Var x]) in
-          
-              Let (PatVar x, catch, 
-               	Test(test,
-               	  Input(Var x,pat,verify_unification proc ((Var x, catch)::(test,Terms.true_term)::acc_unify),occ),
-               	  Nil, 
-               	  new_occurrence ()
-                ),
-                Nil, 
-                new_occurrence ()
-              )
-        | _ ->
-            (* Test current_bound_vars *)
-            assert (!Terms.current_bound_vars == []);
-        
-            let pat_x,test_success = one_var_pattern_from_pattern pat in
-            
-            let new_proc = match test_success with
-              | None -> proc
-              | Some(t) -> Test(t,proc, Nil, new_occurrence ()) in
-    
-            let proc_substituted = follow_process new_proc in      
-            Terms.cleanup ();
-            
-            canonical_process (Input(term,pat_x,proc_substituted,occ)) acc_unify
-      end  
+     let rec processPattern pats proc =
+       match pats with
+	 [] -> [], proc
+       | pat::pats -> begin
+	 match  pat with
+         | PatVar _ -> 
+            let (pats', proc') = processPattern pats proc in
+	    (pat::pats'), proc'
+         | _ -> begin
+           (* Test current_bound_vars *)
+           assert (!Terms.current_bound_vars == []);
+           
+           let pat_x,test_success = one_var_pattern_from_pattern pat in
+           
+           let new_proc = match test_success with
+             | None -> proc
+             | Some(t) -> Test(t,proc, Nil, new_occurrence ()) in
+	   
+           let proc_substituted = follow_process new_proc in      
+           Terms.cleanup ();
+	   let pats', proc' = processPattern pats proc_substituted in
+	   (pat_x::pats'), proc'
+	 end
+       end in
+     let (cells,pats) = List.split items in
+     let pats, proc = processPattern pats proc in
+     ReadAs(List.combine cells pats,canonical_process proc acc_unify,occ)
+  | Assign(items,proc,occ) ->
+     let cells, terms = List.split items in
+     let rec constructUnifList catchs tests vars  =
+       match catchs, tests, vars with
+	 [],[],[] -> []
+       | (c::cs), ((Some t)::ts), (v::vs) ->
+	  (v,c)::(t,Terms.true_term)::(constructUnifList cs ts vs)
+       | (c::cs), (None::ts), (v::vs) ->
+	  (v,c)::(constructUnifList cs ts vs)in
+     let rec constructAssignProcess pats catchs tests proc =
+       match pats, catchs, tests with
+	 [], [], [] -> proc
+       | (p::ps), (c::cs), (None::ts) ->
+	  constructAssignProcess ps cs ts
+	    (Let (p, c, proc, Nil, new_occurrence()))
+       | (p::ps), (c::cs), ((Some t)::ts) ->
+	  constructAssignProcess ps cs ts
+	    (Let (p, c, Test(t, proc, Nil, new_occurrence()), Nil, new_occurrence())) in
+     let rec processTerms terms =
+       match terms with
+	 [] -> [],[],[],[]
+       | t::ts ->
+	  let type_term = Terms.get_term_type t in
+          let x = Terms.new_var Param.def_var_name type_term in
+	  let pats, catchs, tests, vars = processTerms ts in 
+	  if is_term_always_succeed t acc_unify then
+	    ((PatVar x)::pats), (t::catchs), (None::tests), ((Var x)::vars)
+	  else
+            let catch = FunApp(Terms.glet_fun type_term,[t]) in
+            let test = FunApp(Terms.not_caught_fail_fun type_term,[Var x]) in
+	    ((PatVar x)::pats), (catch::catchs), ((Some test)::tests), ((Var x)::vars) in
+     
+     let pats, catchs, tests, vars = processTerms terms in
+     constructAssignProcess pats catchs tests
+       (Assign(List.combine cells vars, verify_unification proc (constructUnifList catchs tests vars),occ))
   
 (****** Normalisation ******) 
 
@@ -1151,6 +1199,7 @@ and exists_term_R f = function
   | InsertNorm(t, q) -> (f t) || (exists_term_Q f q)
   | GetNorm(x,t,p1,p2) -> (f t) || (exists_term_P f p1) || (exists_term_P f p2)
   | PhaseNorm(n,r) -> exists_term_R f r
+  | ReadAsNorm(items,p) -> exists_term_P f p
 
 (* Apply [f] to each subprocess of a decision tree *)
 
@@ -1238,7 +1287,9 @@ and rename_R subst_vars subst_names = function
 	      rename_P subst_vars subst_names p1,
 	      rename_P subst_vars subst_names p2)
   | PhaseNorm(n,p) ->
-      PhaseNorm(n, rename_R subst_vars subst_names p)
+     PhaseNorm(n, rename_R subst_vars subst_names p)
+  | ReadAsNorm(items,p) ->
+     ReadAsNorm(items, rename_P subst_vars subst_names p)
 
 (* [put_lets p l] adds the sequence of lets in [l] on top
    of process [p], removing the lets that are not used in [p]. *)
@@ -1490,6 +1541,18 @@ let rec norm phase proc = match proc with
       end
   | Barrier _ | AnnBarrier _ ->
      Parsing_helper.internal_error "Barriers should not appear here (10)"
+  | ReadAs(items,proc,_) ->
+     let (cells, pats) = List.split items in
+     let rec procPatterns pats =
+       match pats with
+	 [] -> []
+       | (PatVar x)::ps ->
+	  x::(procPatterns ps)
+       | _ -> internal_error "[simplify.ml >> norm] The pattern in ReadAs should be a variable" in
+     let vars = procPatterns pats in
+     let next_norm_p = norm None proc in
+     { seq_names = []; seq_lets = []; seq_cond = NormProc([ put_phase phase (ReadAsNorm(List.combine cells vars ,next_norm_p))],None) }
+	  
   | _ -> internal_error "Filter and Event should not happen"
         
 (*********************************************
@@ -2185,7 +2248,7 @@ and mergebranches_R proc_R acc_unify next_f = match proc_R with
         )
       )
   | PhaseNorm(n,r) -> mergebranches_R r acc_unify (fun r' -> next_f (PhaseNorm(n,r')))
-  
+  | ReadAsNorm(items,p) -> mergebranches_P p acc_unify (fun p' -> next_f (ReadAsNorm(items,p')))
   
 (*********************************************
                Get process 
@@ -2231,6 +2294,9 @@ and get_proc_R = function
   | InsertNorm(t,q) -> Insert(t,get_proc_Q q,new_occurrence ())
   | GetNorm(x,t,pthen,pelse) -> Get(PatVar x, t, get_proc_P pthen, get_proc_P pelse,new_occurrence ())
   | PhaseNorm(n,r) -> Phase(n,get_proc_R r,new_occurrence ())
+  | ReadAsNorm(items,p) ->
+     let (cells, binders) = List.split items in
+     ReadAs(List.combine cells (List.map (fun x -> PatVar x) binders), get_proc_P p, new_occurrence())
 
 
 (*******************************************************
