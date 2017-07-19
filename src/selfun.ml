@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -377,4 +377,4 @@ let guess_no_unif rulequeue =
   (* If no "nounif" instruction is given, first guess them by "selection_fun_weight" *)
   if (!no_unif_set = []) || (!Param.select_fun == Param.Term)
       || (!Param.select_fun == Param.TermMaxsize) then
-    Queue.iter rulequeue (fun r -> ignore (selection_fun_weight r));
+    Pvqueue.iter rulequeue (fun r -> ignore (selection_fun_weight r));

@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -324,6 +324,8 @@ let interface_for_merging_process p =
     
 let first_file = ref true
 
+
+
 let anal_file s =
   if not (!first_file) then
     Parsing_helper.user_error "Error: You can analyze a single ProVerif file for each run of ProVerif.\nPlease rerun ProVerif with your second file.\n";
@@ -371,19 +373,13 @@ let anal_file s =
 	Parsing_helper.user_error "Error: spass input not yet implemented\n"
     | PiType ->
 	Param.typed_frontend := true;
-	(* Param.ignore_types := false; *)
-
 	let p0, second_p0 = Pitsyntax.parse_file s in
-	
 	let p0 =
 	  if !Param.move_new then
 	    Pitransl.move_new p0
 	  else p0 in
-
 	let p0 = Simplify.reset_occurrence p0 in
-	  
 	TermsEq.record_eqs_with_destr();
-	
 	(* Check if destructors are deterministic *)
 	
 	Destructor.check_deterministic !Pitsyntax.destructors_check_deterministic;
@@ -834,8 +830,9 @@ let anal_file s =
     if (!Param.html_output) then
       Display.LangHtml.close()
 
-  with e ->
-    Parsing_helper.internal_error (Printexc.to_string e)
+  with
+  | InputError -> exit 2
+  | e -> Parsing_helper.internal_error (Printexc.to_string e)
 
 
 let _ =

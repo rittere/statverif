@@ -5,7 +5,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -144,8 +144,11 @@ exception Syntax
 
 %start order
 %type <Pitptree.ident list> order
-%%
 
+%start term
+%type <Pitptree.term_e> term
+
+%%
 /*** Typed front-end ***/
 
 lib:

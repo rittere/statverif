@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -172,7 +172,7 @@ let rec check_eq_term f_allowed fail_allowed_top fail_allowed_all varenv (term,e
 	      let v = get_var varenv s in
 	    
 	      if (not (fail_allowed_top || fail_allowed_all)) && v.unfailing
-	      then input_error ("The may-fail variable " ^ s ^ " cannot be used in this term.") ext;
+	      then input_error ("The may-fail variable " ^ s ^ " cannot be used in this term") ext;
 	    
 	      Var v
 	    end
@@ -213,7 +213,7 @@ let rec new_n_list f = function
 let check_red_may_fail tlist is_private =
  
   let f,arity = match tlist with
-    | [] -> input_error "A destructor should have at least one rewrite rule." Parsing_helper.dummy_ext;
+    | [] -> input_error "A destructor should have at least one rewrite rule" Parsing_helper.dummy_ext;
     | ((PFunApp((f,ext),l),_),_,_)::_ -> 
         if Hashtbl.mem fun_decls f then
           input_error ("identifier " ^ f ^ " already defined (as a free name, a function, a predicate, or a type)") ext;
@@ -316,7 +316,7 @@ let check_red tlist is_private =
         Terms.get_vars var_list_rhs rhs;
               
         if not (List.for_all (fun v -> List.exists (Terms.occurs_var v) lhs) (!var_list_rhs)) then
-          Parsing_helper.input_error "All variables of the right-hand side of a \"reduc\" definition\nshould also occur in the left-hand side." ext';
+          Parsing_helper.input_error "All variables of the right-hand side of a \"reduc\" definition\nshould also occur in the left-hand side" ext';
                   
         (lhs, rhs,[])
     | _,(_, ext1)-> input_error ("In \"reduc\", all rewrite rules should begin with function application") ext1
@@ -469,7 +469,7 @@ let clear_var_env () =
 let check_single ext s =
   let vals = Hashtbl.find_all glob_table s in
   match vals with
-    _::_::_ -> input_error (s ^ " cannot be used in queries. Its definition is ambiguous. (For example, several restrictions might define " ^ s ^ ".)") ext
+    _::_::_ -> input_error (s ^ " cannot be used in queries. Its definition is ambiguous. For example, several restrictions might define " ^ s ^ ".") ext
   | _ -> ()
   
 
@@ -1170,7 +1170,7 @@ and binding_find names_must_be_encoded s = function
 
 let add_binding names_must_be_encoded ((i,e),t) =
   if Hashtbl.mem glob_table i then
-    input_error ("Variable " ^ i ^ " defined after used.") e
+    input_error ("Variable " ^ i ^ " defined after used") e
   else
     let v = Terms.new_var i Param.any_type in
     v.link <- TLink (check_query_term names_must_be_encoded t);
@@ -1313,7 +1313,7 @@ let check_query = function
 	try
 	  Hashtbl.find event_fun_table s
 	with Not_found ->
-	  input_error ("unknown event " ^s) e) l
+	  input_error ("unknown event " ^ s) e) l
       in
       PutBegin(i',l') 
   | PBinding(i,t) ->
@@ -1544,7 +1544,7 @@ and fbinding_find s = function
 
 let add_fbinding ((i,e),t) =
   if Hashtbl.mem glob_table i then
-    input_error ("Variable " ^ i ^ " defined after used.") e
+    input_error ("Variable " ^ i ^ " defined after used") e
   else
     let v = Terms.new_var i Param.any_type in
     v.link <- FLink (check_gformat t);

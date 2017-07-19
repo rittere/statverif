@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 

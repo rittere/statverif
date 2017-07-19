@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -171,6 +171,10 @@ val copy_term3 : term -> term
 val copy_fact3 : fact -> fact
 val copy_constra3 : constraints list -> constraints list
 
+(* [copy_term4] follows links [Tlink] recursively, 
+   but does not rename variables *)
+val copy_term4 : term -> term
+
 (* Size of terms/facts *)
 val term_size : term -> int
 val fact_size : fact -> int
@@ -237,6 +241,7 @@ val false_term : term
 
 (* Functions *)
 
+val make_choice : term -> term -> term
 val is_true_fun : unit -> funsymb
 
 val equal_fun : typet -> funsymb
@@ -276,6 +281,8 @@ val clauses_for_function : (funsymb -> rewrite_rules -> unit) ->
 
 val get_function_name : funsymb -> string
 val projection_fun : funsymb * int -> funsymb
+(* [get_all_projection_fun tuple_symb] returns the list of projection
+   functions corresponding to the tuple function [tuple_symb] *)
 val get_all_projection_fun : funsymb -> funsymb list
 
 

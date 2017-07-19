@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -562,9 +562,9 @@ let check_rule ((hyp, concl, hist, constra) as r) =
    The number of the selected hypothesis is stored with the rule
    in the second case. *)
 
-let rule_queue = Queue.new_queue()
-let reach_queue = Queue.new_queue()
-let seq_queue = Queue.new_queue()
+let rule_queue = Pvqueue.new_queue()
+let reach_queue = Pvqueue.new_queue()
+let seq_queue = Pvqueue.new_queue()
 
 let rule_count = ref 0
 
@@ -586,7 +586,7 @@ let add_rule rule =
   let test_impl = fun r -> implies r rule in
   if (List.exists test_impl (!rule_base_ns)) ||
      (List.exists (function (r,_) -> implies r rule) (!rule_base_sel)) ||
-     (Queue.exists rule_queue test_impl) then
+     (Pvqueue.exists rule_queue test_impl) then
     Debug.debug_print "rule not added\n" (* () *)
     else
     begin
@@ -595,9 +595,9 @@ let add_rule rule =
       rule_base_ns := List.filter test_impl (!rule_base_ns);
       rule_base_sel := List.filter
 	   (function (r,_) -> not (implies rule r)) (!rule_base_sel);
-      Queue.filter rule_queue test_impl;
+      Pvqueue.filter rule_queue test_impl;
       check_rule rule;
-      Queue.add rule_queue rule;
+      Pvqueue.add rule_queue rule;
       Debug.debug_print "Added rule to rule queue.\n";
     end
 
@@ -1032,7 +1032,7 @@ let is_superfluous rule =
     let test_impl = fun r -> implies r rule in
    (List.exists test_impl (!rule_base_ns)) ||
      (List.exists (function (r,_) -> implies r rule) (!rule_base_sel)) ||
-     (Queue.exists rule_queue test_impl) 
+     (Pvqueue.exists rule_queue test_impl) 
 
 let simplify_rule_constra_normal next_stage r =
   if is_superfluous r then  begin
@@ -1061,7 +1061,7 @@ let rec normal_rule r =
 (* Close rules under equations *)
 
 let rec complete_rules_eq () =
-   match Queue.get rule_queue with
+   match Pvqueue.get rule_queue with
      None -> !rule_base_ns
    | Some rule -> 
        rule_base_ns := rule :: (!rule_base_ns);
@@ -1077,7 +1077,7 @@ let rec complete_rules_eq () =
 			     " rules inserted. The rule base contains " ^
 			     (string_of_int (List.length (!rule_base_ns))) ^
 			     " rules. " ^
-			     (string_of_int (Queue.length rule_queue)) ^
+			     (string_of_int (Pvqueue.length rule_queue)) ^
 			     " rules in the queue.");
 	       Display.Text.newline()
 	     end
@@ -1213,7 +1213,7 @@ let redundant_res res_list =
 (* Saturates the rule base, by repeatedly applying the composition [compos] *)
 
   let rec complete_rules () = 
-      let rule = Queue.get rule_queue in
+      let rule = Pvqueue.get rule_queue in
 	match rule with
      None -> !rule_base_ns
    | Some rule -> 
@@ -1258,7 +1258,7 @@ let redundant_res res_list =
 	 Printf.printf "#rule_base_ns = %d, rule_base_sel = %d, #rules in queue = %d\n" 
 	   (List.length !rule_base_ns)
 	   (List.length !rule_base_sel)
-           (Queue.length rule_queue);
+           (Pvqueue.length rule_queue);
        if !Param.execution_time > 0.0  then begin
 	 let current_time = Unix.times() in
 	 let time_used =  current_time.Unix.tms_utime -. default_time.Unix.tms_utime in
@@ -1281,7 +1281,7 @@ let redundant_res res_list =
 			     (string_of_int ((List.length (!rule_base_ns))
 					   + (List.length (!rule_base_sel)))) ^
 			     " rules. " ^
-			     (string_of_int (Queue.length rule_queue)) ^
+			     (string_of_int (Pvqueue.length rule_queue)) ^
 			     " rules in the queue.");
 	       Display.Text.newline()
 	     end
@@ -1433,7 +1433,7 @@ let completion rulelist =
   Selfun.guess_no_unif rule_queue;
   if !Param.debug_output then begin 
     print_string "Rule base after normalisation\n";
-    Queue.iter rule_queue (fun rule -> Display.Text.display_rule rule)
+    Pvqueue.iter rule_queue (fun rule -> Display.Text.display_rule rule)
   end;
   
   if hasEquationsToRecord() then

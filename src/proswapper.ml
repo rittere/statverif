@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -587,14 +587,14 @@ let string_to_permut (s,ext0) =
   (* Check that all tags of the permutation occur in barriers *)
   List.iter (List.iter (fun (s,ext) ->
     if not (List.mem s (!all_tags)) then
-      Parsing_helper.input_error ("Tag " ^ s ^ " not found in tags of barriers.\n") 
+      Parsing_helper.input_error ("Tag " ^ s ^ " not found in tags of barriers") 
 	(Parsing_helper.combine_extent ext0 ext)
 	)) permut;
   (* Check that the tags of the permutation are pairwise distinct *)
   let seen_tags = ref [] in
   List.iter (List.iter (fun (s,ext) ->
     if List.mem s (!seen_tags) then
-      Parsing_helper.input_error ("Tag " ^ s ^ " occurs several times in the permutation.\n")
+      Parsing_helper.input_error ("Tag " ^ s ^ " occurs several times in the permutation")
 	(Parsing_helper.combine_extent ext0 ext);
     seen_tags := s :: (!seen_tags)
 	)) permut;

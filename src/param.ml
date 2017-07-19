@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -164,6 +164,10 @@ let symb_order = ref None
 type trace_display = NoDisplay | ShortDisplay | LongDisplay
 let trace_display = ref ShortDisplay
 
+(*for interactive mode *)
+let interactive_mode = ref false 
+let allow_tilde = ref false
+
 (* for trace graph *)
 type trace_display_graphicx = TextDisplay | GraphDisplay
 let trace_display_graphicx = ref TextDisplay
@@ -186,7 +190,7 @@ let boolean_param flag p ext v =
     S ("no",_) | S ("false",_) -> flag := false
   | S ("yes",_) | S ("true",_) -> flag := true
   | _ -> Parsing_helper.input_error ("Unexpected value for parameter " ^ p ^ "=" ^ 
-		       (match v with S (s,_) -> s | I n -> string_of_int n)) ext
+		       (match v with S (s,_) -> s | I n -> string_of_int n) ^ ".") ext
 
 let common_parameters p ext v =
   match (p,v) with

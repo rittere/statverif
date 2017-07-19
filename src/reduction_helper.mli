@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -112,4 +112,6 @@ val reduction_check_several_patterns : Pitypes.term_occ -> bool
 
 val check_delayed_names : Pitypes.query -> Pitypes.query
 
-val create_pdf_trace : string -> 'a Pitypes.reduc_state -> int
+val create_pdf_trace : ('a -> term) -> ('a Pitypes.noninterf_test -> string) -> string -> 'a Pitypes.reduc_state -> int
+
+

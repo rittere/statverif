@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -285,8 +285,6 @@ type label =
   | Rwrite of predicate
   | Rfail of predicate
   | TestComm of predicate * predicate
-  | InputSecr of predicate
-  | OutputSecr of predicate
   | WeakSecr
   | Rn of predicate
   | Init

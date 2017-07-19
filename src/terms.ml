@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -762,9 +762,7 @@ let matchafactstrict finst fgen =
        an infinite number of different terms obtained by 
        iterating the substitution. We should adjust the selection
        function to avoid this non-termination. *)
-    if List.exists (fun v ->
-      if v.vname = 212 then Printf.printf "%s\n" "Variable found";
-      match v.link with
+    if List.exists (fun v -> match v.link with
     | TLink (Var _) -> false
     | TLink t -> occurs_test_loop (ref []) v t
     | _ -> false) (!current_bound_vars) then
@@ -910,6 +908,16 @@ let split_state pred args =
         [], args
     end
 
+(* [copy_term4] follows links [Tlink] recursively, 
+   but does not rename variables *)
+
+let rec copy_term4 = function
+ | FunApp(f,l) -> FunApp(f, List.map copy_term4 l)
+ | Var v -> match v.link with
+     NoLink -> Var v
+   | TLink l -> copy_term4 l
+   | _ -> internal_error "unexpected link in copy_term4"
+
 (* Do not select Out facts, blocking facts, or pred_TUPLE(vars) *)
 
 let is_var = function
@@ -963,6 +971,16 @@ let reorganize_fun_app f l0 =
 (*********************************************
       Definition of several functions
 **********************************************)  
+    
+(* Choice *)
+
+let make_choice t1 t2 =
+  let ty1 = get_term_type t1
+  and ty2 = get_term_type t2 in
+  if (Param.get_ignore_types()) || (ty1 == ty2) then
+    FunApp(Param.choice_fun ty1, [t1;t2])
+  else
+    Parsing_helper.internal_error "[Terms.make_choice] This should be the same type"
     
 (* Failure Constants *)
 
@@ -1384,6 +1402,8 @@ let projection_fun = Param.memo (fun (f_symb,i) ->
     f_private = f_symb.f_private;
     f_options = 0 })
   
+(* [get_all_projection_fun tuple_symb] returns the list of projection
+   functions corresponding to the tuple function [tuple_symb] *)
 let get_all_projection_fun tuple_symb = 
   let rec sub_get_proj n l = 
     match l with
@@ -1618,7 +1638,7 @@ let generate_destructor_with_side_cond prev_args lht_list rht ext =
         get_vars var_list_rht rht';
          
         if not (List.for_all (fun v -> List.exists (occurs_var v) lht') (!var_list_rht)) then
-          Parsing_helper.input_error "All variables of the right-hand side of a \"reduc\" definition\nshould also occur in the left-hand side." ext;
+          Parsing_helper.input_error "All variables of the right-hand side of a \"reduc\" definition\nshould also occur in the left-hand side" ext;
         
         destructors := (lht',rht',side_c)::!destructors
       )

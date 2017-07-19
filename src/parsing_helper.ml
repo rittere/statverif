@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -60,41 +60,57 @@ let combine_extent ((outer_start, _) as outer_ext) ((inner_start, inner_end) as 
    { outer_start with 
      pos_cnum = outer_start.pos_cnum + inner_end.pos_cnum + 1 })
 
+exception InputError
+
+(* Add a point at the end of mess if neccessary *)
+let add_point_if_necessary mess =
+  if (String.length mess > 0) && 
+    (let end_char = String.get mess (String.length mess - 1) in 
+    end_char != '.' && end_char != '?' && end_char != '!')
+  then
+    Printf.printf "."
+
+
+(* print the message with the location of the error, and a point at the end if needed. *)
+(* Then raise InputError *)
 let input_error mess (loc_start, loc_end) =
   if loc_start.pos_cnum = -1 then
-    Printf.printf "Error: %s\n" mess
+    begin
+      Printf.printf "Error: %s" mess;
+      add_point_if_necessary mess;
+      Printf.printf "\n";
+    end
   else
-(*
-    Printf.printf "File \"%s\", line %d, column %d, character %d - line %d, column %d, character %d:\nError: %s\n"
-      loc_start.pos_fname
-      loc_start.pos_lnum (loc_start.pos_cnum - loc_start.pos_bol) loc_start.pos_cnum
-      loc_end.pos_lnum loc_end.loc_column loc_end.pos_cnum
-      mess
-
-    Printf.printf "File \"%s\", line %d, characters %d-%d:\nError: %s\n"
-      loc_start.pos_fname
-      loc_start.pos_lnum (loc_start.pos_cnum - loc_start.pos_bol+1) (loc_start.loc_column + 1 + loc_end.loc_char - loc_start.loc_char)
-      mess
-*)
-    Printf.printf "File \"%s\", line %d, character %d - line %d, character %d:\nError: %s\n"
+    begin
+      Printf.printf "File \"%s\", line %d, character %d - line %d, character %d:\nError: %s"
       loc_start.pos_fname
       loc_start.pos_lnum (loc_start.pos_cnum - loc_start.pos_bol +1)
       loc_end.pos_lnum (loc_end.pos_cnum - loc_end.pos_bol+1)
       mess;
-  exit 2
+      add_point_if_necessary mess;
+      Printf.printf "\n";
 
+    end;
+  raise InputError
+
+(* print a warning message with the location of the error, and a point at the end if needed *)
 let input_warning mess (loc_start, loc_end) =
   if loc_start.pos_cnum = -1 then
     Printf.printf "Warning: %s\n" mess
   else
-    Printf.printf "File \"%s\", line %d, character %d - line %d, character %d:\nWarning: %s\n"
+    begin
+      Printf.printf "File \"%s\", line %d, character %d - line %d, character %d:\nWarning: %s"
       loc_start.pos_fname
       loc_start.pos_lnum (loc_start.pos_cnum - loc_start.pos_bol +1)
       loc_end.pos_lnum (loc_end.pos_cnum - loc_end.pos_bol+1)
-      mess
+        mess;
+      add_point_if_necessary mess;
+      Printf.printf "\n";
+
+    end
 
 
+(* print user_error message, then raise InputError *)
 let user_error mess =
   print_string mess;
-  exit 2
-
+  raise InputError

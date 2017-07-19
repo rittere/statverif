@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -33,5 +33,5 @@ val default_user_no_unif_weight : int
 val reset_no_unif_set : unit -> unit
 val inst_constraints : bool ref
 val add_no_unif : Types.fact_format -> int -> unit
-val guess_no_unif : Types.reduction Queue.q -> unit
+val guess_no_unif : Types.reduction Pvqueue.q -> unit
 val selection_fun : Types.reduction -> int

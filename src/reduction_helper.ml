@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -891,7 +891,7 @@ let check_delayed_names = function
 
 
 (* create a pdf file representing the trace in final_state *)
-let create_pdf_trace inj_string final_state =
+let create_pdf_trace display_a noninterf_test_to_string inj_string final_state =
   if !Param.html_output && !Param.graph_output then
     Parsing_helper.user_error ("\"-html\" and \"-graph\" options have both been specified. This is not allowed.\n")
   else
@@ -903,9 +903,9 @@ let create_pdf_trace inj_string final_state =
 	else
 	  begin
 	    let qs = string_of_int (!Param.derivation_number) in
-	    Display.LangGviz.openfile ((!Param.html_dir) ^ "/trace" ^ inj_string ^ qs ^ ".dot") "";
-	    ignore (Display.LangGviz.write_state_to_dot_file final_state);
-	    Display.LangGviz.close();
+            Display.AttGraph.openfile ((!Param.html_dir) ^ "/trace" ^ inj_string ^ qs ^ ".dot");
+            ignore (Display.AttGraph.write_state_to_dot_file display_a noninterf_test_to_string final_state);
+	    Display.AttGraph.close();
 	    let replace input output =
 	      Str.global_replace (Str.regexp_string input) output in
 	    let output = (!Param.html_dir ^ "/trace" ^ inj_string ^ qs) in
@@ -921,3 +921,13 @@ let create_pdf_trace inj_string final_state =
       end
     else
       -1
+
+(* create a pdf file representing the trace in final_state *)
+let create_interact_trace noninterf_test_to_string state =
+  ignore (open_out "trace.dot");
+  ignore (Display.AttGraph.write_state_to_dot_file Display.term_to_term noninterf_test_to_string state);
+  Display.AttGraph.close();
+  let command = "dot -Tpdf trace.dot -o trace.pdf" in
+  let dot_err = Sys.command command in
+  if dot_err <> 0 then
+      print_string ("Warning: Could not create PDF version of the trace.\nPlease verify that graphviz is installed")

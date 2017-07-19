@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -92,7 +92,10 @@ This section is composed of two main functions :
 If not, then the type is added into [Param.all_types] and [global_env] 
 ****************************)
 
+
 let global_env = ref (StringMap.empty : envElement StringMap.t)
+
+let get_global_env () = !global_env
 
 let get_type_polym polym sid_allowed (s, ext) =
   if s = "any_type" then

@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -25,6 +25,7 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
+
 val lib_name : string ref
 
 val def_var_name : string
@@ -92,6 +93,9 @@ val get_ignore_types : unit -> bool
 val set_ignore_types : bool -> unit
 val default_set_ignore_types : unit -> unit
 val get_type : Types.typet -> Types.typet
+
+val interactive_mode : bool ref 
+val allow_tilde : bool ref
 
 val html_output : bool ref
 val html_dir : string ref
@@ -245,4 +249,3 @@ val max_used_phase : int ref
 val session1 : Types.funsymb
 val red_rules : (Types.fact list * Types.fact * Types.constraints list list * Types.label) list ref
 val elim_true : Types.fact list ref
-

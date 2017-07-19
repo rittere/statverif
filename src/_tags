@@ -2,3 +2,4 @@
 
 <*.*>: debug, annot
 
+"menu_interact.ml" or "menu_interact.mli": package(lablgtk2), linkpkg

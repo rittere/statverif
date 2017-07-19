@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -346,7 +346,7 @@ let rec check_confluent new_rule = function
     (check_confluent new_rule l)
   
 
-let eq_queue = Queue.new_queue()
+let eq_queue = Pvqueue.new_queue()
 let eq_base = ref []
 let eq_count = ref 0
 
@@ -406,12 +406,12 @@ let add_eq (leq, req) =
   (* check not subsumed *)
   let test_impl = fun eq -> implies_eq eq new_eq in
   if (List.exists test_impl (!eq_base)) ||
-     (Queue.exists eq_queue test_impl) then () else
+     (Pvqueue.exists eq_queue test_impl) then () else
   begin
     let test_impl = fun eq -> not(implies_eq new_eq eq) in
     eq_base := List.filter test_impl (!eq_base);
-    Queue.filter eq_queue test_impl;
-    Queue.add eq_queue new_eq
+    Pvqueue.filter eq_queue test_impl;
+    Pvqueue.add eq_queue new_eq
   end
 
 (* Combine leq2 -> req2 followed by leq1 -> req1
@@ -441,7 +441,7 @@ let combine_eq_eq2 (leq1, req1) (leq2, req2) =
 (* Close the equational theory *)
 
 let rec complete_eq bothdir =
-  match Queue.get eq_queue with
+  match Pvqueue.get eq_queue with
     None -> !eq_base
   | Some eq ->
       eq_base := eq :: (!eq_base);
@@ -488,7 +488,7 @@ let rec complete_eq bothdir =
 			     " equations inserted. The rule base contains " ^
 			     (string_of_int (List.length (!eq_base))) ^
 			     " equations. " ^
-			     (string_of_int (Queue.length eq_queue)) ^
+			     (string_of_int (Pvqueue.length eq_queue)) ^
 			     " equations in the queue.");
 	       Display.Text.newline()
 	     end

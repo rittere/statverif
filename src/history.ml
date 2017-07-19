@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -743,10 +743,17 @@ let rec simplify_tree first recheck tree =
       done_unif := true
     with Unify -> 
       (* When the occur check fails, it might succeed
-	 after rewriting the terms, so try that *)
+	 after rewriting the terms, so try that.
+
+         It is important to check equality *modulo the equational
+	 theory* here. Otherwise, unify_modulo may make the two terms equal
+	 modulo the theory but still syntactically different, which would 
+	 result in an endless iteration of unifyDerivation. *)
+      if not (Reduction_helper.equal_open_terms_modulo t1 t2) then
+	begin
       unif_to_do_left := t1 :: (!unif_to_do_left);
       unif_to_do_right := t2 :: (!unif_to_do_right)
-
+	end
   in
 
   let rec add_unif_term t1 t2 =

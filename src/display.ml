@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -114,7 +114,94 @@ let abbreviate_derivation tree =
   let tree' = abbrev_tree tree in
   (!abbrev_table, tree')
   	
-type cl = CFun | CName | CVar | CPred | CType | CExplain | CKeyword | CConn
+(* Decompose tuples to simplify the display *)
+
+let rec decompose_tuples accu calcul t =
+  match calcul, t with
+    (FunApp(f, l), FunApp(f', l')) when f == f' && (f.f_cat = Tuple) ->
+      decompose_tuples_list accu l l'
+  | _ -> (calcul, t)::accu
+
+and decompose_tuples_list accu l l' =
+  match (l, l') with
+    (a::rl, a'::rl') ->
+      decompose_tuples_list (decompose_tuples accu a a') rl rl'
+  | [],[] -> accu
+  | _ -> Parsing_helper.internal_error "Lists should have same length in decompose_tuples_list"
+
+let rec decompose_tuples_var accu calcul t =
+  match calcul, t with
+    (FunApp(f, l), FunApp(f', l')) when f == f' && (f.f_cat = Tuple) ->
+      decompose_tuples_list_var accu l l'
+  | (Var _, _) -> (calcul, t)::accu
+  | _ -> raise Not_found
+
+and decompose_tuples_list_var accu l l' =
+  match (l, l') with
+    (a::rl, a'::rl') ->
+      decompose_tuples_list_var (decompose_tuples_var accu a a') rl rl'
+  | [],[] -> accu
+  | _ -> Parsing_helper.internal_error "Lists should have same length in decompose_tuples_list_var"
+
+(* Functions to convert a type 'a (bi term or term) to a term,
+   introducing [choice] if necessary *)
+
+let bi_term_to_term (t1,t2) =
+  if Terms.equal_terms t1 t2 then
+    t1
+  else
+    Terms.make_choice t1 t2
+
+let term_to_term t = t
+
+(* Simplify choice *)
+
+let rec get_choice_component side = function
+    FunApp(f, [t1;t2]) when f.f_cat = Choice ->
+      if side = 1 then
+	get_choice_component side t1
+      else
+	get_choice_component side t2
+  | FunApp(f, l) ->
+      FunApp(f, List.map (get_choice_component side) l)
+  | Var b -> Var b
+
+(* [minimal_choice t1 t2] returns a term [t] corresponding to
+   to [choice[t1,t2]] and a boolean [b].
+   [t] tries to minimize uses of choice.
+   [b] is true if and only if [t] contains choice. *)
+
+let rec count_true_l = function
+    [] -> 0
+  | (_, b)::l -> (if b then 1 else 0) + count_true_l l
+	
+let rec minimal_choice t1 t2 =
+  match t1, t2 with
+    Var b1, Var b2 when b1 == b2 ->
+      (Var b1, false)
+  | FunApp(f, [t;t']), _ when f.f_cat = Choice ->
+      minimal_choice t t2
+  | _, FunApp(f, [t;t']) when f.f_cat = Choice ->
+      minimal_choice t1 t'
+  | FunApp(f1, l1), FunApp(f2, l2) when f1 == f2 ->
+      let l' = List.map2 minimal_choice l1 l2 in
+      begin
+	match count_true_l l' with
+	  0 -> (FunApp(f1, List.map fst l'), false)
+	| 1 -> (FunApp(f1, List.map fst l'), true)
+	| _ -> (Terms.make_choice (get_choice_component 1 t1) (get_choice_component 2 t2), true)
+      end
+  | _ ->
+      (Terms.make_choice (get_choice_component 1 t1) (get_choice_component 2 t2), true)
+	
+let rec simplify_choice = function
+    FunApp(f, [t1;t2]) when f.f_cat = Choice ->
+      fst (minimal_choice t1 t2)
+  | FunApp(f, l) ->
+      FunApp(f, List.map simplify_choice l)
+  | Var b -> Var b
+
+type cl = CFun | CName | CVar | CPred | CType | CExplain | CKeyword | CConn | CProcess
 
 module type LangSig =
 sig
@@ -137,13 +224,14 @@ val equal_connective : string
 val eq1_connective : string
 val eq2_connective : string
 val hline : string
-val start_numbered_list : string
-val end_numbered_list : string
-val start_list : string
-val end_list : string
+val start_numbered_list : unit -> unit
+val end_numbered_list : unit -> unit
+val start_list : unit -> unit
+val end_list : unit -> unit
 val clause_item : int -> unit
 val history_item : int -> unit
 val basic_item : unit -> unit
+val wrap_if_necessary : unit -> unit
 val newline : unit -> unit
 end
 
@@ -162,9 +250,7 @@ struct
   let color_magenta = 35
   let color_cyan = 36
   let color_white = 37
-
   let bold = 1
-
   let color_stack = ref []
 
   let emit_color n = 
@@ -206,6 +292,7 @@ struct
     | CExplain -> start_color color_magenta
     | CKeyword -> start_color color_blue
     | CConn -> start_color bold
+      | CProcess -> start_color color_green
 
   let end_cl = function
   CFun | CName | CVar | CPred | CType -> ()
@@ -224,13 +311,15 @@ struct
   let equal_connective = "="
   let eq1_connective = "<->"
   let eq2_connective = "<=>"
-
   let hline = "--------------------------------------------------------------\n"
 
-  let start_numbered_list = ""
-  let end_numbered_list = "\n"
-  let start_list = ""
-  let end_list = "\n"
+    let start_numbered_list() = ()
+
+    let end_numbered_list() = print_string "\n"
+
+    let start_list() = ()
+
+    let end_list() = print_string "\n"
 
   let clause_item n =
     let ns = string_of_int n in
@@ -244,6 +333,8 @@ struct
 
   let newline() =
     print_newline()
+      
+  let wrap_if_necessary() = ()
 
 
 end
@@ -281,13 +372,13 @@ struct
         Parsing_helper.user_error ("Error: could not open html file. The html directory that you specified, " ^ (!Param.html_dir) ^ ", probably does not exist.\n")
     end;
     print_string ("<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01//EN\">
-<html>
-<head>
+		      <html>
+		    <head>
   <title>" ^ title ^ "</title>
   <link rel=\"stylesheet\" href=\"" ^ (!proverifurl) ^ "cssproverif.css\">
-</head>
-<body>
-")
+									   </head>
+									 <body>
+									 ")
 
 let close() =
   match !previousf with
@@ -327,6 +418,7 @@ let start_cl cl =
   | CExplain -> "explain"
   | CKeyword -> "keyword"
   | CConn -> "conn"
+  | CProcess -> "process"
   in
   print_string ("<span class=\"" ^ cls ^ "\">")
 
@@ -352,10 +444,10 @@ let eq2_connective = "&lt;=&gt;"
 
 let hline = "<HR>\n"
 
-let start_numbered_list = "\n<ol>\n"
-let end_numbered_list = "\n</ol>\n"
-let start_list = "\n<ul>\n"
-let end_list = "\n</ul>\n"
+let start_numbered_list() = print_string "\n<ol>\n"
+let end_numbered_list() = print_string "\n</ol>\n"
+let start_list() = print_string "\n<ul>\n"
+let end_list() = print_string "\n</ul>\n"
 
 let clause_item n =
   let ns = string_of_int n in
@@ -369,6 +461,8 @@ let basic_item() =
 
 let newline() =
   print_string "<br>\n"
+
+let wrap_if_necessary() = ()
 
 end
 
@@ -430,10 +524,10 @@ let rec display_list_and f = function
              display_list_and f l
 
 let display_item_list f l =
-  print_string Lang.start_list;
+  Lang.start_list();
   List.iter (fun x ->
     Lang.basic_item(); f x) l;
-  print_string Lang.end_list
+  Lang.end_list()
   
 let display_phase p =
   match p.p_info with
@@ -451,11 +545,14 @@ let display_function_name f =
 module DisplayFun =
   functor (Link : sig
     val follow : bool
+    val name_args: bool
   end) ->
     struct
 
-      let rec term = function
-	  FunApp(f,l) -> 
+      let rec term t =
+          Lang.wrap_if_necessary();
+          match t with
+	  | FunApp(f,l) ->
 	    begin
 	      match f.f_name with
 		"=" | "&&" | "||" | "<>" ->
@@ -495,9 +592,12 @@ module DisplayFun =
               match f.f_cat with
                 Name { prev_inputs_meaning = sl } ->
 		  display_idcl CName f.f_name;
-		  print_string "[";
-		  if (sl = []) || (!Param.tulafale = 1) then term_list l else name_list l sl;
-                  print_string "]"
+		  if Link.name_args then
+		    begin
+		      print_string "[";
+		      if (sl = []) || (!Param.tulafale = 1) then term_list l else name_list l sl;
+                      print_string "]"
+		    end
 	      | Choice -> 
 		  display_idcl CKeyword f.f_name;
                   print_string "[";
@@ -557,7 +657,9 @@ module DisplayFun =
         display_list term "; " l;
         Parsing_helper.internal_error "prev_inputs_meaning should have the same length as the arguments of the name 2"
 
-let fact = function
+let fact f =
+  Lang.wrap_if_necessary ();
+  match f with
     Pred(chann,t) ->
       display_idcl CPred chann.p_name;
       if not (!Param.typed_frontend) then print_string ":";
@@ -572,7 +674,10 @@ let fact = function
       if !Param.typed_frontend then print_string "(" else print_string ":";
       term t;
       List.iter (fun (v,t) ->
-	print_string (", " ^ (varname v) ^ " = ");
+	print_string ", ";
+	Lang.wrap_if_necessary ();
+	display_idcl CVar (varname v);
+	print_string " = ";
 	term t) l;
       if !Param.typed_frontend then print_string ")"
 
@@ -592,7 +697,7 @@ let rec constra_rec = function
       print_string " | ";
       constra_rec l
 
-(* Collect general variables in a term, in order to display it *)
+         (* Collect general variables in a term, in order to display it *)
 
 let rec collect_gen_vars accu = function
     FunApp(f, []) when f.f_cat == General_var || f.f_cat == General_mayfail_var -> 
@@ -796,12 +901,19 @@ end
 
 module Std = DisplayFun(struct
   let follow = false
+  let name_args = true
 end)
 
 module WithLinks = DisplayFun(struct
   let follow = true
+  let name_args = true
 end)
 
+module NoArgNames = DisplayFun(struct
+  let follow = false
+  let name_args = false
+end)
+  
 let display_term = Std.term
 let display_term_list = Std.term_list
 let display_fact = Std.fact
@@ -1185,14 +1297,6 @@ let display_rule_num ((hyp,concl,hist,constra) as rule) =
 	      print_string "(If an input and an output are done";
 	      display_phase p;
 	      print_string ", then the attacker may know whether the communication succeeds.)"
-	  | InputSecr p ->
-	      print_string "(If an input on the secret is done";
-	      display_phase p;
-	      print_string ", then the attacker may know whether the secret is a name.)"
-	  | OutputSecr p ->
-	      print_string "(If an output on the secret is done";
-	      display_phase p;
-	      print_string ", then the attacker may know whether the secret is a name.)"
 	  | WeakSecr ->
 	      print_string "(The attacker has the weak secret in the first component, a guess in the second.)"
 	  | Elem(pl,p) -> ()
@@ -1264,9 +1368,9 @@ let display_rule_num_abbrev rule =
     end
 
 let display_initial_clauses l =
-  print_string Lang.start_list;
+  Lang.start_list();
   List.iter display_rule_num_abbrev l;
-  print_string Lang.end_list
+  Lang.end_list()
   
 
 
@@ -1306,78 +1410,12 @@ let display_red f l =
     newline()) l
 
 (* Display functions *)
+let display_term2 t = NoArgNames.term (simplify_choice t)
+let display_term_list2 l = display_list display_term2 "," l
 
-let rec display_term2 = function
-    FunApp(f,l) -> 
-      begin
-	match f.f_cat with
-          Name _ -> display_idcl CName f.f_name
-	| Choice -> 
-	    begin
-	      match l with
-		[t1;t2] ->
-		  if Terms.equal_terms t1 t2 then 
-		    display_term2 t1
-		  else
-		    begin
-		      display_idcl CKeyword "choice";
-		      print_string "[";
-		      display_term_list2 l;
-		      print_string "]"
-		    end
-	      | _ -> Parsing_helper.internal_error "Choice expects 2 arguments"
-	    end
-	
-	| _ ->
-	    match f.f_name with
-	      "=" | "&&" | "||" | "<>" ->
-		(* Infix functions *)
-		begin
-		  match l with
-		    [t1;t2] ->
-		      print_string "(";
-		      display_term2 t1;
-		      print_string " ";
-		      display_idcl CFun (Lang.convert_funname f.f_name);
-		      print_string " ";
-		      display_term2 t2;
-		      print_string ")"
-		  | _ -> Parsing_helper.internal_error "infix operators should have 2 arguments"
-		end
-	      |	"if-then-else" ->
-		  begin
-		    match l with
-		      [t1;t2;t3] ->
-			print_string "(";
-			display_idcl CKeyword "if"; 
-			print_string " ";
-			display_term2 t1;
-			print_string " ";
-			display_idcl CKeyword "then"; 
-			print_string " ";
-			display_term2 t2;
-			print_string " ";
-			display_idcl CKeyword "else"; 
-			print_string " ";
-			display_term2 t3;
-			print_string ")"
-		    | _ -> Parsing_helper.internal_error "if-then-else should have 3 arguments"
-		  end		  
-	    | _ ->
-		display_idcl CFun f.f_name;
-		if (l != []) || (f.f_name = "") || not (!Param.typed_frontend) then
-		  begin
-		    print_string "(";
-		    display_term_list2 l;
-		    print_string ")"
-		  end
-      end
-  | Var v -> display_idcl CVar (varname v)
-
-and display_term_list2 l = display_list display_term2 "," l
-
-
-let rec display_pattern = function
+let rec display_pattern pat =
+  Lang.wrap_if_necessary();
+  match pat with
   | PatVar b -> 
       display_idcl CVar (varname b);
       if !Param.typed_frontend then
@@ -1442,6 +1480,165 @@ let rec may_have_else = function
 	  
      
 
+
+	(* The functions [display_prefix_*] display a prefix of a process.
+	   They are used as subfunctions for displaying processes and
+	   reduction steps, to avoid code duplication. *)
+
+        let display_prefix_new f args =
+	  display_keyword "new";
+	  print_string " ";
+	  display_idcl CName f.f_name;
+	  begin
+	    match args with
+	      None -> ()
+	    | Some l ->
+		print_string "[";
+		display_list (fun b -> display_idcl CVar (varname b)) "," l;
+		print_string "]";
+	  end;
+	  if !Param.typed_frontend then
+	    begin
+	      print_string ": ";
+	      display_idcl CType (snd f.f_type).tname
+	    end
+
+        let display_prefix_test t =
+      	  display_keyword "if";
+	  print_string " ";
+	  display_term2 t
+
+        let display_prefix_in tc pat =
+      	  display_keyword "in";
+	  print_string "(";
+	  display_term2 tc;
+	  print_string ", ";
+	  display_pattern pat;
+	  print_string ")"
+
+        let display_prefix_out tc t =
+      	  display_keyword "out";
+	  print_string "(";
+	  display_term2 tc;
+	  print_string ", ";
+	  display_term2 t;
+	  print_string ")"
+
+        let display_prefix_let pat t =
+      	  display_keyword "let";
+	  print_string " ";
+	  display_pattern pat;
+	  print_string " = ";
+	  display_term2 t
+
+        let display_prefix_event t =
+      	  display_keyword "event";
+	  print_string " ";
+	  display_term2 t
+
+        let display_prefix_insert t =
+      	  display_keyword "insert";
+	  print_string " ";
+	  display_term2 t
+
+        let display_prefix_get pat t =
+      	  display_keyword "get";
+	  print_string " ";
+	  display_pattern pat;
+	  begin
+	    match t with
+	      FunApp(f,[]) when f == Terms.true_cst -> ()
+	    | _ ->
+		print_string " ";
+		display_keyword "suchthat";
+		print_string " ";
+		display_term2 t;
+	  end
+
+        let display_prefix_phase n =
+	  display_keyword "phase";
+	  print_string (" " ^ (string_of_int n))
+
+        let display_prefix_barrier n tag =
+      	  display_keyword "sync";
+	  print_string (" " ^ (string_of_int n) ^
+			(match tag with
+			  None -> ""
+			| Some t -> " [" ^ t ^ "]"))
+
+        let display_prefix_annbarrier n tag a c subst =
+	  display_keyword "sync";
+	  print_string (" " ^ (string_of_int n) ^ "[" ^ tag ^ ", ");
+	  display_idcl CName a.f_name;
+	  print_string ", ";
+	  display_idcl CName c.f_name;
+	  print_string ", (";
+	  display_list (fun (b,t) -> display_term2 t; print_string "/"; display_idcl CVar (varname b)) "," subst;
+	  print_string ")]"
+
+        let display_prefix_letfilter lb f =
+      	  if lb != [] then
+	    begin
+	      display_keyword "let";
+	      print_string " ";
+	      let first = ref true in
+	      List.iter (fun b ->
+		if !first then
+		  first := false
+		else
+		  print_string ", ";
+		Lang.wrap_if_necessary ();
+		display_idcl CVar (varname b);
+		if !Param.typed_frontend then
+		  print_string (": " ^ b.btype.tname)
+		    ) lb;
+	      print_string " ";
+	      display_keyword "suchthat"
+	    end
+	  else
+	    display_keyword "if";
+	  print_string " ";
+	  display_fact2 f
+
+	(* The function [display_prefix_letfilter_success] displays
+	   not only the let...suchthat prefix, but also the values
+	   of terms found by let...suchthat. *)
+        let display_prefix_letfilter_success bl terms_bl f =
+	  display_prefix_letfilter bl f;
+          if terms_bl != [] then
+	    begin
+	      Lang.wrap_if_necessary ();
+	      print_string " succeeds with ";
+	      let first = ref true in
+              List.iter2 (fun b tb ->
+		if !first then
+		  first := false
+		else
+		  print_string  ", ";
+		Lang.wrap_if_necessary ();
+		display_idcl CVar (varname b);
+		print_string " = ";
+		display_term2 tb
+		  ) bl terms_bl
+	    end
+
+        let display_prefix_namedprocess name tl =
+      	  print_string "Beginning of process ";
+	  display_idcl CProcess name;
+	  if tl != [] then
+	    begin
+	      print_string "(";
+	      let first = ref true in
+	      List.iter (fun t ->
+		if !first then
+		  first := false
+		else
+		  print_string ", ";
+		display_term2 t) tl;
+	      print_string ")"
+	    end
+	    
+	    
 let display_proc show_occ align proc =
   let display_occ occ =
     if show_occ then Lang.display_occ_ref occ
@@ -1482,29 +1679,12 @@ let display_proc show_occ align proc =
     | Restr (f, (args, _), p, occ) ->
 	print_string align;
 	display_occ occ;
-	display_idcl CKeyword "new";
-	print_string " ";
-	display_idcl CName f.f_name;
-	begin
-	  match args with
-	    None -> ()
-	  | Some l ->
-	     print_string "[";
-	    display_list (fun b -> display_idcl CVar (varname b)) "," l;
-	    print_string "]";
-	end;
-	if !Param.typed_frontend then
-	  begin
-	    print_string ": ";
-	    display_idcl CType (snd f.f_type).tname
-	  end;
+	display_prefix_new f args;
 	display_opt_process align p
     | Test (t, p, p',occ) ->
 	print_string align;
 	display_occ occ;
-	display_idcl CKeyword "if";
-	print_string " ";
-	display_term2 t;
+	display_prefix_test t;
 	print_string " ";
         display_idcl CKeyword "then";
 	newline();
@@ -1518,34 +1698,20 @@ let display_proc show_occ align proc =
 	  end
 	else
 	  display_process align p;
-      | Input (t, pat, p,occ) ->
+            | Input (tc, pat, p,occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "in";
-	print_string "(";
-	display_term2 t;
-	print_string ", ";
-	display_pattern pat;
-	print_string ")";
+		display_prefix_in tc pat;
 	display_opt_process align p
-      | Output (t, t', p, occ) ->
+            | Output (tc, t, p, occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "out";
-	print_string "(";
-	display_term2 t;
-	print_string ", ";
-	display_term2 t';
-	print_string ")";
+		display_prefix_out tc t;
 	display_opt_process align p
       | Let (pat, t, p, p', occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "let";
-	print_string " ";
-	display_pattern pat;
-	print_string " = ";
-	display_term2 t;
+		display_prefix_let pat t;
 	print_string " ";
 	display_idcl CKeyword "in";
 	newline();
@@ -1562,9 +1728,7 @@ let display_proc show_occ align proc =
       | Event (f,(env_args,_),p,occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "event";
-	print_string " ";
-	display_term2 f;
+		display_prefix_event f;
 	begin
 	  match env_args with
 	    None -> ()
@@ -1577,23 +1741,12 @@ let display_proc show_occ align proc =
       | Insert (f,p,occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "insert";
-	print_string " ";
-	display_term2 f;
+		display_prefix_insert f;
 	display_opt_process align p
       | Get(pat,t,p,elsep,occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "get";
-	print_string " ";
-	display_pattern pat;
-	begin
-	  match t with
-	    FunApp(f,[]) when f == Terms.true_cst -> ()
-	  | _ ->
-	     print_string " "; display_idcl CKeyword "suchthat"; print_string " ";
-	    display_term2 t;
-	end;
+		display_prefix_get pat t;
 	print_string " ";
 	display_idcl CKeyword "in";
 	newline();
@@ -1610,87 +1763,36 @@ let display_proc show_occ align proc =
       | Phase(n,p,occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "phase";
-	print_string (" " ^ (string_of_int n) ^ ";");
-	newline();
-	display_process align p
+		display_prefix_phase n;
+		display_opt_process align p
       | Barrier(n,tag,p,occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "sync";
-	print_string (" " ^ (string_of_int n) ^
-	                 (match tag with
-	                   None -> ";"
-	                 | Some t -> " [" ^ t ^ "];"));
-	newline();
-	display_process align p
+		display_prefix_barrier n tag;
+		display_opt_process align p
       | AnnBarrier(n,tag,a,c,subst,p,occ) ->
 	 print_string align;
 	display_occ occ;
-	display_idcl CKeyword "sync";
-	print_string (" " ^ (string_of_int n) ^ "[" ^ tag ^ ", ");
-	display_idcl CName a.f_name;
-	print_string ", ";
-	display_idcl CName c.f_name;
-	print_string ", (";
-	display_list (fun (b,t) -> display_term2 t; print_string "/"; display_idcl CVar (varname b)) "," subst;
-	print_string ")];";
-	newline();
-	display_process align p
+		display_prefix_annbarrier n tag a c subst;
+		display_opt_process align p
       | LetFilter(lb,f,p,q,occ) ->
 	 print_string align;
 	display_occ occ;
-	if lb != [] then
-	  begin
-	    display_idcl CKeyword "let";
+		display_prefix_letfilter lb f;
 	    print_string " ";
-	    let first = ref true in
-	    List.iter (fun b ->
-	      if !first then
-		first := false
-	      else
-		print_string ", ";
-	      print_string (varname b);
-	      if !Param.typed_frontend then
-		print_string (": " ^ b.btype.tname)
-	    ) lb;
-	    print_string " ";
-	    display_idcl CKeyword "suchthat";
-	    print_string " ";
-	    display_fact2 f;
-	    print_string " ";
-	    display_idcl CKeyword "in"
-	  end
-	else
-	  begin
-	    display_idcl CKeyword "if";
-	    print_string " ";
-	    display_fact2 f;
-	    print_string " ";
-	    display_idcl CKeyword "then"
-	  end;
+		display_keyword (if lb != [] then "in" else "then");
 	newline();
 	if not (is_nil q) then
 	  begin
 	    display_process_paren align p;
 	    print_string align;
-	    display_idcl CKeyword "else";
+		    display_keyword "else";
 	    newline();
 	    display_process (align^Lang.indentstring) q
 	  end
 	else
 	  display_process align p
       | NamedProcess(name, tl, p) ->
-        (*print_string align;
-          print_string "Beginning of process ";
-          print_string (name ^ "(");
-          let first = ref true in
-          List.iter (fun t ->
-          if !first then
-	  first := false
-	  else
-	  print_string ", ";
-          display_term2 t) tl;*)
           display_process align p
     | Lock(st,p,occ) | Unlock(st,p,occ) | Open(st,p,occ) ->
 	print_string align;
@@ -1755,7 +1857,58 @@ let display_process align proc =
 let display_process_occ align proc =
   display_proc true align proc
 
-(* Display a query *)
+        let display_proc_prefix show_occ proc =
+          let display_occ occ =
+            if show_occ then Lang.display_occ occ
+          in
+          match proc with
+            | Nil ->
+		display_idcl CKeyword "0"
+            | Par _ ->
+		print_string "Parallel"
+            | Repl (p,occ) ->
+		display_occ occ;
+		display_idcl CKeyword "!";
+            | Restr (f, (args,_), p, occ) ->
+		display_occ occ;
+		display_prefix_new f None
+            | Test (t, p, p',occ) ->
+		display_occ occ;
+		display_prefix_test t
+            | Input (tc, pat, p,occ) ->
+		display_occ occ;
+		display_prefix_in tc pat
+            | Output (tc, t, p, occ) ->
+		display_occ occ;
+		display_prefix_out tc t
+            | Let (pat, t, p, p', occ) ->
+		display_occ occ;
+		display_prefix_let pat t
+            | Event (t,(env_args,_),p,occ) ->
+		display_occ occ;
+		display_prefix_event t
+            | Insert (t,p,occ) ->
+		display_occ occ;
+		display_prefix_insert t
+            | Get(pat,t,p,elsep,occ) ->
+		display_occ occ;
+		display_prefix_get pat t
+            | Phase(n,p,occ) ->
+		display_occ occ;
+		display_prefix_phase n
+            | Barrier(n,tag,p,occ) ->
+		display_occ occ;
+		display_prefix_barrier n tag
+            | AnnBarrier(n,tag,a,c,subst,p,occ) ->
+		display_occ occ;
+		display_prefix_annbarrier n tag a c subst
+            | LetFilter(lb,f,p,q,occ) ->
+		display_occ occ;
+		display_prefix_letfilter lb f
+            | NamedProcess(name, tl, p) ->
+		display_prefix_namedprocess name tl
+
+         (* Display a query *)
 
 let display_event = function
     QSEvent(b, t) ->
@@ -1838,7 +1991,7 @@ let display_eq_query = function
       print_string "Weak secret ";
       display_idcl CFun f.f_name
 
-(* History display *)
+         (* History display *)
 
 let rec display_history_tree align ftree = 
   begin
@@ -1877,7 +2030,7 @@ let rec display_history_tree align ftree =
     | FEquation(h) -> display_history_tree (align ^ Lang.indentstring) h
   end
 
-(* History display with explanations linking it to the process *)
+         (* History display with explanations linking it to the process *)
 
 let display_step n =
   if n >= 0 then
@@ -2144,7 +2297,8 @@ let rec display_hyp hyp hl tag =
 	begin
 	  print_string " (with environment ";
 	  display_list (fun (v,t) ->
-	    print_string ((varname v) ^ " = ");
+		    display_idcl CVar (varname v);
+		    print_string " = ";
 	    WithLinks.term t) ", " l;
 	  print_string ")"
 	end;
@@ -2366,32 +2520,6 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 	    newline()
 	| _ -> Parsing_helper.internal_error "Unexpected hypothesis for TestComm"
       end	      
-  | InputSecr p ->
-      begin
-	match (hyp_num_list, hl) with
-	  [n],[h] ->
-	    display_step n;
-	    print_string "an input may be triggered on channel ";
-	    display_input_fact h.thefact;
-	    print_string ".";
-	    newline();
-	    print_string "Since this channel is secret, the attacker may know whether this secret is a name.";
-	    newline()
-	| _ -> Parsing_helper.internal_error "Unexpected hypothesis for InputSecr"
-      end	      
-  | OutputSecr p ->
-      begin
-	match (hyp_num_list, hl) with
-	  [n],[h] ->
-	    display_step n;
-	    print_string "an output may be triggered on channel ";
-	    display_output_fact h.thefact;
-	    print_string ".";
-	    newline();
-	    print_string "Since this channel is secret, the attacker may know whether this secret is a name.";
-	    newline()
-	| _ -> Parsing_helper.internal_error "Unexpected hypothesis for InputSecr"
-      end	      
   | WeakSecr ->
       begin
 	match concl with
@@ -2475,7 +2603,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       | FHAny ->
 	 incr count;
 	seen_list := (!count, tree.thefact) :: (!seen_list);
-	(*print_string ((string_of_int (!count)) ^ ". The attacker has some term "); *)
+          (* print_string ((string_of_int (!count)) ^ ". The attacker has some term "); *)
 	Lang.history_item (!count);
 	print_string "The attacker has some term ";
 	display_attacker_fact tree.thefact;
@@ -2536,11 +2664,11 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 	    newline();
 	    (!count)
     in
-    print_string Lang.start_numbered_list;
+          Lang.start_numbered_list();
     ignore (display_history tree);
-    print_string Lang.end_numbered_list
+          Lang.end_numbered_list()
 
-(* Convert the integer n into a string corresponding to (n+1)-th *)
+         (* Convert the integer n into a string corresponding to (n+1)-th *)
 
   let order_of_int n =
     (string_of_int (n+1)) ^
@@ -2552,213 +2680,190 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
           | 3 -> "rd"
           | _ -> "th")
 
-(* Display reduction step *)
+         (* Display reduction step *)
+
+    let display_value_calc calc t =
+      let t' = simplify_choice t in
+      let list = List.rev (decompose_tuples [] calc t') in
+      let first = ref true in
+      List.iter (fun (calc1, t1) ->
+        if not (Terms.equal_terms calc1 t1) then
+	  begin
+	    print_string (if !first then " with " else ", ");
+            NoArgNames.term calc1;
+            print_string " = ";
+	    NoArgNames.term t1;
+	    first := false
+	  end) list
+
+    let display_calc_term calc t =
+      let t' = simplify_choice t in
+      if not(Terms.equal_terms calc t') then
+	begin
+	  NoArgNames.term calc;
+	  print_string " = ";
+	end;
+      NoArgNames.term t'
+
+    let display_calcopt_term calcopt t =
+      match calcopt with
+	None -> display_term2 t
+      |	Some calc -> display_calc_term calc t
+	
+
+         (* In RIO and RIO2, when the adversary is passive,
+            he receives the communicated message.
+            This function displays this information. *)
+    let display_calcopt calcopt =
+      match calcopt with
+      | None -> ()
+      | Some calc ->
+          print_string "; the attacker receives the message as ";
+          NoArgNames.term calc
 
   let display_step = function
   RNil(n) -> print_string ((order_of_int n) ^" process: Reduction 0")
     | RPar(n) -> print_string ((order_of_int n) ^" process: Reduction |")
     | RRepl(n, cpn) -> print_string ((order_of_int n) ^" process: Reduction ! "^(string_of_int cpn)^" copy(ies)")
     | RRestr(n, na, n') ->
-       print_string ((order_of_int n) ^" process: new " ^ na.f_name ^ " creating ");
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_new na None;
+	  print_string " creating ";
       display_term2 n'
     | RLet1(n, pat, t) ->
-       print_string ((order_of_int n) ^" process: let ");
-      display_pattern pat;
-      print_string " = ";
-      display_term2 t;
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_let pat t;
       print_string " succeeds"
     | RLet2(n, pat, t) ->
-       print_string ((order_of_int n) ^" process: let ");
-      display_pattern pat;
-      print_string " = ";
-      display_term2 t;
-      print_string " fails"
-    | RInput(n, tc, pat, mess_term) ->
-       print_string ((order_of_int n) ^" process: in(");
-      display_term2 tc;
-      print_string ", ";
-      display_pattern pat;
-      print_string ") done with message ";
-      display_term2 mess_term
-    | ROutput1(n, tc, t) ->
-       print_string ((order_of_int n) ^" process: out(");
-      display_term2 tc;
-      print_string ", ";
-      display_term2 t;
-      print_string ") done"
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_let pat t;
+          print_string ": else branch taken"
+      | RInput(n, tc, pat, calc, mess_term) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_in tc pat;
+          print_string " done with message ";
+	  display_calc_term calc mess_term
+      | RInput2(n, tc, pat, calc, mess_term) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_in tc pat;
+          print_string ": pattern matching fails with message ";
+	  display_calc_term calc mess_term
+      | ROutput1(n, tc, calc, t) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_out tc calc;
+          display_value_calc calc t;
+          print_string " done"
     | ROutput2 (n, tc, t) ->
-       print_string ((order_of_int n) ^" process: out(");
-      display_term2 tc;
-      print_string ", ";
-      display_term2 t;
-      print_string ") destructor fails"
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_out tc t;
+          print_string ": destructor fails"
     | RTest1(n, t) ->
-       print_string ((order_of_int n) ^" process: if ");
-      display_term2 t;
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_test t;
       print_string " succeeds"
     | RTest2(n, t) ->
-       print_string ((order_of_int n) ^" process: if ");
-      display_term2 t;
-      print_string " fails"
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_test t;
+          print_string ": else branch taken"
     | RTest3(n, t) ->
-       print_string ((order_of_int n) ^" process: if ");
-      display_term2 t;
-      print_string " destructor fails"
-    | RBegin1(n, t) ->
-       print_string ((order_of_int n) ^" process: event(");
-      display_term2 t;
-      print_string ") executed"
-    | RBegin2(n, t) ->
-       print_string ((order_of_int n) ^" process: event(");
-      display_term2 t;
-      print_string ") destructor fails or event blocks"
-    | REnd(n, t) ->
-       print_string ((order_of_int n) ^" process: event(");
-      display_term2 t;
-      print_string ") is the goal"
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_test t;
+          print_string ": destructor fails"
+      | REvent1(n, t, b) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_event t;
+          print_string " executed";
+          if b then print_string "; it is a goal"
+      | REvent2(n, t) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_event t;
+          print_string " blocks or destructor fails"
     | RPhase(n) ->
        print_string ("Switching to phase " ^ (string_of_int n))
-    | RLetFilter1(n, bl, _, f)  ->
-       print_string ((order_of_int n) ^" process: let ");
-      let first = ref true in
-      List.iter (fun b ->
-	if !first then
-	  first := false
-	else
-	  print_string ", ";
-	print_string (varname b)
-      ) bl;
-      print_string " suchthat ";
-      display_fact2 f;
+      | RLetFilter1(n, bl, terms_bl, f)  ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_letfilter_success bl terms_bl f;
+          if terms_bl == [] then
       print_string " executed"
     | RLetFilter2(n, bl, f)  ->
-       print_string ((order_of_int n) ^" process: let ");
-      let first = ref true in
-      List.iter (fun b ->
-	if !first then
-	  first := false
-	else
-	  print_string ", ";
-	print_string (varname b)
-      ) bl;
-      print_string " suchthat ";
-      display_fact2 f;
-      print_string ": destructor fails or let...suchthat blocks"
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_letfilter bl f;
+          print_string " blocks or destructor fails"
     | RLetFilter3(n, bl, f)  ->
-       print_string ((order_of_int n) ^" process: let ");
-      let first = ref true in
-      List.iter (fun b ->
-	if !first then
-	  first := false
-	else
-	  print_string ", ";
-	print_string (varname b)
-      ) bl;
-      print_string " suchthat ";
-      display_fact2 f;
-      print_string ": let...suchthat fails"
-    | RIO(ninput, tc', pat, n, tc, t) ->
-       print_string ((order_of_int ninput) ^" process: in(");
-      display_term2 tc';
-      print_string ", ";
-      display_pattern pat;
-      print_string ") reduces with ";
-      print_string ((order_of_int n) ^" process: out(");
-      display_term2 tc;
-      print_string ", ";
-      display_term2 t;
-      print_string ")"
-    | RIO2(ninput, tc', pat, n, tc, t) ->
-       print_string ((order_of_int ninput) ^" process: in(");
-      display_term2 tc';
-      print_string ", ";
-      display_pattern pat;
-      print_string ") reduces with ";
-      print_string ((order_of_int n) ^" process: out(");
-      display_term2 tc;
-      print_string ", ";
-      display_term2 t;
-      print_string ") but input fails"
-    | RInsert1(n, t) ->
-       print_string ((order_of_int n) ^" process: insert ");
-      display_term2 t;
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_letfilter bl f;
+          print_string ": else branch taken"
+      | RIO(ninput, tc', pat, n, tc, calcopt, t, _) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_out tc t;
+          print_string " reduces with ";
+          print_string ((order_of_int ninput) ^" process: ");
+	  display_prefix_in tc' pat;
+          display_calcopt calcopt
+      | RIO2(ninput, tc', pat, n, tc, calcopt, t, _) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_out tc t;
+          print_string " reduces with ";
+          print_string ((order_of_int ninput) ^" process: ");
+	  display_prefix_in tc' pat;
+          display_calcopt calcopt;
+          print_string " but input fails"
+      | RInsert1(n, t, _) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_insert t;
       print_string " done"
     | RInsert2 (n, t) ->
-       print_string ((order_of_int n) ^" process: insert ");
-      display_term2 t;
-      print_string " destructor fails"
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_insert t;
+          print_string ": destructor fails"
     | RGet(n, pat, t, m) ->
-       print_string ((order_of_int n) ^" process: get ");
-      display_pattern pat;
-      begin
-	match t with
-	  FunApp(f, []) when f == Terms.true_cst -> ()
-	| _ -> print_string " suchthat "; display_term2 t
-      end;
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_get pat t;
       print_string " done with entry ";
       display_term2 m
-    | RGet2(n, pat) ->
-       print_string ((order_of_int n) ^" process: else branch of get ");
-      display_pattern pat;
-      print_string " taken ";
+      | RGet2(n, pat, t) ->
+          print_string ((order_of_int n) ^" process: ");
+	  display_prefix_get pat t;
+          print_string ": else branch taken ";
     | RInit -> print_string "Initial state"
     | RNamedProcess(n, name, tl) ->
-	print_string ((order_of_int n) ^ " process: Beginning of " ^ name);
-	if tl != [] then
-	  begin
-	    print_string "(";
-	    let first = ref true in
-	    List.iter (fun t ->
-              if !first then
-		first := false
-              else
-		print_string ", ";
-              display_term2 t) tl;
-	    print_string ")"
-	  end
-        
+          print_string ((order_of_int n) ^ " process: ");
+	  display_prefix_namedprocess name tl
 
   let display_step_short display_loc = function
-  RInput(n, tc, pat, mess_term) ->
+      | RInput(n, tc, pat, calc, mess_term) ->
     display_keyword "in";
     print_string "(";
     display_term2 tc;
     print_string ", ";
-    display_term2 mess_term;
+	  display_term2 calc;
     print_string ")";
+          display_value_calc calc mess_term;
     display_loc n;
     newline();
     newline()
-    | ROutput1(n, tc, t) ->
-       display_keyword "out";
-      print_string "(";
-      display_term2 tc;
-      print_string ", ";
-      display_term2 t;
-      print_string ")";
+
+      | ROutput1(n, tc, calc, t) ->
+	  display_prefix_out tc calc;
+          display_value_calc calc t;
       display_loc n;
       newline();
       newline()
-    | REnd(n,t) -> () (* REnd is not displayed because it always follows RBegin1 which already displays what we want *)
-    | RBegin1(n, t) ->
-       display_keyword "event";
-      print_string "(";
-      display_term2 t;
-      print_string ")";
+      | REvent1(n, t, b) ->
+	  display_prefix_event t;
       display_loc n;
+          if b then print_string " (goal)";
       newline();
       newline()
     | RRestr(n,na,n') ->
-       display_keyword "new ";
-      print_string na.f_name;
+	  display_prefix_new na None;
       print_string " creating ";
       display_term2 n';
       display_loc n;
       newline();
       newline()
-    | RInsert1(n, t) ->
-       display_keyword "insert ";
-      display_term2 t;
+      | RInsert1(n, t, _) ->
+	  display_prefix_insert t;
       display_loc n;
       newline();
       newline()
@@ -2768,66 +2873,32 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_loc n;
       newline();
       newline()
-    | RGet2(n, pat) ->
-       print_string "else branch of get " ;
-      display_pattern pat;
-      print_string " taken";
+      | RGet2(n, pat, t) ->
+	  display_prefix_get pat t;
+          print_string ": else branch taken";
       display_loc n;
       newline();
       newline()
-    | RIO(ninput, tc', pat, n, tc, t) ->
-       display_keyword "out";
-      print_string "(";
-      display_term2 tc;
-      print_string ", ";
-      display_term2 t;
-      print_string ")";
+      | RIO(ninput, tc', pat, n, tc, calcopt, t, _) ->
+	  display_prefix_out tc t;
       display_loc n;
       print_string " received";
       display_loc ninput;
+          display_calcopt calcopt;
       newline();
       newline()
-    | RIO2(ninput, tc', pat, n, tc, t) ->
-       display_keyword "out";
-      print_string "(";
-      display_term2 tc;
-      print_string ", ";
-      display_term2 t;
-      print_string ")";
+      | RIO2(ninput, tc', pat, n, tc, calcopt, t, _) ->
+	  display_prefix_out tc t;
       display_loc n;
       print_string " received";
       display_loc ninput;
       print_string " (input fails)";
+          display_calcopt calcopt;
       newline();
       newline()
-  (*  | RNamedProcess(n, name, l) ->
-      display_keyword ("Beginning of process " ^ name);
-      print_string "(";
-      let first = ref true in
-      List.iter (fun t ->
-      if !first then
-      first := false
-      else
-      print_string ", ";
-      display_term2 t) l;
-      print_string ")";
-      newline();
-      newline() *)
     | _ -> ()
 
-  let display_bi_term (t1,t2) =
-    if Terms.equal_terms t1 t2 then
-      display_term2 t1
-    else
-      begin
-        print_string "choice[";
-        display_term2 t1;
-        print_string ", ";
-        display_term2 t2;
-        print_string "]"
-      end
-
-(* Apply f to the n first elements of a list *)
+         (* Apply f to the n first elements of a list *)
 
   let rec itern f n = function
   [] -> ()
@@ -2838,10 +2909,10 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 	   itern f (n-1) l
 	 end
 
-(* TO DO display the additional entries in tables ?
+         (* TO DO display the additional entries in tables ?
    Perhaps not necessary, since this is clear from the executed "insert" instructions. *)
 
-  let rec display_reduc_state display_a display_state state =
+    let rec display_reduc_state a_to_term display_state state =
     if (not (!Param.display_init_state)) && (state.previous_state = None) then
     (* Do not display the initial state; used when the
        beginning of the trace has already been displayed *)
@@ -2859,7 +2930,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       in
       let old_size_public =
         match state.previous_state with
-          Some s -> display_reduc_state display_a display_next_state s
+            Some s -> display_reduc_state a_to_term display_next_state s
         | None -> 0
       in
       display_step state.comment;
@@ -2869,11 +2940,12 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       if size_public > old_size_public then
         begin
           print_string "Additional knowledge of the attacker:";
-          print_string Lang.start_list;
-          itern (fun x ->
+            Lang.start_list();
+            itern (fun (calc, x) ->
 	    Lang.basic_item();
-	    display_a x) (size_public - old_size_public) state.public;
-          print_string Lang.end_list;
+              display_calc_term calc (a_to_term x);
+              ) (size_public - old_size_public) state.public;
+            Lang.end_list();
           print_string Lang.hline
         end;
       if display_cur_state then
@@ -2904,13 +2976,15 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
         end;
       size_public
 
-  let display_process_loc p =
-    match p with
-      (Test(_,_,_,occ) | Let(_,_,_,_,occ) | Input(_,_,_,occ) | Output(_,_,_,occ) | Restr(_,_,_,occ) |
-          LetFilter(_,_,_,_,occ) | Event(_,_,_,occ) | Insert(_,_,occ) | Get(_,_,_,_,occ)),
-  name_params, _, _, _ ->
+    let display_occ_process = function
+        Test(_,_,_,occ) | Let(_,_,_,_,occ) | Input(_,_,_,occ) | Output(_,_,_,occ) | Restr(_,_,_,occ) |
+        LetFilter(_,_,_,_,occ) | Event(_,_,_,occ) | Insert(_,_,occ) | Get(_,_,_,_,occ) ->
+	  display_occ occ
+      | _ -> Parsing_helper.internal_error "Unexpected process"
+    
+    let display_process_loc (proc, name_params, _, _, _) =
     print_string " at ";
-    display_occ occ;
+      display_occ_process proc;
     let first = ref true in
     List.iter (function
   (MSid _, sid, Always) ->
@@ -2919,10 +2993,9 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
     display_term2 sid
     | _ -> ()
     ) (List.rev name_params)
-    | _ -> Parsing_helper.internal_error "Unexpected process"
 
   let display_loc = function
-  LocAttacker ->
+        LocAttacker (recipe) ->
     print_string " by the attacker"
     | LocProcess(n,p) ->
        match !Param.trace_display with
@@ -2950,17 +3023,35 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
         display_step_short display_loc state.comment
       end
 
-  let display_explained_fact = function
+  let display_explained_fact f calc_lst =
+    match f with
   Pred({p_info = [Attacker(n,_)]} as p, [_;v]) ->
     print_string "The attacker has the message ";
-    display_term2 v;
+    (match !calc_lst with
+      None -> display_term2 v
+    | Some [calc] -> display_calc_term calc v
+    | _ -> assert false);
     display_phase p
     | Pred({p_info = [Mess(n,_)]} as p, [vc;v]) ->
-       print_string "The message ";
-      display_term2 v;
-      print_string " is sent on channel ";
-      display_term2 vc;
-      display_phase p
+          (match !calc_lst with
+          | None ->
+	      (* This case, without a recipe for the channel and the message,
+                 happens when the message is sent via a RIO rule
+	         (e.g. communication on a private channel) *)
+	     print_string "The message ";
+	    print_string " is sent on channel ";
+	    display_term2 vc;
+          | Some [calc1;calc2] ->
+	      (* This case happens when the message can be sent
+		 by the adversary, because he can compute the message and
+	         the channel using the recipes calc1 and calc2
+	         respectively *)
+              print_string "The attacker sends the message ";
+              display_calc_term calc1 v;
+	      print_string " on channel ";
+              display_calc_term calc2 vc;
+          | _ -> assert false);
+          display_phase p
     | Pred({p_info = [AttackerBin(n,_)]} as p, [_;v;_;v']) ->
        print_string "The attacker has the message ";
       display_term2 v;
@@ -2988,51 +3079,20 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_term2 e;
       print_string " is executed in session ";
       display_term2 e'
-    | Pred({p_info = [InputP(n)]} as p, [e]) ->
-       print_string "An input is executed on channel ";
-      display_term2 e;
-      display_phase p
-    | Pred({p_info = [InputPBin(n)]} as p, [e;e']) ->
-       print_string "An input is executed on channel ";
-      display_term2 e;
-      print_string " (resp. ";
-      display_term2 e';
-      print_string ")";
-      display_phase p
-    | Pred({p_info = [OutputP(n)]} as p, [e]) ->
-       print_string "An output is executed on channel ";
-      display_term2 e;
-      display_phase p
-    | Pred({p_info = [OutputPBin(n)]} as p, [e;e']) ->
-       print_string "An output is executed on channel ";
-      display_term2 e;
-      print_string " (resp. ";
-      display_term2 e';
-      print_string ")";
-      display_phase p
     | Pred({p_info = [Table(n)]} as p, [e]) ->
        print_string "The table element ";
       display_term2 e;
       print_string " is present";
       display_phase p
-    | Pred({p_info = [TableBin(n)]} as p, [e;e']) ->
-       print_string "The table element ";
-      display_term2 e;
-      print_string " (resp. ";
-      display_term2 e';
-      print_string ") is present";
-      display_phase p
     | _ -> Parsing_helper.internal_error "Unexpected goal"
 
-
-  let display_goal display_a noninterftest_to_string g hyp =
-    begin
+let display_attack_goal a_to_term noninterftest_to_string g =
       match g with
-        Fact f ->
-      (* WithLinks.fact f; *)
-          display_explained_fact f;
+    Fact (f, calc_lst) ->
+      display_explained_fact f calc_lst;
           print_string ".";
           newline()
+  | NoGoal -> ()
       | InjGoal(f,sid',n) ->
          begin
 	   match f with
@@ -3048,23 +3108,49 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 	   | _ -> Parsing_helper.internal_error "InjGoal should have an injective event as argument"
          end
       | WeakSecrGoal(l, t, w1, w2) ->
+      Terms.auto_cleanup (fun () ->
+	let l' = List.map (fun ((t,b,c) as orig) ->
+	  match !c with
+	    Some ((Var b') as v) ->
+	      Terms.link b (TLink v);
+	      (t, b', c)
+	  | _ -> orig
+		) l
+	in
          print_string "The attacker tests whether ";
         begin
 	  match t with
 	    FailTest t' ->
-	      display_term2 t';
-	      print_string " is fail knowing "
+	      display_term2 (Terms.copy_term3 t');
+	      print_string " is fail knowing"
 	  | EqTest(t1,t2) ->
-	     display_term2 t1;
+	      newline();
+	      display_term2 (Terms.copy_term3 t1);
 	    print_string " = ";
-	    display_term2 t2;
-	    print_string " knowing "
+	      display_term2 (Terms.copy_term3 t2);
+	      newline();
+	      print_string "knowing"
         end;
-        display_list (fun (t,b) ->
-	  print_string ((varname b) ^ " = ");
-	  display_term2 t) ", " l;
-        print_string ".";
         newline();
+	let first = ref true in
+	List.iter (fun (t,b,c) ->
+	  if !first then
+	    first := false
+	  else
+	    begin
+	      print_string ","; newline();
+	    end;
+	  begin
+	    match !c with
+	      Some (Var b') when b' == b -> ()
+	    | _ ->
+		display_idcl CVar (varname b);
+		print_string " = "
+	  end;
+	  display_calcopt_term (!c) t
+	    ) l' ;
+	print_string ".";
+	newline());
         print_string "This allows the attacker to know whether ";
         display_term2 w2;
         print_string " = ";
@@ -3073,7 +3159,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
         newline()
       | NonInterfGoal t ->
          match t with
-	   ProcessTest(hypspec,tl,loc) | InputProcessTest(hypspec,tl,_,loc)->
+	ProcessTest(hypspec,tl,loc) ->
 	     begin
 	       match !loc with
 	         None -> Parsing_helper.internal_error "Location should have been filled"
@@ -3088,27 +3174,71 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 		    print_string "."
 	     end;
 	     newline()
-         |	ApplyTest(f,tl) ->
+      | InputProcessTest(hypspec,tl,mess_term,loc)->
+	  begin
+	    match !loc with
+	      None -> Parsing_helper.internal_error "Location should have been filled"
+	    | Some(n,((proc,_,_,_,_) as p),oloc) ->
+		match !Param.trace_display with
+		  Param.NoDisplay | Param.ShortDisplay ->
+		    begin
+		    match oloc with
+		      LocAttacker calc ->
+			print_string "The attacker sends the message ";
+			display_calc_term calc mess_term;
+			print_string " to "
+		    | LocProcess(noutput, ((procoutput,_,_,_,_) as poutput)) ->
+			display_proc_prefix false procoutput;
+			display_process_loc poutput;
+			print_string " received by "
+		    end;
+		    display_proc_prefix false proc;
+		    display_process_loc p
+		| Param.LongDisplay ->
+		    begin
+		    match oloc with
+		      LocAttacker calc ->
+			print_string "The attacker sends the message ";
+			display_calc_term calc mess_term;
+			print_string " to the "
+		    | LocProcess(noutput, (procoutput,_,_,_,_)) ->
+			print_string ("The " ^ (order_of_int noutput) ^" process: ");
+			display_proc_prefix false procoutput;
+			print_string " reduces with the "
+		    end;
+		    print_string ((order_of_int n) ^" process: ");
+		    display_proc_prefix false proc
+	  end;
+	  print_string ".";
+	  newline();
+	  print_string (noninterftest_to_string t);
+	  newline()
+      | ApplyTest(f, tl) ->
 	    print_string "The attacker tries to apply ";
 	   display_function_name f;
-	   print_string " to the messages ";
-	   display_list display_a ", " tl;
-	   print_string " that he has.";
+	  print_string " to the message(s)";
+	  newline();
+	  let print_mess_and_calcul (mess, calc) =
+	    display_calcopt_term (!calc) (a_to_term mess);
+	    newline()
+	  in
+	  List.iter print_mess_and_calcul tl;
+	  print_string "that he has.";
 	   newline();
 	   print_string (noninterftest_to_string t);
 	   newline()
-         |	NIFailTest t' ->
+      | NIFailTest (t', calc) ->
 	    print_string "The attacker tests whether ";
-	   display_a t';
+	  display_calcopt_term (!calc) (a_to_term t');
 	   print_string " is fail.";
 	   newline();
 	   print_string (noninterftest_to_string t);
 	   newline()
          |	CommTest(t1,t2,loc) ->
 	    print_string "An input on channel ";
-	   display_a t1;
+	  display_term2 (a_to_term t1);
 	   print_string " and an output on channel ";
-	   display_a t2;
+	  display_term2 (a_to_term t2);
 	   print_string " are present simultaneously.";
 	   newline();
 	   begin
@@ -3126,42 +3256,20 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 	   end;
 	   print_string (noninterftest_to_string t);
 	   newline()
-         |	InputTest (t1,loc) ->
-	    print_string "An input on channel ";
-	   display_a t1;
-	   print_string " is performed";
-	   begin
-	     match !loc with
-	       None -> Parsing_helper.internal_error "Location should have been filled"
-	     | Some iloc -> display_loc iloc
-	   end;
+      | NIEqTest((t1, calc1),(t2, calc2)) ->
+	  print_string "The attacker tests whether";
+	   newline();
+	  display_calcopt_term (!calc1) (a_to_term t1);
+	   newline();
+	  print_string "is equal to";
+	  newline();
+	  display_calcopt_term (!calc2) (a_to_term t2);
 	   print_string ".";
 	   newline();
 	   print_string (noninterftest_to_string t);
 	   newline()
-         |	OutputTest (t1, loc) ->
-	    print_string "An output on channel ";
-	   display_a t1;
-	   print_string " is performed";
-	   begin
-	     match !loc with
-	       None -> Parsing_helper.internal_error "Location should have been filled"
-	     | Some oloc -> display_loc oloc
-	   end;
-	   print_string ".";
-	   newline();
-	   print_string (noninterftest_to_string t);
-	   newline()
-         |	NIEqTest(t1,t2) ->
-	    print_string "The attacker tests whether ";
-	   display_a t1;
-	   print_string " = ";
-	   display_a t2;
-	   print_string ".";
-	   newline();
-	   print_string (noninterftest_to_string t);
-	   newline()
-    end;
+
+    let display_trace_found hyp =
     if hyp = [] then
       begin
         print_string "A trace has been found.";
@@ -3170,17 +3278,29 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
     else
       begin
         print_string "A trace has been found, assuming the following hypothesis:";
-        display_item_list WithLinks.fact hyp
+	  display_item_list (function
+	    | None, fact ->
+		WithLinks.fact fact
+	    | Some calc, fact ->
+		print_string "The attacker has ";
+		display_term2 calc;
+		print_string " = ";
+		display_attacker_fact fact
+		  ) hyp
       end
 
-end
+    let display_goal a_to_term noninterftest_to_string g hyp =
+      display_attack_goal a_to_term noninterftest_to_string g;
+      display_trace_found hyp
+
+  end
 
 module Html = LangDisp(LangHtml)
 
 module Text = LangDisp(LangText)
 
 module Def =
-struct
+  struct
 
   let print_line s =
     if !Param.html_output then
@@ -3188,220 +3308,226 @@ struct
     else
       Text.print_line s
 
-end
+  end
 
-(* Graphical display of traces *)
+         (* Graphical display of traces *)
 
+         (* This module writes everything in a buffer, in *)
+         (* a good syntax for the .dot file. The next  *)
+         (* "module Gviz = LangDisp(LangGviz)" is giving displaying fonctions*)
+         (* "for free". A third module AttGraph includes Gviz is the main module *)
+         (* to display graph traces *)
 module LangGviz  =
-struct
-  let previousf = ref []
+  struct
 
-  let f = ref stdout
+    let buff = Buffer.create 1024
+    let indentstring = "&nbsp;&nbsp;&nbsp;&nbsp;"
+         (* The reference wrap_mark is used to wrap words inside boxes or on top *)
+         (* of edges in the trace graph. *)
+         (* The constant wrap_limit is fixed to wrap words after around wrap_limit *)
+         (* characters *)
+    let wrap_mark = ref 0
+    let wrap_limit = ref 45
 
-  let close() =
-    match !previousf with
-      [] -> Parsing_helper.internal_error "No html file to close"
-    | (f'::r) ->
-       close_out (!f);
-      f := f';
-      previousf := r
+    let add_buffer s = Buffer.add_string buff s
+    let clear_buff = Buffer.clear buff
 
-  let openfile fname title =
-    previousf := (!f) :: (!previousf);
-    begin
+    let reset_wrap_mark() =
+      wrap_mark := 0
+
+    let newline() =
+      add_buffer "<br/>\n";
+      reset_wrap_mark()
+
+    (* Wrap the mark if necessary *)
+    let wrap_if_necessary () =
+      if !wrap_mark > !wrap_limit then newline()
+
+    let increase_wrap_mark nb =
+      wrap_mark := !wrap_mark + nb
+
+    (* Functions used to apply the functor LangDisp and obtain Gviz, *)
+    (* with althought newline, already defined. *)
+
+    (* [print_string_from s pos0] adds the suffix of [s] starting from position [pos0]
+       to the buffer [buff], wrapping at spaces if necessary *)
+    let rec print_string_from s pos0 =
       try
-        f := open_out fname
-      with Sys_error _ ->
-        Parsing_helper.user_error ("Error: could not open dot file.
-        The html directory that you specified, " ^ (!Param.html_dir) ^ ",
-        probably does not exist.\n")
-    end
+	let pos = (String.index_from s pos0 ' ')-pos0 in
+	Buffer.add_substring buff s pos0 pos;
+	increase_wrap_mark pos;
+	if !wrap_mark > !wrap_limit then
+	  newline()
+	else
+	  begin
+	    Buffer.add_char buff ' ';
+	    increase_wrap_mark 1
+	  end;
+	print_string_from s (pos0 + pos + 1)
+      with Not_found ->
+	let s_len = (String.length s)-pos0 in
+	Buffer.add_substring buff s pos0 s_len;
+	increase_wrap_mark s_len
 
-  let print_string s =
-    if (!previousf) == [] then
-      Parsing_helper.internal_error "dot output with no open dot file.\n";
-    output_string (!f) s
+    (* [print_string s] adds the string [s]
+       to the buffer [buff], wrapping at spaces if necessary *)
+    let print_string s = print_string_from s 0
+	
+	
+    (* Type used to syntacticaly color the key work on boxes or above edges.f_private *)
+    (* We use HTML labels for the graph, and nodes are actually tables *)
+    type color =
+      | Color_black
+      | Color_red
+      | Color_green
+      | Color_yellow
+      | Color_blue
+      | Color_magenta
+      | Color_cyan
+      | Color_white
 
-  let wrap_limit = ref 45
+    let start_color = function
+      | Color_black -> add_buffer "<FONT COLOR=\"black\">"
+      | Color_red -> add_buffer "<FONT COLOR=\"red\">"
+      | Color_green -> add_buffer "<FONT COLOR=\"darkgreen\">"
+      | Color_yellow -> add_buffer "<FONT COLOR=\"yellow\">"
+      | Color_blue -> add_buffer "<FONT COLOR=\"blue\">"
+      | Color_magenta -> add_buffer "<FONT COLOR=\"magenta\">"
+      | Color_cyan -> add_buffer "<FONT COLOR=\"cyan\">"
+      | Color_white -> add_buffer "<FONT COLOR=\"white\">"
 
-  let wrap_mark = ref 0
+    let reset_color() =
+      add_buffer "</FONT>"
 
-  let buff = Buffer.create 1024
+    let start_bold() =
+      add_buffer "<B>"
 
-  let add_buffer = Buffer.add_string buff
+    let end_bold() =
+      add_buffer "</B>"
 
-  let reset_wrap_mark() =
-    wrap_mark := 0
+    let display_occ n =
+      start_color Color_green;
+      print_string ("{" ^ (string_of_int n) ^ "}");
+      reset_color()
 
-  let wrap_if_necessary() =
-    if !wrap_mark > !wrap_limit then
-      begin
-        add_buffer "\\n";
-        reset_wrap_mark();
-      end
+    let display_occ_ref = display_occ
 
-  let increase_wrap_mark nb =
-    wrap_mark := !wrap_mark + nb
+    let display_clause_link n =
+      print_string ("clause " ^ (string_of_int n) ^ " ")
 
-  let add_buff_incr_wrap string =
-    add_buffer string;
-    let string_len = String.length string in
-    increase_wrap_mark string_len
+    let display_step_link n =
+      print_string (string_of_int n)
+
+    let start_cl =  function
+      | CFun | CName | CVar | CPred | CType -> ()
+      | CExplain -> start_color Color_magenta
+      | CKeyword -> start_color Color_blue
+      | CConn -> start_bold()
+      | CProcess -> start_color Color_green
+
+    let end_cl = function
+      | CFun | CName | CVar | CPred | CType -> ()
+      | CConn -> end_bold()
+      | _ -> reset_color()
 
   let convert_funname s =
     match s with
-      "&&" -> "\\&\\&"
-    | "<>" -> "\\<\\>"
-    | "||" -> "\\|\\|"
+        "&&" -> "&amp;&amp;"
+      | "<>" -> "&lt;&gt;"
     | _ -> s
 
-  let print_buffer () =
-    if (!previousf) == [] then
-      Parsing_helper.internal_error "dot output with no open dot file.\n";
-    Buffer.output_buffer (!f) buff;
-    Buffer.clear buff
+    let and_connective() =
+      if !Param.typed_frontend then "&amp;&amp;" else "&amp;"
+    let or_connective() =
+      if !Param.typed_frontend then "||" else "|"
+    let impl_connective = "-&gt;"
+    let red_connective = "=&gt;"
+    let before_connective = "==&gt;"
+    let diff_connective = "&lt;&gt;"
+    let equal_connective = "="
+    let eq1_connective = "&lt;-&gt;"
+    let eq2_connective = "&lt;=&gt;"
 
-  let rec print_list f sep = function
-  [] -> ()
-    | [a] -> f a
-    | (a::l) ->
-       f a;
-      add_buff_incr_wrap sep;
-      print_list f sep l
+    let hline = "--------------------------------------------------------------\n"
 
-  let rec print_term term  =
-    wrap_if_necessary();
-    match term with
-      FunApp(f, l) ->
-        begin
-          match f.f_cat with
-            Name _ ->
-              add_buff_incr_wrap (convert_funname f.f_name)
-          | Choice ->
-             begin
-               match l with
-                 [t1; t2] ->
-                   if Terms.equal_terms t1 t2 then
-                     print_term t1
-                   else
-                     begin
-                       add_buff_incr_wrap ("choice[");
-                       print_term_list l;
-                       add_buff_incr_wrap "]"
-                     end
-               | _ -> Parsing_helper.internal_error "Choice expects 2 arguments"
-             end
-          | _ ->
-             match f.f_name with
-               "=" | "||" | "&&" | "<>" ->
-		(* Infix functions *)
-		 begin
-		   match l with
-		     [t1;t2] ->
-                       add_buff_incr_wrap "(";
-                       print_term t1;
-		       add_buff_incr_wrap " ";
-		       add_buff_incr_wrap ((convert_funname f.f_name) ^ " ");
-		       print_term t2;
-		       add_buff_incr_wrap ")"
-            	   | _ ->
-                      Parsing_helper.internal_error
-                        "infix operators should have 2 arguments"
-		 end
-             | "if-then-else" ->
-	        begin
-		  match l with
-		    [t1;t2;t3] ->
-		      add_buff_incr_wrap "(if ";
-		      print_term t1;
-		      add_buff_incr_wrap " then ";
-		      print_term t2;
-		      add_buff_incr_wrap " else ";
-		      print_term t3;
-                      add_buff_incr_wrap ")"
-		  | _ ->
-                     Parsing_helper.internal_error
-                       "if-then-else should have 3 arguments"
-	        end
-	     | _ ->
-	        add_buff_incr_wrap (convert_funname f.f_name);
-	       if (l != []) || (f.f_name = "") || not (!Param.typed_frontend)
-               then
-	         begin
-	           add_buff_incr_wrap "(";
-		   print_term_list l;
-		   add_buff_incr_wrap ")"
-	         end
-        end
-    | Var v ->
-       add_buff_incr_wrap v.sname;
-      let v_index = string_of_int v.vname in
-      add_buff_incr_wrap v_index
+    let start_numbered_list() = ()
+    let end_numbered_list() = newline()
+    let start_list() = ()
+    let end_list() = newline()
 
+    let clause_item n =
+      let ns = string_of_int n in
+      newline();
+      print_string ("Clause " ^ ns ^ ": ")
 
-  and print_term_list l = print_list print_term "," l
+    let history_item n =
+      newline();
+      print_string ((string_of_int n) ^ ". ")
 
-  let rec print_pattern pat =
-    wrap_if_necessary();
-    match pat with
-    | PatVar v ->
-       add_buff_incr_wrap v.sname;
-      let v_index = string_of_int v.vname in
-      add_buff_incr_wrap v_index;
-      if !Param.typed_frontend then
-	begin
-	  add_buff_incr_wrap ": ";
-	  add_buff_incr_wrap v.btype.tname;
+    let basic_item () =
+      newline()
+
 	end
-    | PatTuple (f,l) ->
-       add_buff_incr_wrap (convert_funname f.f_name);
-      if (l != []) || (f.f_name = "") || not (!Param.typed_frontend) then
-	begin
-	  add_buff_incr_wrap "(";
-	  print_pattern_list l;
-	  add_buff_incr_wrap ")";
-	end
-    | PatEqual t ->
-       add_buff_incr_wrap "=";
-      print_term t
 
-  and print_pattern_list l = print_list print_pattern "," l
+(* This module gives display functions "for free" using the functor "LangDisp" *)
+module Gviz = LangDisp(LangGviz)
 
-  let print_fact fact =
-    wrap_if_necessary();
-    match fact with
-      Pred(chann,t) ->
-        add_buff_incr_wrap chann.p_name;
-        if not (!Param.typed_frontend) then add_buff_incr_wrap ":";
-        if t != [] then
+(** Main module to display traces. The display fonctions write on a buffer "buff". *)
+(** The functions "openfile" and "closefile" respectively open and close a file. *)
+(** The function write_state_to_dot_file writes a state in a good dot's format in *)
+(** the open dot file. The function "create_pdf_trace" defined in Reduction_helper *)
+(** uses this function to create and display the pdf trace associated to the *)
+(** open dot file *)
+module AttGraph =
+  struct
+    include Gviz
+    open LangGviz
+
+         (* function to manipulate dot file *)
+    let previousf = ref []
+
+    let f = ref stdout
+
+    let close() =
+      match !previousf with
+        [] -> Parsing_helper.internal_error "No dot file to close"
+      | (f'::r) ->
+          close_out (!f);
+          f := f';
+          previousf := r
+
+    let openfile fname =
+      previousf := (!f) :: (!previousf);
 	  begin
-	    if !Param.typed_frontend then add_buff_incr_wrap "(";
-	    print_term_list t;
-	    if !Param.typed_frontend then add_buff_incr_wrap ")";
+        try
+          f := open_out fname
+        with Sys_error _ ->
+          Parsing_helper.user_error ("Error: could not open dot file.
+				       The html directory that you specified, " ^ (!Param.html_dir) ^ ",
+				     probably does not exist.\n")
 	  end
-    | Out(t,l) ->
-       add_buff_incr_wrap "begin";
-      if !Param.typed_frontend then
-        add_buff_incr_wrap "("
-      else
-        add_buff_incr_wrap ":";
-      print_term t;
-      List.iter (fun (v,t) ->
-        wrap_if_necessary();
-        add_buff_incr_wrap ", ";
-        add_buff_incr_wrap v.sname;
-        let v_index = string_of_int v.vname in
-        add_buff_incr_wrap (v_index);
-	print_term t
-      ) l;
-      if !Param.typed_frontend then
-        add_buff_incr_wrap ")"
 
+    (* write the content of buff in the open dot file, clear the buffer.
+       Internal_error when no dot file is open. *)
+    let print_buffer () =
+      if (!previousf) == [] then
+        Parsing_helper.internal_error "dot output with no open dot file.\n"
+      else
+        begin
+          Buffer.output_buffer (!f) buff;
+          Buffer.clear buff;
+        end
+
+    (* Append 3 lists *)
   let append3 l1 l2 l3 =
     List.rev_append (List.rev (List.rev_append (List.rev l1) l2)) l3
 
-  (* Nil means inactive process *)
-  type style_type = Box | Point | Nil | Att
+    (* Two kind of boxes : black, or red. This are the associated constructors *)
+    type box_color = BBlack | BRed
+
+    (* Part of a process trace is represented by a box (Box) or a point (Point). *)
+    (* Nil corresponds to inactive processes *)
+    type style_type = Box of box_color | Point | Nil
 
   type proc_type = {pnb: int list; (* if process is attacker, pnb = [] *)
                     pstate: int; (* the process state *)
@@ -3426,8 +3552,6 @@ struct
   let is_active proc = not (get_pstyle proc = Nil)
 
   let is_point proc = (get_pstyle proc = Point)
-
-  let is_box proc = (get_pstyle proc = Box)
 
   let create_proc pnb pstate pstyle = {pnb; pstate; pstyle}
 
@@ -3470,17 +3594,18 @@ struct
   let set_ins_or_get new_ins_or_get ginfo =
     {ginfo with ins_or_get = new_ins_or_get}
 
-  let prev_is_nil ginfo = (get_prev_pstyle ginfo = Nil)
-
-  let prev_is_box ginfo = (get_prev_pstyle ginfo = Box)
+    let prev_is_box ginfo =
+      match get_prev_pstyle ginfo with
+        Box _ -> true
+      | _ -> false
 
   let get_pnb_from_state = function
   RRestr(n, _, _) | RLet1(n, _, _) | RLet2(n, _, _) | RTest1(n, _)
-    | RTest2(n, _) | RTest3(n, _) | RBegin1(n, _) | RBegin2(n, _)
+      | RTest2(n, _) | RTest3(n, _) | REvent1(n, _, _) | REvent2(n, _)
     | RLetFilter1(n, _, _, _) | RLetFilter2(n, _, _) | RLetFilter3(n, _, _)
-    | RInsert1(n, _) | RInsert2(n, _) | RGet(n, _, _, _) | RInput(n, _, _, _)
-    | RPar(n) | RRepl(n, _) | ROutput1(n, _, _) | ROutput2(n, _, _) | REnd(n, _) | RIO(n, _, _, _, _, _)
-    | RIO2(n, _, _, _, _, _) | RGet2(n, _) | RNil(n) | RNamedProcess(n, _, _)  ->
+      | RInsert1(n, _, _) | RInsert2(n, _) | RGet(n, _, _, _) | RInput(n, _, _, _, _) | RInput2(n, _, _, _, _)
+      | RPar(n) | RRepl(n, _) | ROutput1(n, _, _, _) | ROutput2(n, _, _) | RIO(n, _, _, _, _, _,  _, _)
+      | RIO2(n, _, _, _, _, _,  _, _) | RGet2(n, _, _) | RNil(n) | RNamedProcess(n, _, _)  ->
        n
     | RPhase(_) | RInit -> assert false
 
@@ -3545,16 +3670,12 @@ struct
 
   (* string_of_proc proc: get the string corresponding to proc *)
   let string_of_proc proc  =
-    let pnb = get_pnb proc and pstate = get_pstate proc
-    and pstyle = get_pstyle proc in
-    if pstyle = Att then
-      "Att__" ^ string_of_int pstate
-    else
+      let pnb = get_pnb proc and pstate = get_pstate proc in
       let name =
         String.concat "_" (List.rev_map (fun a -> string_of_int a) pnb) in
       "P" ^ name ^ "__" ^ string_of_int  pstate
 
-  (* write_node process lab options: write a node for the process in the *)
+         (* write_node proc lab options: write a node for the process in the *)
   (* open dot file. The node label is the string lab, and the options *)
   (* are options. *)
   let write_node proc lab options =
@@ -3566,26 +3687,92 @@ struct
     add_buffer "\"";
     List.iter (fun x -> add_buffer (", " ^ x)) options;
     add_buffer "]\n";
-    print_buffer()
+      print_buffer ()
 
-  (* write_edge p1 p2 term_lab options: write an edge in the open dot file *)
-  (* between node p1 and p2. The label of the node is print_term term_lab, *)
-  (* and the options are options. *)
-  let write_edge p1 p2 term_lab options =
+    let abbrev_tab = ref []
+    let abbrev_nb = ref 0
+    let max_lines_label_edge = 3
+
+    (* [write_edge_label calc_lab t] writes an edge label:
+       When [calc_lab = Some calc], writes [calc = t].
+       Otherwise, writes [t].
+       Uses abbreviations when the label is too long.
+       To be used as argument [label_fun] of [write_edge]. *)
+    let write_edge_label calc_lab t () =
+      let abbrev_in_table abbrev_string = List.exists (fun (a, _) -> (String.compare a abbrev_string = 0)) in
+      print_buffer ();
+      display_calcopt_term calc_lab t;
+      let len_term = Buffer.length buff in
+      if len_term > max_lines_label_edge * (!wrap_limit) then
+        begin
+	  try
+	    match calc_lab with
+	      Some (Var _) ->
+                (* Use calc as abbreviation *)
+		let s = Buffer.contents buff in
+		let pos = String.index s '=' in
+		let abbrev_string = String.sub s 0 (pos-1) in
+                let content_string = String.sub s (pos+2) (String.length s - pos - 2) in
+                if not (abbrev_in_table abbrev_string !abbrev_tab) then
+		  abbrev_tab := (abbrev_string, content_string)::!abbrev_tab;
+		Buffer.clear buff;
+		print_string abbrev_string
+	    | Some calcul ->
+		let s = Buffer.contents buff in
+		let pos = String.index s '=' in
+		if pos-1 > max_lines_label_edge * (!wrap_limit) then raise Not_found;
+		let lcalcult = List.rev (decompose_tuples_var [] calcul t) in
+		List.iter (fun (calcul, t) ->
+		  let t' = simplify_choice t in
+		  if not (Terms.equal_terms calcul t') then
+		    begin
+		      reset_wrap_mark();
+		      Buffer.clear buff;
+		      NoArgNames.term calcul;
+		      let abbrev_string = Buffer.contents buff in
+		      Buffer.clear buff;
+		      NoArgNames.term t';
+		      let content_string = Buffer.contents buff in
+		      if not (abbrev_in_table abbrev_string !abbrev_tab) then
+                        abbrev_tab := (abbrev_string, content_string)::!abbrev_tab
+		    end
+		      ) lcalcult;
+		let abbrev_string = String.sub s 0 (pos-1) in
+		Buffer.clear buff;
+		print_string abbrev_string
+	    | None -> raise Not_found
+	  with Not_found ->
+	    (* Create a new abbreviation *)
+	    incr abbrev_nb;
+	    let abbrev_string = "~X_" ^ string_of_int !abbrev_nb in
+	    let content_string = Buffer.contents buff in
+	    abbrev_tab := (abbrev_string, content_string)::!abbrev_tab;
+	    Buffer.clear buff;
+	    print_string abbrev_string
+        end
+
+    (* [write_edge_no_label] writes no label.
+       To be used as argument [label_fun] of [write_edge]. *)
+    let write_edge_no_label() = ()
+	  
+    (* [write_edge p1 p2 label_fun options] writes an edge in the open dot file *)
+    (* between node p1 and p2. *)
+    (* The label of the edge is printed by the function [label_fun]. *)
+    (* The options to draw the edge are given by the tab [options]. *)
+    let write_edge p1 p2 label_fun options =
     reset_wrap_mark();
     let string_of_proc1 = string_of_proc p1 in
     let string_of_proc2 = string_of_proc p2 in
     add_buffer (string_of_proc1 ^ " -> " ^ string_of_proc2);
-    add_buffer " [";
-    add_buffer "label = \"";
-    (match term_lab with
-      None -> ()
-    | Some t ->
-       print_term t);
-    add_buffer "\"";
-    List.iter (fun x -> add_buffer (", " ^ x)) options;
+      add_buffer " [label = <";
+      label_fun();
+      add_buffer ">";
+      List.iter (fun x -> 
+	add_buffer ", ";
+	add_buffer x) options;
     add_buffer "]\n";
-    print_buffer()
+      print_buffer ()
+
 
   (* write_same_rank plst:write in the open dot file a line to align *)
   (* the processes in plst horizontally *)
@@ -3595,176 +3782,114 @@ struct
         add_buffer "{rank = same;";
         List.iter (fun x -> add_buffer (" " ^ (string_of_proc x))) plst;
         add_buffer "}\n";
-        print_buffer()
+          print_buffer ()
       end
 
-
-
   (* update_plst plst n n_proc lst: replace the n-th active process *)
-  (* in plst by the list of new process n_plst, and return *)
+    (* in plst by the list of new processes n_plst, and return *)
   (* the modified list *)
   let update_plst plst n n_plst =
     let (first, _, last) = get_active_n_to_m n n plst in
     append3 first n_plst last
 
-
-  (* init_node plst n: initialize the nth active process of plst in *)
-  (*  the open dot file *)
-  let init_node plst n =
-    let proc = nth_active plst n in
+    (* init_node boxcolr plst n: initialize a box for the nth active process of plst. *)
+    (* Write in "buff" the options for the node. *)
+    let init_node boxcolor proc =
     let string_of_proc = string_of_proc proc in
     add_buffer string_of_proc;
     add_buffer " [";
-    add_buffer "shape = record, label = \"{ "
+      if boxcolor = BRed then
+        add_buffer "color = red, ";
+      add_buffer "shape = plaintext, label = <<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\"> "
 
   (* close_node(): close the last node which is written in the open dot file *)
   let close_node () =
-    add_buffer "}\"]\n";
+      add_buffer "</TABLE>>]\n";
     reset_wrap_mark();
-    print_buffer()
+      print_buffer ()
 
   (* add_label_to_buff state: add the label corresponding to the state *)
-  (* argument in the open dot file. Return true if state is an Insert or a *)
+    (* argument in the buffer buff. Return true if state is an Insert or a *)
   (* Get, false otherwise *)
   let add_label_to_buff state = 
+      let display_loc n =
+	match state.previous_state with
+	  None -> Parsing_helper.internal_error "Previous state should exist"
+	| Some s ->
+	    let (proc, _, _, _, _) = List.nth s.subprocess n in
+	    display_occ_process proc
+      in
     reset_wrap_mark();
-    (match state with
+      (match state.comment with
       RRestr(n, na, n') ->
-      add_buffer "new ";
-      print_term n';
+	  display_loc n;
+          display_keyword "new ";
+          display_term2 n';
     | RLet1(n, pat, t) ->
-      add_buffer "let ";
-      print_pattern pat;
-      add_buff_incr_wrap " = ";
-      print_term t
+	  display_loc n;
+	  display_prefix_let pat t
     | RLet2(n, pat, t) ->
-      add_buff_incr_wrap "let ";
-      print_pattern pat;
-      add_buff_incr_wrap " fails";
+	  display_loc n;
+	  display_prefix_let pat t;
+          print_string ": else branch taken";
     | RTest1(n, t) ->
-      add_buff_incr_wrap "if ";
-      print_term t
+	  display_loc n;
+	  display_prefix_test t
     | RTest2(n, t) ->
-       add_buff_incr_wrap "if ";
-      print_term t;
-      add_buff_incr_wrap " fails";
+	  display_loc n;
+	  display_prefix_test t;
+          print_string ": else branch taken";
     | RTest3(n, t) ->
-       add_buff_incr_wrap "if ";
-      print_term t;
-      add_buff_incr_wrap " dest. fails";
-    | RBegin1(n, t) ->
-       add_buff_incr_wrap "event ";
-      print_term t
-    | RBegin2(n, t) ->
-       add_buff_incr_wrap "event ";
-      print_term t;
-      add_buff_incr_wrap " blocks or dest. fails ";
-    | REnd(n, t) ->
-       add_buff_incr_wrap "event ";
-      print_term t;
-      add_buff_incr_wrap " is the goal ";
+	  display_loc n;
+	  display_prefix_test t;
+          print_string  ": destructor fails";
+      | REvent1(n, t, b) ->
+	  display_loc n;
+	  display_prefix_event t
+      | REvent2(n, t) ->
+	  display_loc n;
+	  display_prefix_event t;
+          print_string " blocks or destructor fails";
     | RLetFilter1(n, bl, terms_bl, fact) ->
-       add_buff_incr_wrap "let ";
-      let first = ref true in
-      if not (terms_bl = []) then
-        List.iter2 (fun b tb ->
-          wrap_if_necessary();
-          if !first then
-            first := false
-          else
-            add_buff_incr_wrap ", ";
-          add_buff_incr_wrap (b.sname);
-          let b_index = string_of_int b.vname in
-          add_buff_incr_wrap (b_index);
-          print_term tb;
-        ) bl terms_bl
-      else
-        List.iter (fun b ->
-          wrap_if_necessary();
-          if !first then
-            first := false
-          else
-            add_buff_incr_wrap ", ";
-          let b_index = string_of_int b.vname in
-          add_buff_incr_wrap (b.sname);
-          add_buff_incr_wrap (b_index);
-        ) bl;
-      add_buff_incr_wrap " suchthat ";
-      print_fact fact;
+	  display_loc n;
+	  display_prefix_letfilter_success bl terms_bl fact
     | RLetFilter2(n, bl, fact) ->
-       add_buff_incr_wrap "let ";
-      let first = ref true in
-      List.iter (fun b ->
-        wrap_if_necessary();
-        if !first then
-          first := false
-        else
-          add_buff_incr_wrap ", ";
-        let b_index = string_of_int b.vname in
-        add_buff_incr_wrap (b.sname);
-        add_buff_incr_wrap (b_index)
-      ) bl;
-      add_buff_incr_wrap " suchthat ";
-      print_fact fact;
-      add_buff_incr_wrap " dest. fails or let... s.t. blocks";
+	  display_loc n;
+	  display_prefix_letfilter bl fact;
+          print_string " blocks or destructor fails";
     | RLetFilter3(n, bl, fact) ->
-       add_buff_incr_wrap "let ";
-      let first = ref true in
-      List.iter (fun b ->
-        wrap_if_necessary();
-        if !first then
-          first := false
-        else
-          add_buffer ", ";
-        let b_index = string_of_int b.vname in
-        add_buffer (b.sname);
-        add_buffer (b_index);
-        increase_wrap_mark
-          (String.length b.sname + String.length b_index + 2);
-      ) bl;
-      add_buff_incr_wrap " suchthat ";
-      print_fact fact;
-      add_buff_incr_wrap " fails"
-    | RInsert1(n, t) ->
-       add_buff_incr_wrap "insert ";
-      print_term t
+	  display_loc n;
+	  display_prefix_letfilter bl fact;
+          print_string  ": else branch taken"
+      | RInsert1(n, t, b) ->
+	  display_loc n;
+          display_keyword "insert ";
+          display_term2 t
     | RInsert2(n, t) ->
-       add_buff_incr_wrap "insert ";
-      print_term t;
-      add_buff_incr_wrap " dest. fails"
+	  display_loc n;
+          display_keyword "insert ";
+          display_term2 t;
+          print_string ": destructor fails"
     | RGet(n, pat, t, m) ->
-       add_buff_incr_wrap "get ";
-      print_term m
-    | RGet2(n, pat) ->
-       add_buff_incr_wrap "Else branch of get ";
-      print_pattern pat;
-      add_buff_incr_wrap " taken";
+	  display_loc n;
+          display_keyword "get ";
+          display_term2 m
+      | RGet2(n, pat, t) ->
+	  display_loc n;
+	  display_prefix_get pat t;
+          print_string ": else branch taken";
     | ROutput2(n, tc, t) ->
-	add_buff_incr_wrap "out(";
-	print_term tc;
-	add_buff_incr_wrap ",";
-	print_term t;
-	add_buff_incr_wrap ") dest. fails";
+	  display_loc n;
+	  display_prefix_out tc t;
+          print_string ": destructor fails";
     | RNamedProcess(n, name, tl) ->
-       add_buff_incr_wrap "Beginning of process ";
-      add_buff_incr_wrap name;
-      if tl != [] then
-	begin
-	  wrap_if_necessary();
-	  add_buff_incr_wrap "(";
-	  let first = ref true in
-	  List.iter (fun t ->
-            if !first then
-	      first := false
-	    else
-	      add_buff_incr_wrap ", ";
-            print_term t) tl;
-	  add_buff_incr_wrap ")"
-	end
+	  display_prefix_namedprocess name tl
     | _ -> assert false);
-    match state with
-      RGet(_, _, _, _) | RGet2(_, _) | RInsert1(_, _) | RInsert2(_, _) -> true
+      wrap_if_necessary ();
+      match state.comment with
+        RGet(_, _, _, _) | RGet2(_, _, _) | RInsert1(_, _, _) | RInsert2(_, _) -> true
     | _ -> false
+
 
     (* close_box ginfo n: close the n-th active process (a Box) of ginfo.plst *)
     (* and return the  modified ginfo *)
@@ -3774,13 +3899,13 @@ struct
       get_ginfo_params ginfo in
     let proc = nth_active plst n in
     let n_proc = next_pstate Point proc in
-    write_edge proc n_proc None ["weight = 100"];
+      write_edge proc n_proc write_edge_no_label ["weight = 100"];
     let n_plst = update_plst plst n [n_proc] in
     let new_attacker =
       if ins_or_get then
         begin
           let new_attacker = next_pstate Point attacker in
-          write_edge attacker new_attacker None ["weight = 100"];
+            write_edge attacker new_attacker write_edge_no_label ["weight = 100"];
           write_same_rank [new_attacker; proc];
           new_attacker
         end
@@ -3791,9 +3916,9 @@ struct
     (* close_prev_if_box ginfo: close the ginfo.prev_nb process if it s a box *)
     (* and return the modified ginfo *)
   let close_prev_if_box ginfo =
-    if (prev_is_box ginfo) then
-      let p_pnb = get_prev_pnb ginfo in
-      close_box ginfo p_pnb
+      if (prev_is_box ginfo (*&& (not (get_prev_pstyle ginfo = Att))BRUNO*)) then
+        let n_pnb = get_prev_pnb ginfo in
+        close_box ginfo n_pnb
     else
       ginfo
 
@@ -3804,115 +3929,248 @@ struct
     let n_ginfo = close_prev_if_box ginfo in
     let (plst, attacker, rparinfo, _, _, _) =
       get_ginfo_params n_ginfo in
-    let proc = make_proc_inactive (nth_active plst n) in
-    let n_plst = update_plst plst n [proc] in
+      let proc = nth_active plst n in
+      let n_proc = next_pstate Nil proc in
+      write_node n_proc "" ["width = 0.3"; "height = 0.3"];
+      write_edge proc n_proc write_edge_no_label ["weight = 100"];
+      let n_plst = update_plst plst n [n_proc] in
     create_ginfo n_plst attacker rparinfo n Nil false
 
-  (* add_in_box ginfo n state: add the text corresponding to state in the *)
-  (* n-th active process. If it is a box, add it in a new line, otherwise *)
-  (* open a new box and add it  *)
-  let add_in_box ginfo n state =
+    (* add_in_box_proc boxcolor ginfo n f: add the text corresponding to the *)
+    (* of the n-th active process in a box of color boxcolor.  *)
+    (* It opens a new box if needed (for example if the previous open box was *)
+    (* black, and one needs a red one). The function f takes unit as argument, *)
+    (* puts the text to display in the box in the buffer buff, and returns true *)
+    (* if the ordering of this box with respect to boxes in parallel processes *)
+    (* should be preserved *)
+    let add_in_box_proc boxcolor ginfo n f =
+      (* close previous box if needed *)
     let n_ginfo =
-      if (get_prev_pnb ginfo <> n && (not (prev_is_nil ginfo)))  then
+        if (get_prev_pnb ginfo <> n) || (get_prev_pstyle ginfo <> Box boxcolor)
+        then
         close_prev_if_box ginfo
       else
         ginfo in
+      (* open new box if needed *)
     reset_wrap_mark();
     let (plst, attacker, _, _, _, ins_or_get) =
       get_ginfo_params n_ginfo in
     let proc = nth_active plst n in
+      let n_plst =
     if is_point proc then
       begin
-	let n_proc = next_pstate Box proc in
+	    let n_proc = next_pstate (Box boxcolor) proc in
         let n_plst = update_plst plst n [n_proc] in
-	write_edge proc n_proc None ["weight = 100"];
-        init_node n_plst n;
-        let new_ins_or_get = (add_label_to_buff state) || ins_or_get in
-        create_ginfo n_plst attacker None n Box new_ins_or_get
+            write_edge proc n_proc write_edge_no_label ["weight = 100"];
+            init_node boxcolor n_proc;
+	    n_plst
       end
     else (* is_box proc *)
-      begin
-        add_buffer " | ";
-        let new_ins_or_get = (add_label_to_buff state) || ins_or_get in
-        create_ginfo plst attacker None n Box new_ins_or_get
-      end
+	  plst
+      in
+      (* write the content *)
+      add_buffer "<TR><TD>";
+      let new_ins_or_get = (f()) || ins_or_get in
+      add_buffer "</TD></TR>";
+      (* return the updated ginfo *)
+      create_ginfo n_plst attacker None n (Box boxcolor) new_ins_or_get
 
+    (* add_in_box boxcolor ginfo n state: add the necessary text corresponding to *)
+    (* the n-th active process in the open dot file. Return the new ginfo *)
+    let add_in_box boxcolor ginfo n state =
+      add_in_box_proc boxcolor ginfo n (fun () -> add_label_to_buff state)
+
+    (* [write_box proc box] optionally creates a box at the node for
+       the process [proc].
+       If [box = None], does nothing.
+       If [box = Some(boxcolor, f)], creates a box with color [boxcolor]
+       and [f] as display function. *)
+    let write_box proc = function
+	None -> ()
+      | Some(boxcolor, f) ->
+	  init_node boxcolor proc;
+          (* write the content *)
+	  add_buffer "<TR><TD>";
+	  reset_wrap_mark ();
+	  f();
+	  add_buffer "</TD></TR>";
+          (* close the box *)
+	  close_node()
+
+    (* add_in_box_attacker boxcolor ginfo f: open a box under the attacker process. *)
+    (* Write the necessary text (using f) and close the box (it's always the last *)
+    (* element of the attacker trace). *)
+    (* The function f takes unit as argument, and puts the text to display in the *)
+    (* box in the buffer buff. Its return value is ignored. *)
+    let add_in_box_attacker boxcolor ginfo f =
+      (* close previous box if needed *)
+      let n_ginfo = close_prev_if_box ginfo in
+      (* write new box *)
+      let (plst, attacker, _, _, _, _) =
+        get_ginfo_params n_ginfo in
+      let n_attacker = next_pstate Point attacker in
+      write_edge attacker n_attacker write_edge_no_label ["weight = 100"];
+      write_box n_attacker (Some(boxcolor, f));
+      (* return updated ginfo *)
+      set_attacker n_attacker n_ginfo
+
+    (* add_in_box_and_nil ginfo n state: same as "add_in_box" but close the
+       black box and make the process inactive *)
   let add_in_box_and_nil ginfo n state =
-    let n_ginfo = add_in_box ginfo n state in
+      let n_ginfo = add_in_box BBlack ginfo n state in
     add_nil n_ginfo n
 
-  (* align_and_write_edge plst term_label edge_options: align the processes *)
-  (* in plst, and write an edge in the open dot file from the first process *)
-  (* in plst to the last process in plst using the options in the  *)
-  (* edge_options array. Return the updated list.*)
-  let align_and_write_edge plst term_label edge_options =
-    (* align also the inactive processes iff align_inactives is true *)
-    let rec align n_plst align_inactives = function
-    [] ->
-      write_same_rank (n_plst);
-      List.rev n_plst
-      | proc::tail ->
+    (* [new_node_proc proc] creates a new node for the process [proc]
+       and links it to the old one *)
+    let new_node_proc proc =
          if is_active proc then
            begin
              let n_proc = next_pstate Point proc in
-             write_edge proc n_proc None ["weight = 100"];
-             align (n_proc::n_plst) align_inactives tail
+          write_edge proc n_proc write_edge_no_label ["weight = 100"];
+	  n_proc
            end
          else
-           if align_inactives then
              begin
                let n_proc = next_pstate Nil proc in
                write_node n_proc "" ["style = invisible"];
-               write_edge proc n_proc None ["weight = 100"; "style = invisible"];
-               align (n_proc::n_plst) true tail
+	  write_edge proc n_proc write_edge_no_label ["weight = 100"; "style = invisible"];
+	  n_proc
              end
-           else
-             align (proc::n_plst) false tail
+
+    let less_loc l1 l2 = 
+      match l1, l2 with
+	_, LocAttacker _ -> true
+      |	LocAttacker _, _ -> false
+      |	LocProcess(n1,_), LocProcess(n2,_) -> n1 <= n2
+
+    (* [dummy_process] and [dummy_calc] can be used in [LocProcess]
+       and [LocAttacker] when calling [write_edge_with_boxes] and a
+       precise value is not known. *)
+    let dummy_process = (Types.Nil, [], [], [], Nothing)
+    let dummy_calc = Terms.true_term
+	    
+    (* [write_edge_with_boxes ginfo oloc iloc obox ibox edge_label edge_options]
+       writes an edge from [oloc] to [iloc], optionally with a box
+       [obox] at [oloc] and a box [ibox] at [iloc]. 
+       The edge has a label defined by [edge_label] and options defined
+       by [edge_options].
+       [oloc] and [iloc] are either
+       - [LocAttacker(calc)] for the attacker ([calc] is unused), or
+       - [LocProcess(n,p)] for the n-th process ([p] is unused).
+       [obox] and [ibox] are as in [write_box] above. *)
+    let write_edge_with_boxes ginfo oloc iloc obox ibox edge_label edge_options =
+      (* [align plst] creates new nodes for each process in [plst]
+	  and aligns them horizontally. *)	  
+      let align plst =
+	let n_plst = List.rev_map new_node_proc plst in
+	write_same_rank n_plst;
+	List.rev n_plst
     in
-    let write_edge plst =
+      (* [write_edge_lst plst box1 box2 edge_label edge_options]
+         writes an edge from the first process in [plst] to the
+         last process of [plst]. 
+         Optionally, a box [box1] is displayed at the beginning of the edge
+         and a box [box2] at the end. *)
+      let write_edge_lst plst box1 box2 edge_label edge_options =
       let fst = List.hd plst in
-      let last = List.hd (List.rev plst) in
+	let plst_tl_rev = List.rev (List.tl plst) in
+	let last = List.hd plst_tl_rev in
+	let plst_tl_without_last_rev = List.tl plst_tl_rev in
+         (* plst = fst :: (List.rev_append plst_tl_without_last_rev last) *)
       let n_fst = next_pstate Point fst in
       let n_last = next_pstate Point last in
-      (* let n_fst' = next_pstate IO n_fst in *)
-      (* let n_last' = next_pstate IO n_last in *)
-      write_edge fst n_fst None ["weight = 100"];
-      write_edge last n_last None ["weight = 100"];
+	write_edge fst n_fst write_edge_no_label ["weight = 100"];
+	write_edge last n_last write_edge_no_label ["weight = 100"];
+	write_box n_fst box1;
+	write_box n_last box2;
       write_same_rank [n_last; n_fst];
-      write_edge n_fst n_last (Some term_label) edge_options;
+	write_edge n_fst n_last edge_label edge_options;
       (* return the updated list *)
-      let plst_tl = List.tl plst in
-      let plst_tl_without_last_rev = List.tl (List.rev plst_tl) in
       n_fst::(List.rev_append plst_tl_without_last_rev [n_last])
     in
-    align [] true (write_edge (align [] true plst))
-
-  (* write_line_in_out_phase ginfo state: write the line for the *)
-  (* state which is RInput or ROutput1 or RPhase in the open dot file and *)
-  (* return the modified g_info *)
-  let write_line_in_out_phase ginfo state =
-    let (n, mess_term, edge_options) =
-      match state with
-        RInput (n, _, _, t) -> (n, t, ["arrowhead = normal"; "dir = back"])
-      | ROutput1(n, _, t) -> (n, t, ["arrowhead = normal"])
-      | RPhase(n) ->
-         let sname = "Phase " and link = NoLink and unfailing = false
-         and btype = {tname = ""} in
-         let t = Var({sname; vname = n; unfailing; btype; link}) in
-         (0, t, ["style = dotted"])
-      | _ -> assert false in
-    let n_ginfo = close_prev_if_box ginfo in
-    let (plst, attacker, rparinfo, _, _, _) = get_ginfo_params n_ginfo in
+      (* Close previous box if needed *)
+      let ginfo = close_prev_if_box ginfo in
+      (* Orient edge correctly *)
+      let loc_low, loc_high, box_low, box_high, edge_options =
+	if less_loc iloc oloc then
+	  (iloc, oloc, ibox, obox, "dir = back"::edge_options)
+	else
+	  (oloc, iloc, obox, ibox, edge_options)
+      in
+      match loc_low, loc_high with
+	LocAttacker _, _ -> Parsing_helper.internal_error "cannot have two attackers"
+      | LocProcess(n_low, _), LocAttacker _ ->
+	  let (plst, attacker, _, _, _, _) = get_ginfo_params ginfo in
     let (first, lst_to_join_aux, last) =
-      get_active_n_to_m n (nb_of_active_proc plst - 1) plst in
-    let lst_to_join = append3 lst_to_join_aux last [attacker] in
-    let lst_draw = align_and_write_edge lst_to_join mess_term edge_options in
-    let lst_draw_rev = List.rev lst_draw in
+	    get_active_n_to_m n_low (nb_of_active_proc plst - 1) plst in
+	  let lst_draw = append3 lst_to_join_aux last [attacker] in
+	  let n_lst_draw = align(write_edge_lst (align lst_draw) box_low box_high edge_label edge_options) in
+	  let lst_draw_rev = List.rev n_lst_draw in
     let n_plst =
       List.rev_append (List.rev first) (List.rev (List.tl lst_draw_rev)) in
     let n_attacker = List.hd lst_draw_rev in
-    create_ginfo n_plst n_attacker rparinfo n Point false
+	  create_ginfo n_plst n_attacker None n_low Point false
+      | LocProcess(n_low, _), LocProcess(n_high, _) ->
+	  let (plst, attacker, _, _, _, _) = get_ginfo_params ginfo in
+	  let (first, lst_draw, last) =
+	    get_active_n_to_m n_low n_high plst in
+	  let n_lst_draw = align(write_edge_lst (align lst_draw) box_low box_high edge_label edge_options) in
+          let n_plst = append3 first n_lst_draw last in
+          create_ginfo n_plst attacker None n_low Point false
 
+		
+    (* [write_edge_public ginfo noutput ninput (calc_label, term_label) 
+       edge_options] writes two edges: *)
+    (*    - from [noutput] to [ninput], labeled [term_label] *)
+    (*    using the options in edge_options *)
+    (*    - dotted, from the bigger among [noutput] and [ninput] to attacker, labeled [calc_label] *)
+    (* Returns the updated [ginfo] *)
+    let write_edge_public ginfo noutput ninput (calc_label, term_label) edge_options =
+      (* align also the inactive processes iff align_inactives is true *)
+      let rec align2 (plst, rest_plst, attacker) =
+        let n_plst = List.rev_map new_node_proc plst in
+        let n_rest_plst = List.rev_map new_node_proc rest_plst in
+        let n_attacker = new_node_proc attacker in
+        write_same_rank (append3 [n_attacker] n_rest_plst n_plst);
+        (List.rev n_plst, List.rev n_rest_plst, n_attacker)
+      in
+      let write_edge (plst, rest_plst, attacker) edge_options =
+        let fst = List.hd plst in
+        let plst_tl_rev = List.rev (List.tl plst) in
+        let last = List.hd plst_tl_rev in
+        let plst_tl_without_last_rev = List.tl plst_tl_rev in
+         (* plst = fst :: (List.rev_append plst_tl_without_last_rev last) *)
+        let n_fst = next_pstate Point fst in
+        let n_last = next_pstate Point last in
+        let n_attacker = next_pstate Point attacker in
+        write_edge fst n_fst write_edge_no_label ["weight = 100"];
+        write_edge last n_last write_edge_no_label ["weight = 100"];
+        write_edge attacker n_attacker write_edge_no_label ["weight = 100"];
+        write_same_rank [n_last; n_fst; n_attacker];
+        write_edge n_fst n_last (write_edge_label None term_label) edge_options;
+        write_edge n_last n_attacker (write_edge_label None calc_label) ["arrowhead = normal"; "style = dotted"];
+        (* return the updated list *)
+        (n_fst::(List.rev_append plst_tl_without_last_rev [n_last]), rest_plst, n_attacker)
+      in
+      (* Close previous box if needed *)
+      let n_ginfo = close_prev_if_box ginfo in
+      (* Orient edge correctly *)
+      let (p, q, edge_options) =
+	if (noutput < ninput) then
+          noutput, ninput, edge_options
+        else
+          ninput, noutput, ("dir = back" :: edge_options)
+      in
+      let (plst, attacker, _, _, _, _) = get_ginfo_params n_ginfo in
+      let (first, lst_to_join, last) =
+        get_active_n_to_m p q plst in
+      let (lst_drawn, n_last, n_attacker) =
+	align2 (write_edge (align2 (lst_to_join, last, attacker)) edge_options)
+      in
+      let n_plst = append3 first lst_drawn n_last in
+      create_ginfo n_plst n_attacker None noutput Point false
+
+    (* Initialize the dot file using [graph_options], [edge_options], and [node_options] *)
   let init_dot_file graph_options edge_options node_options =
     let print_options options =
       let first = ref true in
@@ -3933,37 +4191,202 @@ struct
     add_buffer "node [";
     print_options node_options;
     add_buffer "]\n";
-    print_buffer()
+      print_buffer ()
 
   let end_dot_file () =
     add_buffer "}";
-    print_buffer()
+      print_buffer ()
+
+
+    let write_abbrev () =
+      if not (!abbrev_tab = []) then
+        begin
+          add_buffer "Abbrev [";
+          add_buffer ("shape = plaintext, label = <<TABLE BORDER=\"0\" CELLBORDER=\"1\" CELLSPACING=\"0\" CELLPADDING=\"4\"><TR> <TD> Abbreviations </TD></TR>");
+          let rec aux = function
+              [] -> ()
+            | (abbrev, expr)::tl ->
+		add_buffer "<TR><TD>";
+		reset_wrap_mark();
+		print_string abbrev;
+		print_string " = ";
+		wrap_if_necessary ();
+		print_string expr;
+		add_buffer "</TD></TR>";
+		aux tl
+          in
+          aux (List.rev !abbrev_tab);
+          add_buffer "</TABLE>>]";
+          print_buffer ()
+        end
+
+    let write_explained_fact_dot  f calc_lst ginfo =
+      match f, !calc_lst with
+      | (Pred({p_info = [Attacker(n,_)]}, _), Some _)
+      | (Pred({p_info = [Mess(n,_)]}, _), Some _) ->
+	  (* This function displays a box on the attacker trace
+	     only when recipes are present (!calc_lst = Some ...).
+	     Recipes may be absent in the case Mess, when
+             the message is sent via RIO. This case is displayed
+             elsewhere by drawing the RIO arrow in red. *)
+	  add_in_box_attacker BRed ginfo (fun () ->
+	    display_explained_fact f calc_lst)
+      | _ -> ginfo
+
+    let write_loc = function
+	LocProcess(_,(proc,_,_,_,_)) ->
+	  display_occ_process proc
+      | LocAttacker _ -> 
+	  ()
+
+
+
+    let write_goal_to_dot_file  a_to_term noninterftest_to_string state g ginfo =
+      begin
+        match g with
+        | Fact (f, calc_lst) ->
+            write_explained_fact_dot  f calc_lst ginfo
+        | InjGoal _ | NoGoal -> ginfo
+        | WeakSecrGoal(l, t, w1, w2) ->
+	    add_in_box_attacker BRed ginfo (fun () ->
+	      display_attack_goal a_to_term noninterftest_to_string g)
+        | NonInterfGoal t ->
+            match t with
+              ProcessTest(hypspec,tl,loc) ->
+		begin
+		  match !loc with
+		  | None -> Parsing_helper.internal_error "Location should have been filled"
+		  | Some(n,p) ->
+		      add_in_box_proc BRed ginfo n (fun () ->
+			let (proc, _,_,_,_) = List.nth state.subprocess n in
+			display_proc_prefix true proc;
+			newline();
+			print_string ("This" ^ (noninterftest_to_string t));
+			print_string ".";
+			false);
+		end
+ 	    | InputProcessTest(hypspec,tl,mess_term,loc)->
+		begin
+		  match !loc with
+		  | None -> Parsing_helper.internal_error "Location should have been filled"
+		  | Some(n,p,oloc) ->
+		      let old_wrap_limit = !wrap_limit in
+		      wrap_limit := 15;
+		      let iloc = LocProcess(n,p) in
+		      let ibox = Some(BRed, fun () ->
+			let (proc, _,_,_,_) = List.nth state.subprocess n in
+			display_proc_prefix true proc;
+			newline();
+			print_string (noninterftest_to_string t))
+		      in
+		      let calc_lab =
+			match oloc with
+			  LocAttacker calc -> Some calc
+			| LocProcess _ -> None
+		      in
+		      let edge_options = 
+			[ "arrowhead = normal" ]
+		      in
+		      let n_ginfo = write_edge_with_boxes ginfo oloc iloc None ibox (write_edge_label calc_lab mess_term) edge_options in
+		      wrap_limit := old_wrap_limit;
+		      n_ginfo
+		end
+            | ApplyTest _ | NIFailTest _ ->
+		add_in_box_attacker BRed ginfo (fun () ->
+		  display_attack_goal a_to_term noninterftest_to_string g)
+            | CommTest(t1,t2,loc) ->
+		begin
+		  match !loc with
+		  | None -> Parsing_helper.internal_error "Location should have been filled"
+		  | Some(iloc,oloc) ->
+		      let old_wrap_limit = !wrap_limit in
+		      wrap_limit := 15;
+		      let obox = Some(BRed, fun () ->
+			write_loc oloc;
+			display_keyword "out";
+			print_string "(";
+			display_term2 (a_to_term t2);
+			print_string ",...)")
+		      in
+		      let ibox = Some(BRed, fun () ->
+			write_loc iloc;
+			display_keyword "in";
+			print_string "(";
+			display_term2 (a_to_term t1);
+			print_string ",...)")
+		      in
+		      let edge_options = 
+			[ "arrowhead = normal"; "style = dashed"; "color = red"]
+		      in
+		      let n_ginfo = write_edge_with_boxes ginfo oloc iloc obox ibox
+			  (fun () -> print_string (noninterftest_to_string t)) edge_options
+		      in
+		      wrap_limit := old_wrap_limit;
+		      n_ginfo
+		end
+            | NIEqTest((t1, calc1),(t2, calc2)) ->
+		add_in_box_attacker BRed ginfo (fun () ->
+		  display_attack_goal a_to_term noninterftest_to_string g)
+      end
+
+    let write_a_trace_has_been_found hyp =
+      print_string "Trace [label = <";
+      display_trace_found hyp;
+      print_string ">, shape = plaintext]\n"
+
+    let make_par ginfo n1 n2 =
+      let (plst, attacker, rparinfo, prev_pnb, prev_pstyle, ins_or_get) =
+        get_ginfo_params ginfo in
+      let print_rpar proc n =
+        add_buffer "/*RPar */\n";
+        let rec aux acc = function
+	    0 ->
+	      write_node proc ""  ["fixedsize = false"; "width = 0";
+				    "height = 0"; "shape = none"];
+	      write_same_rank acc;
+	      List.rev acc
+          | n ->
+	      let n_proc = set_pstyle Point (add_nb_to_proc (n-1) proc) in
+	      write_edge proc n_proc write_edge_no_label [];
+	      aux (n_proc::acc) (n - 1)
+        in
+        aux [] n
+      in
+      let proc = nth_active plst n1 in
+      let (first, _, last) = get_active_n_to_m n1 n1 plst in
+      let med = print_rpar proc (n2 - n1 + 1) in
+      let n_plst = append3 first med last in
+      create_ginfo n_plst attacker None n1 Point false
 
   (* write_step_graph plst att rparinfo prev_pnb prev_p_style state: *)
   (* add to the open dot file the necessary lines to display the state state *)
   (* with respect to the given parameters in the open dot file. *)
   (* Return the modified ginfo. *)
-  let rec write_step_to_dot_file ginfo state =
+    let rec write_step_to_dot_file ginfo state hyp =
     let (plst, attacker, rparinfo, prev_pnb, prev_pstyle, ins_or_get) =
       get_ginfo_params ginfo in
-    match rparinfo, state with
+      match rparinfo, state.comment with
       None, RInit ->
         let graph_options = ["ordering = out"] in
-        let edge_options = ["arrowhead = none"; "fontsize = 30"] in
+          let edge_options = ["arrowhead = none" ;  "penwidth = 1.6"; "fontsize = 30"] in
         let node_options =
           ["shape = point"; "width = 0"; "height = 0"; "fontsize = 30"] in
         init_dot_file graph_options edge_options node_options;
-        let proc0 = create_proc [0] 0 Point and attacker = create_proc [] 0 Att in
+          let proc0 = create_proc [0] 0 Point and attacker = create_proc [] 0 Point in
         let proc1 = next_pstate Point proc0 in
-        write_node attacker "Attacker" ["shape = plaintext"];
+          let string_of_proc0 = string_of_proc proc0 in
+          if (not !Param.interactive_mode) then
+            write_a_trace_has_been_found hyp;
         write_node proc0 "Honest Process" ["shape = plaintext"];
+          write_node attacker "Attacker" ["shape = plaintext"];
+          add_buffer ("Trace -> " ^ string_of_proc0);
+          add_buffer " [";
+          add_buffer "label = \"\", style = invisible, weight = 100]";
         write_same_rank [proc0; attacker];
-        write_edge proc0 proc1 None ["weight = 100"];
+          write_edge proc0 proc1 write_edge_no_label ["weight = 100"];
         create_ginfo [proc1] attacker None 0 Point false
-
     | None, RNil(n) ->
        add_nil ginfo n
-
     | None, RRepl(n, cpn) ->
        let n_ginfo = close_prev_if_box ginfo in
        let n_plst = get_plst n_ginfo in
@@ -3990,21 +4413,18 @@ struct
              write_node x "" ["fixedsize = false"; "width = 0";
                               "height = 0"; "shape = none"];
              if cpn = 1 then
-               write_edge proc x None ["weight = 100"]
+		  write_edge proc x write_edge_no_label ["weight = 100"]
              else
-               write_edge proc x None  []) cpyl;
+		  write_edge proc x write_edge_no_label  []) cpyl;
            let n_plst' = update_plst n_plst n cpyl in
            let n_ginfo = set_prev_pnb n (set_plst n_plst' ginfo) in
            set_prev_pstyle Point n_ginfo
          end
-
-    | None, RRestr(n, _, _) | None, RInsert1(n, _) | None, RGet(n, _, _, _)
-    | None, RGet2(n, _) | None, RBegin1(n, _) | None, RNamedProcess(n, _, _) ->
-       add_in_box ginfo n state
-
-    | None, REnd(n, _)   ->
-       add_in_box_and_nil ginfo n state
-
+      | None, RRestr(n, _, _)  | None, RGet(n, _, _, _)
+      | None, RGet2(n, _, _) | None, RNamedProcess(n, _, _) ->
+          add_in_box BBlack ginfo n state
+      | None, RInsert1(n, _, b) | None, REvent1(n, _, b) ->
+          add_in_box (if b then BRed else BBlack) ginfo n state
     | None, RTest1(n, _) | None, RTest2(n, _)
     | None, RLet1(n, _, _) | None, RLet2(n, _, _)
     | None, RLetFilter1(n, _, _, _)
@@ -4012,90 +4432,92 @@ struct
        if !Param.trace_display = Param.ShortDisplay then
          ginfo
        else
-         add_in_box ginfo n state
-
-    | None,  RTest3(n, _) | None, RBegin2(n, _)  | None, RLetFilter2(n, _, _)
+            add_in_box BBlack ginfo n state
+      | None,  RTest3(n, _) | None, REvent2(n, _)  | None, RLetFilter2(n, _, _)
     | None, RInsert2(n, _) | None, ROutput2(n, _, _) ->
        if !Param.trace_display = Param.ShortDisplay then
          add_nil ginfo n
        else
          add_in_box_and_nil ginfo n state
-
-    | None, ROutput1(n, _, _) | None,  RInput(n, _, _, _)  | None, RPhase(n) ->
-       write_line_in_out_phase ginfo state
-
-
-    | None,  RIO(ninput, _, _, n, _, t) ->
-       let aux_RIO ginfo p q mess_term edge_options=
-         let n_ginfo = close_prev_if_box ginfo in
-         let (plst, attacker, _, _, _, _) = get_ginfo_params n_ginfo in
-         let (first, lst_to_join, last) =
-           get_active_n_to_m p q plst in
-         let lst_drawn =
-           align_and_write_edge lst_to_join mess_term edge_options in
-         let n_plst = append3 first lst_drawn last in
-         create_ginfo n_plst attacker None n Point false
+      | None, ROutput1(n, _, calc, t) ->
+	  write_edge_with_boxes ginfo (LocProcess(n,dummy_process))
+	    (LocAttacker(calc)) None None (write_edge_label (Some calc) t)
+	    ["arrowhead = normal"]
+      | None, RInput(n, _, _, calc, t) ->
+	  write_edge_with_boxes ginfo (LocAttacker(calc))
+	    (LocProcess(n,dummy_process)) None None (write_edge_label (Some calc) t)
+	    ["arrowhead = normal"]
+      | None, RPhase(n) ->
+	  write_edge_with_boxes ginfo (LocProcess(0, dummy_process))
+	    (LocAttacker(dummy_calc)) None None
+	    (fun () -> print_string ("Phase " ^(string_of_int n)))
+	    ["style = dotted"]
+      | None, RInput2(n, _, _, calc, t) ->
+          let n_ginfo =
+	    write_edge_with_boxes ginfo (LocAttacker(calc))
+	      (LocProcess(n,dummy_process)) None None (write_edge_label (Some calc) t)
+	      ["arrowhead = normal"]
        in
-       if (n < ninput) then
-         aux_RIO ginfo n ninput t ["arrowhead = normal"]
-       else
-         aux_RIO ginfo ninput n t ["arrowhead = normal"; "dir = back"]
-
-    | None, RIO2(ninput, tc', pat, n, tc, t) ->
+          add_nil n_ginfo n
+      | None,  RIO(ninput, _, _, n, _, calc, t, flag) ->
+	  let edge_options = "arrowhead = normal" :: (if flag then ["color = red"] else []) in
+	  begin
+	    match calc with
+	      None ->
+		write_edge_with_boxes ginfo (LocProcess(n,dummy_process))
+		  (LocProcess(ninput,dummy_process)) None None (write_edge_label None t)
+		  edge_options
+	    | Some calc' ->
+		write_edge_public ginfo n ninput (calc', t) edge_options
+	  end
+      | None, RIO2(ninput, tc', pat, n, tc, calcopt, t, flag) ->
        let n_ginfo =
-         write_step_to_dot_file ginfo (RIO(ninput, tc', pat, n, tc, t)) in
+            write_step_to_dot_file ginfo {state with comment = RIO(ninput, tc', pat, n, tc,  calcopt, t, flag)} hyp in
        add_nil n_ginfo ninput
-
     | None, RPar(n) ->
        let n_ginfo = close_prev_if_box ginfo in
        let (plst, attacker, _, _, _, _) = get_ginfo_params n_ginfo in
        create_ginfo plst attacker (Some(n, n + 1)) n Point false
     | Some(n1, n2),  RPar(n) when (n1 <= n && n <= n2) ->
        create_ginfo plst attacker (Some(n1, n2 + 1)) n Point false
-
     | Some(n1, n2), s ->
-       let print_rpar proc n =
-         add_buffer "/*RPar */\n";
-         let rec aux acc = function
-         0 ->
-           write_node proc ""  ["fixedsize = false"; "width = 0";
-                                "height = 0"; "shape = none"];
-           write_same_rank acc;
-           List.rev acc
-           | n ->
-              let n_proc = set_pstyle Point (add_nb_to_proc (n-1) proc) in
-              write_edge proc n_proc None [];
-              aux (n_proc::acc) (n - 1)
-         in
-         aux [] n
-       in
-       let proc = nth_active plst n1 in
-       let (first, _, last) = get_active_n_to_m n1 n1 plst in
-       let med = print_rpar proc (n2 - n1 + 1) in
-       let n_plst = append3 first med last in
-       let n_ginfo =
-         create_ginfo n_plst attacker None (get_pnb_from_state state) Point false in
-       write_step_to_dot_file n_ginfo s
+	  let n_ginfo = make_par ginfo n1 n2 in
+          write_step_to_dot_file n_ginfo state hyp
 
  (* write_state_to_dot_file state: write the necessary lines to display the *)
  (* trace represented by state in the open dot file. *)
-  let write_state_to_dot_file state =
+    let write_state_to_dot_file a_to_term noninterftest_to_string state =
     let rec aux ginfo state =
       if (!Param.display_init_state || (not (state.previous_state = None))) then
         match state.previous_state with
           Some s ->
             let n_ginfo = aux ginfo s in
-            write_step_to_dot_file n_ginfo state.comment
+              write_step_to_dot_file n_ginfo state state.hyp_not_matched
         | None ->
-           write_step_to_dot_file ginfo state.comment
+              write_step_to_dot_file ginfo state state.hyp_not_matched
       else
         ginfo
     in
+      abbrev_tab := [];
+      abbrev_nb := 0;
     let ginfo =
-      create_ginfo [] {pnb = []; pstate = 0; pstyle = Att} None 0 Point false in
+        create_ginfo [] {pnb = []; pstate = 0; pstyle = Point} None 0 Point false in
     let n_ginfo = aux ginfo state in
-    ignore (close_prev_if_box n_ginfo);    
-    end_dot_file();
-end
-
-(*END GRAPH *)
+      let n_ginfo =
+	match get_rparinfo n_ginfo with
+	  None -> n_ginfo
+	| Some(n1,n2) -> make_par n_ginfo n1 n2
+      in
+      print_buffer ();
+      let nn_ginfo =
+        if (not !Param.interactive_mode) then
+	  write_goal_to_dot_file a_to_term noninterftest_to_string state state.goal n_ginfo
+        else
+	  n_ginfo
+      in
+      ignore(close_prev_if_box nn_ginfo);
+      write_abbrev ();
+      if not (!abbrev_tab = []) then
+	add_buffer "Abbrev -> P__0 [style = invisible, weight =100]";
+      end_dot_file()
+  end

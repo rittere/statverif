@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -76,7 +76,7 @@ rule token = parse
      { next_line lexbuf; token lexbuf }
 | [ ' ' '\009' '\012' ] +
      { token lexbuf }
-| [ 'a'-'z' 'A'-'Z' ] (( [ 'a'-'z' 'A'-'Z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255' '\'' '0'-'9' ] )*)
+| [ 'a'-'z' 'A'-'Z' ] (( ['a'-'z' 'A'-'Z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255' '\'' '0'-'9' ] )*)
      { let s = Lexing.lexeme lexbuf in
 	 try
 	   Hashtbl.find (if !Param.typed_frontend then tkeyword_table else keyword_table) s

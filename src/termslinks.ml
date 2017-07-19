@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -78,8 +78,6 @@ let equal_tags t1 t2 =
   | Ri(p1,p1'), Ri(p2,p2') -> p1 == p2 && p1' == p2'
   | Ro(p1,p1'), Ro(p2,p2') -> p1 == p2 && p1' == p2'
   | TestComm(p1,p1'), TestComm(p2,p2') -> p1 == p2 && p1' == p2'
-  | InputSecr p1, InputSecr p2 -> p1 == p2
-  | OutputSecr p1, OutputSecr p2 -> p1 == p2
   | Elem(pl1,p1), Elem(pl2,p2) -> 
       (List.length pl1 == List.length pl2) && 
       (List.for_all2 (==) pl1 pl2) &&

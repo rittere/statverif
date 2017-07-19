@@ -4,7 +4,7 @@
  *                                                           *
  *  Bruno Blanchet, Vincent Cheval, and Marc Sylvestre       *
  *                                                           *
- *  Copyright (C) INRIA, CNRS 2000-2016                      *
+ *  Copyright (C) INRIA, CNRS 2000-2017                      *
  *                                                           *
  *************************************************************)
 
@@ -108,6 +108,13 @@ rule token = parse
          with
            Not_found ->
              IDENT (s, extent lexbuf)
+     }
+| [ '~' ] (( [ 'a'-'z' 'A'-'Z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255' '\'' '0'-'9' ] )*)
+     { if !Param.allow_tilde then
+         let s = Lexing.lexeme lexbuf in
+         IDENT (s, extent lexbuf)
+       else
+         input_error "~ not allowed." (extent lexbuf)
      }
 | '@' (( [ 'a'-'z' 'A'-'Z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255' '\'' '0'-'9' ] )*)
      { let s = Lexing.lexeme lexbuf in
