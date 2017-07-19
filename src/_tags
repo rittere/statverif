@@ -1,0 +1,4 @@
+"main.byte" or "main.native": package(str),package(unix)
+
+<*.*>: debug, annot
+
