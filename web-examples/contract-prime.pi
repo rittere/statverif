@@ -17,9 +17,7 @@ reduc check_getmsg(pk(xsk), sign(xsk, xm)) = xm.
 reduc checkpcs(xc, pk(xsk), ypk, zpk, pcs(xsk, ypk, zpk, xc)) = ok.
 reduc convertpcs(zsk, pcs(xsk, ypk, pk(zsk), xc)) = sign(xsk, xc).
 
-query attacker:xs,
-          pair(sign(skT, pair(pair(ct, pair(pk(skA), pk(skB))), sign(skA, pair(ct, pair(pk(skA), pk(skB)))))),
-               sign(skT, pair(sign(skA, ct), sign(skB, ct)))).
+query attacker:pair(sign(skT, pair(pair(ct, pair(pk(skA), pk(skB))), sign(skA, pair(ct, pair(pk(skA), pk(skB)))))), sign(skT, pair(sign(skA, ct), sign(skB, ct)))).
 
 cell s := (init, init).
 
@@ -44,15 +42,15 @@ let Abort1 =
         let ysig = projr(y) in
         let ym = check_getmsg(pk(skA), ysig) in
         if ym = yl then
-            lock ; 
+            lock(s) ; 
             read s as ys;
           let ystatus = projl(ys) in
           if ystatus = aborted then
             let ysigs = projr(ys) in
-            unlock ; out(c, ysigs)
+            unlock(s) ; out(c, ysigs)
 	  else if ystatus = init then
             s := pair(aborted, sign(skT, y));
-	    unlock;
+	    unlock(s);
             out(c, sign(skT, y)).
 
 let Resolve2 =
@@ -66,17 +64,17 @@ let Resolve2 =
     if ycontract = ct then
       let ycheck = checkpcs(ct, pk(skA), pk(skB), pk(skT), ypcs1) in
       if ycheck = ok then
-        lock;
+        lock(s);
 	read s as ys;
         let ystatus = projl(ys) in
         if ystatus = resolved2 then
           let ysigs = projr(ys) in
-	  unlock;
+	  unlock(s);
 	  out(c, ysigs)
         else if ystatus = init then
           let ysig1 = convertpcs(skT, ypcs1) in
           s := pair(resolved2, sign(skT, pair(ysig1, ysig2)));
-	  unlock; 
+	  unlock(s); 
           out(c, sign(skT, pair(ysig1, ysig2))).
 
 let Resolve1 =
@@ -90,16 +88,16 @@ let Resolve1 =
     if ycontract = ct then
       let ycheck = checkpcs(ct, pk(skB), pk(skA), pk(skT), ypcs2) in
       if ycheck = ok then
-        lock;
+        lock(s);
         read s as ys;
         let ystatus = projl(ys) in
         if ystatus = resolved1 then
           let ysigs = projr(ys) in
-	  out(c, ysigs); unlock
+	  out(c, ysigs); unlock(s)
         else if ystatus = init then
           let ysig2 = convertpcs(skT, ypcs2) in
           s := pair(resolved1, sign(skT, pair(ysig1, ysig2)));
-	  unlock;
+	  unlock(s);
           out(c, sign(skT, pair(ysig1, ysig2)))	.
 
 let C' =
@@ -107,7 +105,7 @@ let C' =
   ( ! Abort1' | ! Resolve2' | ! Resolve1' ).
 
 let Abort1' =
-  lock;
+  lock(s);
   in(c, x);
   let xcmd = projl(x) in
   if xcmd = abort then
@@ -120,10 +118,10 @@ let Abort1' =
         let ysig = projr(y) in
         let ym = check_getmsg(xpk1, ysig) in
         if ym = yl then
-          out(c, sign(skT, y)); unlock.
+          out(c, sign(skT, y)); unlock(s).
 
 let Resolve2' =
-  lock;
+  lock(s);
   in(c, x);
   let xcmd = projl(x) in
   if xcmd = resolve2 then
@@ -135,10 +133,10 @@ let Resolve2' =
       let ycheck = checkpcs(ct', xpk1, xpk2, pk(skT), ypcs1) in
       if ycheck = ok then
         let ysig1 = convertpcs(skT, ypcs1) in
-        out(c, sign(skT, pair(ysig1, ysig2))); unlock.
+        out(c, sign(skT, pair(ysig1, ysig2))); unlock(s).
 
 let Resolve1' =
-  lock;
+  lock(s);
   in(c, x);
   let xcmd = projl(x) in
   if xcmd = resolve1 then
@@ -150,7 +148,7 @@ let Resolve1' =
       let ycheck = checkpcs(ct', xpk2, xpk1, pk(skT), ypcs2) in
       if ycheck = ok then
         let ysig2 = convertpcs(skT, ypcs2) in
-        out(c, sign(skT, pair(ysig1, ysig2))); unlock.
+        out(c, sign(skT, pair(ysig1, ysig2))); unlock(s).
 
 process
     T'

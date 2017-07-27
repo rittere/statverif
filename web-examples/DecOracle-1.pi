@@ -40,7 +40,7 @@ query attacker:u,usersecret[].			(* Sanity check *)
 
 
 let Skinit =
-	lock;
+	lock(state);
   	read state as xState;
 	let xBoot = fst3(xState) in
 	let xPcr = snd3(xState) in
@@ -63,7 +63,7 @@ let Skinit =
 	let xPcr' = snd3(xState') in
 	state := tuple3(xBoot', h(xPcr',fpc), false);
 	(* out(c,s1); *)
-	unlock.
+	unlock(state).
 
 
 let Auxproc = 
@@ -75,7 +75,7 @@ let Auxproc =
 let Tpm =
 	! (	
 		(* Commands received from loc2priv *)
-		lock;
+		lock(state);
 		in(loc2priv, xArgs);
 		(* TPM_UnSeal branch *)
 		let xComName = fst2(xArgs) in
@@ -91,12 +91,12 @@ let Tpm =
 				if xPcr = xReqPCR then
 				out(loc2priv, xSecret);
 			(* out(c,s2); *)
-		unlock
+		unlock(state)
 	)
 	|
 	! (	
 		(* Commands received from loc2pub *)		
-		lock;
+		lock(state);
 	  	read state as xState;
 		let xBoot = fst3(xState) in
 		let xPcr = snd3(xState) in
@@ -113,7 +113,7 @@ let Tpm =
 				let xHash = snd2(xArgs) in			
 			  	state := tuple3(xBoot, h(xPcr, xHash), xFlag);
 				(* out(c,s3); *)
-			  	unlock
+			  	unlock(state)
 			)
 			(* TPM_UnSeal branch *)	
 			else if xComName = unseal then
@@ -127,7 +127,7 @@ let Tpm =
 			  	if xPcr = xReqPCR then
 			  	out(loc2pub, xSecret);
 				(* out(c,s4); *)
-			  	unlock
+			  	unlock(state)
 			)
 		)
 		(* TPM_Seal branch *)
@@ -138,7 +138,7 @@ let Tpm =
 		  	let xInData = trd3(xArgs) in
 		  	out(loc2pub, aenc(pk(skSrk),r,tuple3(tpmPf,xReqPCR,xInData)));
 			(* out(c,s5); *)
-		  	unlock
+		  	unlock(state)
 		)
 	  ).
 

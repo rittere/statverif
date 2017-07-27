@@ -27,7 +27,7 @@ let C =
     ( ! Abort1 | ! Resolve2 | ! Resolve1 ).
 
 let Abort1 =
-  lock;
+  lock(s);
   in(c, x);
   let xcmd = projl(x) in
   if xcmd = abort then
@@ -44,14 +44,14 @@ let Abort1 =
           let ystatus = projl(ys) in
           (if ystatus = aborted then
             let ysigs = projr(ys) in
-            out(c, ysigs); unlock
+            out(c, ysigs); unlock(s)
 	    else   
           (if ystatus = init then
             s := pair(aborted, sign(skT, y));
-            out(c, sign(skT, y)); unlock)).
+            out(c, sign(skT, y)); unlock(s))).
 
 let Resolve2 =
-  lock;
+  lock(s);
   in(c, x);
   let xcmd = projl(x) in
   if xcmd = resolve2 then
@@ -66,14 +66,14 @@ let Resolve2 =
         let ystatus = projl(ys) in
         (if ystatus = resolved2 then
           let ysigs = projr(ys) in
-          out(c, ysigs); unlock
+          out(c, ysigs); unlock(s)
 	  else (if ystatus = init then
           let ysig1 = convertpcs(skT, ypcs1) in
           s := pair(resolved2, sign(skT, pair(ysig1, ysig2)));
-          out(c, sign(skT, pair(ysig1, ysig2))); unlock)).
+          out(c, sign(skT, pair(ysig1, ysig2))); unlock(s))).
 
 let Resolve1 =
-  lock;
+  lock(s);
   in(c, x);
   let xcmd = projl(x) in
   if xcmd = resolve1 then
@@ -88,11 +88,11 @@ let Resolve1 =
         let ystatus = projl(ys) in
         (if ystatus = resolved1 then
           let ysigs = projr(ys) in
-          out(c, ysigs); unlock
+          out(c, ysigs); unlock(s)
 	  else
         (if ystatus = init then
           let ysig2 = convertpcs(skT, ypcs2) in
           s := pair(resolved1, sign(skT, pair(ysig1, ysig2)));
-          out(c, sign(skT, pair(ysig1,ysig2))); unlock)).
+          out(c, sign(skT, pair(ysig1,ysig2))); unlock(s))).
 
 process T
