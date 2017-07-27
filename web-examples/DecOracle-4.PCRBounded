@@ -1,0 +1,243 @@
+pred att/2.
+pred mess/3.
+fun aenc/3.
+fun bt/1.
+fun h/2.
+fun pk/1.
+fun senc/2.
+fun tuple2/2.
+fun tuple3/3.
+
+
+param simplifyDerivation = true.
+param redundantHypElim = true.
+param redundancyElim = best.
+param selFun = Term.
+
+
+query att:u,usersecret'4[].
+query att:u,symKey'3[].
+
+
+nounif att:*u,x.
+nounif mess:*u,*vc,vm.
+
+
+reduc
+
+
+(* Clauses corresponding to mutability of cells *)
+
+(* Clauses corresponding to the attacker's ability to apply constructors *)
+att:tuple3(xBoot,u0[],xFlag),x_1 & att:tuple3(xBoot,u0[],xFlag),x_2 & att:tuple3(xBoot,u0[],xFlag),x_3 -> att:tuple3(xBoot,u0[],xFlag),aenc(x_1,x_2,x_3); (* applying aenc *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x_1 & att:tuple3(xBoot,h(u0[],v1),xFlag),x_2 & att:tuple3(xBoot,h(u0[],v1),xFlag),x_3 -> att:tuple3(xBoot,h(u0[],v1),xFlag),aenc(x_1,x_2,x_3); (* applying aenc *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_1 & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_2 & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_3 -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),aenc(x_1,x_2,x_3); (* applying aenc *)
+att:tuple3(xBoot,u1[],xFlag),x_1 & att:tuple3(xBoot,u1[],xFlag),x_2 & att:tuple3(xBoot,u1[],xFlag),x_3 -> att:tuple3(xBoot,u1[],xFlag),aenc(x_1,x_2,x_3); (* applying aenc *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x_1 & att:tuple3(xBoot,h(u1[],v3),xFlag),x_2 & att:tuple3(xBoot,h(u1[],v3),xFlag),x_3 -> att:tuple3(xBoot,h(u1[],v3),xFlag),aenc(x_1,x_2,x_3); (* applying aenc *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_1 & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_2 & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_3 -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),aenc(x_1,x_2,x_3); (* applying aenc *)
+att:tuple3(xBoot,u0[],xFlag),x_1 & att:tuple3(xBoot,u0[],xFlag),x_2 -> att:tuple3(xBoot,u0[],xFlag),h(x_1,x_2); (* applying h *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x_1 & att:tuple3(xBoot,h(u0[],v1),xFlag),x_2 -> att:tuple3(xBoot,h(u0[],v1),xFlag),h(x_1,x_2); (* applying h *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_1 & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_2 -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),h(x_1,x_2); (* applying h *)
+att:tuple3(xBoot,u1[],xFlag),x_1 & att:tuple3(xBoot,u1[],xFlag),x_2 -> att:tuple3(xBoot,u1[],xFlag),h(x_1,x_2); (* applying h *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x_1 & att:tuple3(xBoot,h(u1[],v3),xFlag),x_2 -> att:tuple3(xBoot,h(u1[],v3),xFlag),h(x_1,x_2); (* applying h *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_1 & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_2 -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),h(x_1,x_2); (* applying h *)
+att:tuple3(xBoot,u0[],xFlag),x_1 -> att:tuple3(xBoot,u0[],xFlag),pk(x_1); (* applying pk *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x_1 -> att:tuple3(xBoot,h(u0[],v1),xFlag),pk(x_1); (* applying pk *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_1 -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),pk(x_1); (* applying pk *)
+att:tuple3(xBoot,u1[],xFlag),x_1 -> att:tuple3(xBoot,u1[],xFlag),pk(x_1); (* applying pk *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x_1 -> att:tuple3(xBoot,h(u1[],v3),xFlag),pk(x_1); (* applying pk *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_1 -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),pk(x_1); (* applying pk *)
+att:tuple3(xBoot,u0[],xFlag),x_1 & att:tuple3(xBoot,u0[],xFlag),x_2 -> att:tuple3(xBoot,u0[],xFlag),senc(x_1,x_2); (* applying senc *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x_1 & att:tuple3(xBoot,h(u0[],v1),xFlag),x_2 -> att:tuple3(xBoot,h(u0[],v1),xFlag),senc(x_1,x_2); (* applying senc *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_1 & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_2 -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),senc(x_1,x_2); (* applying senc *)
+att:tuple3(xBoot,u1[],xFlag),x_1 & att:tuple3(xBoot,u1[],xFlag),x_2 -> att:tuple3(xBoot,u1[],xFlag),senc(x_1,x_2); (* applying senc *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x_1 & att:tuple3(xBoot,h(u1[],v3),xFlag),x_2 -> att:tuple3(xBoot,h(u1[],v3),xFlag),senc(x_1,x_2); (* applying senc *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_1 & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_2 -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),senc(x_1,x_2); (* applying senc *)
+att:tuple3(xBoot,u0[],xFlag),x_1 & att:tuple3(xBoot,u0[],xFlag),x_2 -> att:tuple3(xBoot,u0[],xFlag),tuple2(x_1,x_2); (* applying tuple2 *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x_1 & att:tuple3(xBoot,h(u0[],v1),xFlag),x_2 -> att:tuple3(xBoot,h(u0[],v1),xFlag),tuple2(x_1,x_2); (* applying tuple2 *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_1 & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_2 -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),tuple2(x_1,x_2); (* applying tuple2 *)
+att:tuple3(xBoot,u1[],xFlag),x_1 & att:tuple3(xBoot,u1[],xFlag),x_2 -> att:tuple3(xBoot,u1[],xFlag),tuple2(x_1,x_2); (* applying tuple2 *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x_1 & att:tuple3(xBoot,h(u1[],v3),xFlag),x_2 -> att:tuple3(xBoot,h(u1[],v3),xFlag),tuple2(x_1,x_2); (* applying tuple2 *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_1 & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_2 -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),tuple2(x_1,x_2); (* applying tuple2 *)
+att:tuple3(xBoot,u0[],xFlag),x_1 & att:tuple3(xBoot,u0[],xFlag),x_2 & att:tuple3(xBoot,u0[],xFlag),x_3 -> att:tuple3(xBoot,u0[],xFlag),tuple3(x_1,x_2,x_3); (* applying tuple3 *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x_1 & att:tuple3(xBoot,h(u0[],v1),xFlag),x_2 & att:tuple3(xBoot,h(u0[],v1),xFlag),x_3 -> att:tuple3(xBoot,h(u0[],v1),xFlag),tuple3(x_1,x_2,x_3); (* applying tuple3 *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_1 & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_2 & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x_3 -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),tuple3(x_1,x_2,x_3); (* applying tuple3 *)
+att:tuple3(xBoot,u1[],xFlag),x_1 & att:tuple3(xBoot,u1[],xFlag),x_2 & att:tuple3(xBoot,u1[],xFlag),x_3 -> att:tuple3(xBoot,u1[],xFlag),tuple3(x_1,x_2,x_3); (* applying tuple3 *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x_1 & att:tuple3(xBoot,h(u1[],v3),xFlag),x_2 & att:tuple3(xBoot,h(u1[],v3),xFlag),x_3 -> att:tuple3(xBoot,h(u1[],v3),xFlag),tuple3(x_1,x_2,x_3); (* applying tuple3 *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_1 & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_2 & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x_3 -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),tuple3(x_1,x_2,x_3); (* applying tuple3 *)
+
+(* Clauses corresponding to the attacker's ability to apply reductions *)
+att:tuple3(xBoot,u0[],xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,u0[],xFlag),z; (* applying trd3 *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(u0[],v1),xFlag),z; (* applying trd3 *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),z; (* applying trd3 *)
+att:tuple3(xBoot,u1[],xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,u1[],xFlag),z; (* applying trd3 *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(u1[],v3),xFlag),z; (* applying trd3 *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),z; (* applying trd3 *)
+att:tuple3(xBoot,u0[],xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,u0[],xFlag),y; (* applying snd3 *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(u0[],v1),xFlag),y; (* applying snd3 *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),y; (* applying snd3 *)
+att:tuple3(xBoot,u1[],xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,u1[],xFlag),y; (* applying snd3 *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(u1[],v3),xFlag),y; (* applying snd3 *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),y; (* applying snd3 *)
+att:tuple3(xBoot,u0[],xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,u0[],xFlag),x; (* applying fst3 *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(u0[],v1),xFlag),x; (* applying fst3 *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x; (* applying fst3 *)
+att:tuple3(xBoot,u1[],xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,u1[],xFlag),x; (* applying fst3 *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(u1[],v3),xFlag),x; (* applying fst3 *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),tuple3(x,y,z) -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x; (* applying fst3 *)
+att:tuple3(xBoot,u0[],xFlag),tuple2(x,y) -> att:tuple3(xBoot,u0[],xFlag),y; (* applying snd2 *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(u0[],v1),xFlag),y; (* applying snd2 *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),y; (* applying snd2 *)
+att:tuple3(xBoot,u1[],xFlag),tuple2(x,y) -> att:tuple3(xBoot,u1[],xFlag),y; (* applying snd2 *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(u1[],v3),xFlag),y; (* applying snd2 *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),y; (* applying snd2 *)
+att:tuple3(xBoot,u0[],xFlag),tuple2(x,y) -> att:tuple3(xBoot,u0[],xFlag),x; (* applying fst2 *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(u0[],v1),xFlag),x; (* applying fst2 *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x; (* applying fst2 *)
+att:tuple3(xBoot,u1[],xFlag),tuple2(x,y) -> att:tuple3(xBoot,u1[],xFlag),x; (* applying fst2 *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(u1[],v3),xFlag),x; (* applying fst2 *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),tuple2(x,y) -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x; (* applying fst2 *)
+att:tuple3(xBoot,u0[],xFlag),x & att:tuple3(xBoot,u0[],xFlag),aenc(pk(x),y,z) -> att:tuple3(xBoot,u0[],xFlag),z; (* applying adec *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x & att:tuple3(xBoot,h(u0[],v1),xFlag),aenc(pk(x),y,z) -> att:tuple3(xBoot,h(u0[],v1),xFlag),z; (* applying adec *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),aenc(pk(x),y,z) -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),z; (* applying adec *)
+att:tuple3(xBoot,u1[],xFlag),x & att:tuple3(xBoot,u1[],xFlag),aenc(pk(x),y,z) -> att:tuple3(xBoot,u1[],xFlag),z; (* applying adec *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x & att:tuple3(xBoot,h(u1[],v3),xFlag),aenc(pk(x),y,z) -> att:tuple3(xBoot,h(u1[],v3),xFlag),z; (* applying adec *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),aenc(pk(x),y,z) -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),z; (* applying adec *)
+att:tuple3(xBoot,u0[],xFlag),x & att:tuple3(xBoot,u0[],xFlag),senc(x,y) -> att:tuple3(xBoot,u0[],xFlag),y; (* applying sdec *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),x & att:tuple3(xBoot,h(u0[],v1),xFlag),senc(x,y) -> att:tuple3(xBoot,h(u0[],v1),xFlag),y; (* applying sdec *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),x & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),senc(x,y) -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),y; (* applying sdec *)
+att:tuple3(xBoot,u1[],xFlag),x & att:tuple3(xBoot,u1[],xFlag),senc(x,y) -> att:tuple3(xBoot,u1[],xFlag),y; (* applying sdec *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),x & att:tuple3(xBoot,h(u1[],v3),xFlag),senc(x,y) -> att:tuple3(xBoot,h(u1[],v3),xFlag),y; (* applying sdec *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),x & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),senc(x,y) -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),y; (* applying sdec *)
+
+(* Clauses corresponding to the attacker's ability to use channels it knows *)
+mess:tuple3(xBoot,u0[],xFlag),vc,vm & att:tuple3(xBoot,u0[],xFlag),vc -> att:tuple3(xBoot,u0[],xFlag),vm; (* receiving *)
+mess:tuple3(xBoot,h(u0[],v1),xFlag),vc,vm & att:tuple3(xBoot,h(u0[],v1),xFlag),vc -> att:tuple3(xBoot,h(u0[],v1),xFlag),vm; (* receiving *)
+mess:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),vc,vm & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),vc -> att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),vm; (* receiving *)
+mess:tuple3(xBoot,u1[],xFlag),vc,vm & att:tuple3(xBoot,u1[],xFlag),vc -> att:tuple3(xBoot,u1[],xFlag),vm; (* receiving *)
+mess:tuple3(xBoot,h(u1[],v3),xFlag),vc,vm & att:tuple3(xBoot,h(u1[],v3),xFlag),vc -> att:tuple3(xBoot,h(u1[],v3),xFlag),vm; (* receiving *)
+mess:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),vc,vm & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),vc -> att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),vm; (* receiving *)
+att:tuple3(xBoot,u0[],xFlag),vc & att:tuple3(xBoot,u0[],xFlag),vm -> mess:tuple3(xBoot,u0[],xFlag),vc,vm; (* sending *)
+att:tuple3(xBoot,h(u0[],v1),xFlag),vc & att:tuple3(xBoot,h(u0[],v1),xFlag),vm -> mess:tuple3(xBoot,h(u0[],v1),xFlag),vc,vm; (* sending *)
+att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),vc & att:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),vm -> mess:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),vc,vm; (* sending *)
+att:tuple3(xBoot,u1[],xFlag),vc & att:tuple3(xBoot,u1[],xFlag),vm -> mess:tuple3(xBoot,u1[],xFlag),vc,vm; (* sending *)
+att:tuple3(xBoot,h(u1[],v3),xFlag),vc & att:tuple3(xBoot,h(u1[],v3),xFlag),vm -> mess:tuple3(xBoot,h(u1[],v3),xFlag),vc,vm; (* sending *)
+att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),vc & att:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),vm -> mess:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),vc,vm; (* sending *)
+
+(* Knowledge of free names *)
+att:tuple3(b0[],u1[],false[]),attch[]; (* attacker's own channel *)
+att:tuple3(b0[],u1[],false[]),attn[]; (* attacker's own nonce *)
+att:tuple3(b0[],u1[],false[]),unseal[];
+att:tuple3(b0[],u1[],false[]),seal[];
+att:tuple3(b0[],u1[],false[]),extend[];
+att:tuple3(b0[],u1[],false[]),slbD[];
+att:tuple3(b0[],u1[],false[]),fpc[];
+att:tuple3(b0[],u1[],false[]),u1[];
+att:tuple3(b0[],u1[],false[]),u0[];
+att:tuple3(b0[],u1[],false[]),loc2pub[];
+att:tuple3(b0[],u1[],false[]),c[];
+
+(* Clauses from the process *)
+mess:tuple3(b0[],u1[],false[]),c[],pk(skSrk'2[]); (* output on l.153 *)
+
+
+mess:tuple3(b0[],u1[],false[]),c[],aenc(pk(skSrk'2[]),r'5[],tuple3(tpmPf[],h(u0[],slbD[]),symKey'3[])); (* output on l.155 *)
+
+
+mess:tuple3(b0[],u1[],false[]),c[],senc(symKey'3[],usersecret'4[]); (* output on l.156 *)
+
+
+mess:tuple3(xBoot,u0[],xFlag),loc2priv[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_12,tuple3(tpmPf[],u0[],z_14))) -> mess:tuple3(xBoot,u0[],xFlag),loc2priv[],z_14; (* output on l.90 *)
+mess:tuple3(xBoot,h(u0[],v1),xFlag),loc2priv[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_12,tuple3(tpmPf[],h(u0[],v1),z_14))) -> mess:tuple3(xBoot,h(u0[],v1),xFlag),loc2priv[],z_14; (* output on l.90 *)
+mess:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),loc2priv[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_12,tuple3(tpmPf[],h(h(u0[],v1),v2),z_14))) -> mess:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),loc2priv[],z_14; (* output on l.90 *)
+mess:tuple3(xBoot,u1[],xFlag),loc2priv[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_12,tuple3(tpmPf[],u1[],z_14))) -> mess:tuple3(xBoot,u1[],xFlag),loc2priv[],z_14; (* output on l.90 *)
+mess:tuple3(xBoot,h(u1[],v3),xFlag),loc2priv[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_12,tuple3(tpmPf[],h(u1[],v3),z_14))) -> mess:tuple3(xBoot,h(u1[],v3),xFlag),loc2priv[],z_14; (* output on l.90 *)
+mess:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),loc2priv[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_12,tuple3(tpmPf[],h(h(u1[],v3),v4),z_14))) -> mess:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),loc2priv[],z_14; (* output on l.90 *)
+
+
+mess:tuple3(xBoot,u0[],false[]),loc2pub[],tuple2(extend[],y_18) & mess:tuple3(xBoot,u0[],false[]),vc20,vm20 -> mess:tuple3(xBoot,h(u0[],y_18),false[]),vc20,vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(u0[],v1),false[]),loc2pub[],tuple2(extend[],y_18) & mess:tuple3(xBoot,h(u0[],v1),false[]),vc20,vm20 -> mess:tuple3(xBoot,h(h(u0[],v1),y_18),false[]),vc20,vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(h(u0[],v1),v2),false[]),loc2pub[],tuple2(extend[],y_18) & mess:tuple3(xBoot,h(h(u0[],v1),v2),false[]),vc20,vm20 -> mess:tuple3(xBoot,h(h(h(u0[],v1),v2),y_18),false[]),vc20,vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,u1[],false[]),loc2pub[],tuple2(extend[],y_18) & mess:tuple3(xBoot,u1[],false[]),vc20,vm20 -> mess:tuple3(xBoot,h(u1[],y_18),false[]),vc20,vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(u1[],v3),false[]),loc2pub[],tuple2(extend[],y_18) & mess:tuple3(xBoot,h(u1[],v3),false[]),vc20,vm20 -> mess:tuple3(xBoot,h(h(u1[],v3),y_18),false[]),vc20,vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(h(u1[],v3),v4),false[]),loc2pub[],tuple2(extend[],y_18) & mess:tuple3(xBoot,h(h(u1[],v3),v4),false[]),vc20,vm20 -> mess:tuple3(xBoot,h(h(h(u1[],v3),v4),y_18),false[]),vc20,vm20; (* assignment on l.112 *)
+
+
+mess:tuple3(xBoot,u0[],false[]),loc2pub[],tuple2(extend[],y_18) & att:tuple3(xBoot,u0[],false[]),vm20 -> att:tuple3(xBoot,h(u0[],y_18),false[]),vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(u0[],v1),false[]),loc2pub[],tuple2(extend[],y_18) & att:tuple3(xBoot,h(u0[],v1),false[]),vm20 -> att:tuple3(xBoot,h(h(u0[],v1),y_18),false[]),vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(h(u0[],v1),v2),false[]),loc2pub[],tuple2(extend[],y_18) & att:tuple3(xBoot,h(h(u0[],v1),v2),false[]),vm20 -> att:tuple3(xBoot,h(h(h(u0[],v1),v2),y_18),false[]),vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,u1[],false[]),loc2pub[],tuple2(extend[],y_18) & att:tuple3(xBoot,u1[],false[]),vm20 -> att:tuple3(xBoot,h(u1[],y_18),false[]),vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(u1[],v3),false[]),loc2pub[],tuple2(extend[],y_18) & att:tuple3(xBoot,h(u1[],v3),false[]),vm20 -> att:tuple3(xBoot,h(h(u1[],v3),y_18),false[]),vm20; (* assignment on l.112 *)
+mess:tuple3(xBoot,h(h(u1[],v3),v4),false[]),loc2pub[],tuple2(extend[],y_18) & att:tuple3(xBoot,h(h(u1[],v3),v4),false[]),vm20 -> att:tuple3(xBoot,h(h(h(u1[],v3),v4),y_18),false[]),vm20; (* assignment on l.112 *)
+
+
+mess:tuple3(xBoot,u0[],false[]),loc2pub[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_21,tuple3(tpmPf[],u0[],z_23))) -> mess:tuple3(xBoot,u0[],false[]),loc2pub[],z_23; (* output on l.126 *)
+mess:tuple3(xBoot,h(u0[],v1),false[]),loc2pub[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_21,tuple3(tpmPf[],h(u0[],v1),z_23))) -> mess:tuple3(xBoot,h(u0[],v1),false[]),loc2pub[],z_23; (* output on l.126 *)
+mess:tuple3(xBoot,h(h(u0[],v1),v2),false[]),loc2pub[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_21,tuple3(tpmPf[],h(h(u0[],v1),v2),z_23))) -> mess:tuple3(xBoot,h(h(u0[],v1),v2),false[]),loc2pub[],z_23; (* output on l.126 *)
+mess:tuple3(xBoot,u1[],false[]),loc2pub[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_21,tuple3(tpmPf[],u1[],z_23))) -> mess:tuple3(xBoot,u1[],false[]),loc2pub[],z_23; (* output on l.126 *)
+mess:tuple3(xBoot,h(u1[],v3),false[]),loc2pub[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_21,tuple3(tpmPf[],h(u1[],v3),z_23))) -> mess:tuple3(xBoot,h(u1[],v3),false[]),loc2pub[],z_23; (* output on l.126 *)
+mess:tuple3(xBoot,h(h(u1[],v3),v4),false[]),loc2pub[],tuple2(unseal[],aenc(pk(skSrk'2[]),y_21,tuple3(tpmPf[],h(h(u1[],v3),v4),z_23))) -> mess:tuple3(xBoot,h(h(u1[],v3),v4),false[]),loc2pub[],z_23; (* output on l.126 *)
+
+
+mess:tuple3(xBoot,u0[],false[]),loc2pub[],tuple3(seal[],y_16,z_17) -> mess:tuple3(xBoot,u0[],false[]),loc2pub[],aenc(pk(skSrk'2[]),r'6[],tuple3(tpmPf[],y_16,z_17)); (* output on l.137 *)
+mess:tuple3(xBoot,h(u0[],v1),false[]),loc2pub[],tuple3(seal[],y_16,z_17) -> mess:tuple3(xBoot,h(u0[],v1),false[]),loc2pub[],aenc(pk(skSrk'2[]),r'6[],tuple3(tpmPf[],y_16,z_17)); (* output on l.137 *)
+mess:tuple3(xBoot,h(h(u0[],v1),v2),false[]),loc2pub[],tuple3(seal[],y_16,z_17) -> mess:tuple3(xBoot,h(h(u0[],v1),v2),false[]),loc2pub[],aenc(pk(skSrk'2[]),r'6[],tuple3(tpmPf[],y_16,z_17)); (* output on l.137 *)
+mess:tuple3(xBoot,u1[],false[]),loc2pub[],tuple3(seal[],y_16,z_17) -> mess:tuple3(xBoot,u1[],false[]),loc2pub[],aenc(pk(skSrk'2[]),r'6[],tuple3(tpmPf[],y_16,z_17)); (* output on l.137 *)
+mess:tuple3(xBoot,h(u1[],v3),false[]),loc2pub[],tuple3(seal[],y_16,z_17) -> mess:tuple3(xBoot,h(u1[],v3),false[]),loc2pub[],aenc(pk(skSrk'2[]),r'6[],tuple3(tpmPf[],y_16,z_17)); (* output on l.137 *)
+mess:tuple3(xBoot,h(h(u1[],v3),v4),false[]),loc2pub[],tuple3(seal[],y_16,z_17) -> mess:tuple3(xBoot,h(h(u1[],v3),v4),false[]),loc2pub[],aenc(pk(skSrk'2[]),r'6[],tuple3(tpmPf[],y_16,z_17)); (* output on l.137 *)
+
+
+mess:tuple3(b0[],u0[],false[]),vc15,vm15 -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc15,vm15; (* assignment on l.49 *)
+mess:tuple3(b0[],h(u0[],v1),false[]),vc15,vm15 -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc15,vm15; (* assignment on l.49 *)
+mess:tuple3(b0[],h(h(u0[],v1),v2),false[]),vc15,vm15 -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc15,vm15; (* assignment on l.49 *)
+mess:tuple3(b0[],u1[],false[]),vc15,vm15 -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc15,vm15; (* assignment on l.49 *)
+mess:tuple3(b0[],h(u1[],v3),false[]),vc15,vm15 -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc15,vm15; (* assignment on l.49 *)
+mess:tuple3(b0[],h(h(u1[],v3),v4),false[]),vc15,vm15 -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc15,vm15; (* assignment on l.49 *)
+
+
+att:tuple3(b0[],u0[],false[]),vm15 -> att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm15; (* assignment on l.49 *)
+att:tuple3(b0[],h(u0[],v1),false[]),vm15 -> att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm15; (* assignment on l.49 *)
+att:tuple3(b0[],h(h(u0[],v1),v2),false[]),vm15 -> att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm15; (* assignment on l.49 *)
+att:tuple3(b0[],u1[],false[]),vm15 -> att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm15; (* assignment on l.49 *)
+att:tuple3(b0[],h(u1[],v3),false[]),vm15 -> att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm15; (* assignment on l.49 *)
+att:tuple3(b0[],h(h(u1[],v3),v4),false[]),vm15 -> att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm15; (* assignment on l.49 *)
+
+
+mess:tuple3(b0[],u0[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xEncBlob -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],tuple2(unseal[],xSBlob); (* output on l.53 *)
+mess:tuple3(b0[],h(u0[],v1),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xEncBlob -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],tuple2(unseal[],xSBlob); (* output on l.53 *)
+mess:tuple3(b0[],h(h(u0[],v1),v2),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xEncBlob -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],tuple2(unseal[],xSBlob); (* output on l.53 *)
+mess:tuple3(b0[],u1[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xEncBlob -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],tuple2(unseal[],xSBlob); (* output on l.53 *)
+mess:tuple3(b0[],h(u1[],v3),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xEncBlob -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],tuple2(unseal[],xSBlob); (* output on l.53 *)
+mess:tuple3(b0[],h(h(u1[],v3),v4),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xEncBlob -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],tuple2(unseal[],xSBlob); (* output on l.53 *)
+
+
+mess:tuple3(b0[],u0[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xMessage; (* output on l.56 *)
+mess:tuple3(b0[],h(u0[],v1),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xMessage; (* output on l.56 *)
+mess:tuple3(b0[],h(h(u0[],v1),v2),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xMessage; (* output on l.56 *)
+mess:tuple3(b0[],u1[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xMessage; (* output on l.56 *)
+mess:tuple3(b0[],h(u1[],v3),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xMessage; (* output on l.56 *)
+mess:tuple3(b0[],h(h(u1[],v3),v4),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey -> mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xMessage; (* output on l.56 *)
+
+
+mess:tuple3(b0[],u0[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc25,vm25 -> mess:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vc25,vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(u0[],v1),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc25,vm25 -> mess:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vc25,vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(h(u0[],v1),v2),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc25,vm25 -> mess:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vc25,vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],u1[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc25,vm25 -> mess:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vc25,vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(u1[],v3),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc25,vm25 -> mess:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vc25,vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(h(u1[],v3),v4),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vc25,vm25 -> mess:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vc25,vm25; (* assignment on l.62 *)
+
+
+mess:tuple3(b0[],u0[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm25 -> att:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(u0[],v1),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm25 -> att:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(h(u0[],v1),v2),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm25 -> att:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],u1[],false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm25 -> att:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(u1[],v3),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm25 -> att:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vm25; (* assignment on l.62 *)
+mess:tuple3(b0[],h(h(u1[],v3),v4),false[]),vc8,vm8 & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],xSBlob & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),c[],senc(xSymKey,xMessage) & mess:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),loc2priv[],xSymKey & att:tuple3(bt(b0[]),h(u0[],slbD[]),true[]),vm25 -> att:tuple3(bt(b0[]),h(h(u0[],slbD[]),fpc[]),false[]),vm25; (* assignment on l.62 *)
+
+
+mess:tuple3(xBoot,u0[],xFlag),c[],senc(symKey'3[],xMessage) -> mess:tuple3(b0[],u1[],false[]),c[],xMessage; (* output on l.70 *)
+mess:tuple3(xBoot,h(u0[],v1),xFlag),c[],senc(symKey'3[],xMessage) -> mess:tuple3(b0[],u1[],false[]),c[],xMessage; (* output on l.70 *)
+mess:tuple3(xBoot,h(h(u0[],v1),v2),xFlag),c[],senc(symKey'3[],xMessage) -> mess:tuple3(b0[],u1[],false[]),c[],xMessage; (* output on l.70 *)
+mess:tuple3(xBoot,u1[],xFlag),c[],senc(symKey'3[],xMessage) -> mess:tuple3(b0[],u1[],false[]),c[],xMessage; (* output on l.70 *)
+mess:tuple3(xBoot,h(u1[],v3),xFlag),c[],senc(symKey'3[],xMessage) -> mess:tuple3(b0[],u1[],false[]),c[],xMessage; (* output on l.70 *)
+mess:tuple3(xBoot,h(h(u1[],v3),v4),xFlag),c[],senc(symKey'3[],xMessage) -> mess:tuple3(b0[],u1[],false[]),c[],xMessage. (* output on l.70 *)

@@ -1,0 +1,98 @@
+free c. free init. free ok. free abort. free resolve1. free resolve2. free aborted.
+free resolved. free resolved2. free wtn_contract. free skA. free skB.
+
+fun ok/0.
+fun pair/2.
+fun pk/1.
+fun sign/2.
+fun pcs/4.
+
+reduc projl(pair(xl, xr)) = xl.
+reduc projr(pair(xl, xr)) = xr.
+
+reduc check_getmsg(pk(xsk), sign(xsk, xm)) = xm.
+
+reduc checkpcs(xc, pk(xsk), ypk, zpk, pcs(xsk, ypk, zpk, xc)) = ok.
+reduc convertpcs(zsk, pcs(xsk, ypk, pk(zsk), xc)) = sign(xsk, xc).
+
+cell s := pair(init, init).
+
+
+let T =
+  new skT; (out(c, pk(skT)) | ! C).
+  
+let C =
+  new ct;
+    out(c, ct); in(c, xpk1); in(c, xpk2);
+    ( ! Abort1 | ! Resolve2 | ! Resolve1 ).
+
+let Abort1 =
+  lock;
+  in(c, x);
+  let xcmd = projl(x) in
+  if xcmd = abort then
+    let y = projr(x) in
+    let yl = projl(y) in
+    let ycontract = projl(yl) in
+    let yparties = projr(yl) in
+    if yparties = pair(xpk1, xpk2) then
+      if ycontract = ct then
+        let ysig = projr(y) in
+        let ym = check_getmsg(xpk1, ysig) in
+        if ym = yl then
+          read s as ys;
+          let ystatus = projl(ys) in
+          (if ystatus = aborted then
+            let ysigs = projr(ys) in
+            out(c, ysigs); unlock
+	    else   
+          (if ystatus = init then
+            s := pair(aborted, sign(skT, y));
+            out(c, sign(skT, y)); unlock)).
+
+let Resolve2 =
+  lock;
+  in(c, x);
+  let xcmd = projl(x) in
+  if xcmd = resolve2 then
+    let y = projr(x) in
+    let ypcs1 = projl(y) in
+    let ysig2 = projr(y) in
+    let ycontract = check_getmsg(xpk2, ysig2) in
+    if ycontract = ct then
+      let ycheck = checkpcs(ct, xpk1, xpk2, pk(skT), ypcs1) in
+      if ycheck = ok then
+        read s as ys;
+        let ystatus = projl(ys) in
+        (if ystatus = resolved2 then
+          let ysigs = projr(ys) in
+          out(c, ysigs); unlock
+	  else (if ystatus = init then
+          let ysig1 = convertpcs(skT, ypcs1) in
+          s := pair(resolved2, sign(skT, pair(ysig1, ysig2)));
+          out(c, sign(skT, pair(ysig1, ysig2))); unlock)).
+
+let Resolve1 =
+  lock;
+  in(c, x);
+  let xcmd = projl(x) in
+  if xcmd = resolve1 then
+    let y = projr(x) in
+    let ysig1 = projl(y) in
+    let ypcs2 = projr(y) in
+    let ycontract = check_getmsg(xpk1, ysig1) in
+    if ycontract = ct then
+      let ycheck = checkpcs(ct, xpk2, xpk1, pk(skT), ypcs2) in
+      if ycheck = ok then
+        read s as ys;
+        let ystatus = projl(ys) in
+        (if ystatus = resolved1 then
+          let ysigs = projr(ys) in
+          out(c, ysigs); unlock
+	  else
+        (if ystatus = init then
+          let ysig2 = convertpcs(skT, ypcs2) in
+          s := pair(resolved1, sign(skT, pair(ysig1, ysig2)));
+          out(c, sign(skT, pair(ysig1,ysig2))); unlock)).
+
+process T

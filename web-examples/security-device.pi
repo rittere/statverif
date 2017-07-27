@@ -1,0 +1,35 @@
+fun pair/2.
+fun aenc/3.
+fun pk/1.
+free left.
+free right.
+free init.
+free c.
+
+cell s := init.
+
+reduc projl(pair(xleft, xright)) = xleft.
+reduc projr(pair(xleft, xright)) = xright.
+reduc adec(u, aenc(pk(u), v, w)) = w.
+
+query
+    attacker:vs,pair(sl,sr).
+
+let device  =
+    out(c, pk(k)) ;
+    ( ! lock ; in(c, x); read s as y;
+        if y = init then
+            (if x = left then s := x; unlock
+            else if x = right then s := x; unlock)  ) |
+    ( ! lock; in(c, x); read s as y; let z = adec(k, x) in
+        let zl = projl(z) in
+        let zr = projr(z) in
+        (if y = left then out(c, zl); unlock else
+         (if y = right then out(c, zr); unlock))).
+
+let user =
+    new sl; new sr; new r;
+        out(c, aenc(pk(k), r, pair(sl,sr))).
+
+process
+    new k;  (device | ! user)
