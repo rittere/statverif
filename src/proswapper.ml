@@ -156,8 +156,40 @@ let rec split_process bv bn = function
       let (p',s) = split_process bv bn p in
       (Barrier(n,tag,p',occ), s)
   | AnnBarrier _ ->
-      Parsing_helper.internal_error "Annotated barriers should not occur in split"
-
+     Parsing_helper.internal_error "Annotated barriers should not occur in split"
+  | Lock(cells,p,occ) ->
+     let (p', ps) = split_process bv bn p in
+     Lock(cells,p',occ), ps
+  | Unlock(cells,p,occ) ->
+     let (p', ps) = split_process bv bn p in
+     Unlock(cells,p',occ), ps
+  | Open(cells,p,occ) ->
+     let (p', ps) = split_process bv bn p in
+     Open(cells,p',occ), ps
+  | ReadAs(items,p,occ) ->
+     let (cells,pats) = List.split items in
+     let rec processPatterns = (function
+         [] -> [], []
+       | pat::pats ->
+	  let (pat1,pats1) = split_pattern bv bn pat in
+	  let (pats2, pats2') = processPatterns pats in
+	  pat1::pats2, pats1@pats2') in
+     let pats1, pats2 = processPatterns pats in
+     let bv' = List.fold_left get_pat_var bv pats in
+     let (p1',p1s) = split_process bv' bn p in
+     ReadAs(List.combine cells pats1,p1',occ), pats2@p1s
+  | Assign(items,p,occ) ->
+     let (cells,terms) = List.split items in
+     let rec processTerms = (function
+         [] -> [],[]
+       | t::ts ->
+	  let t1, t1s = split_term bv bn t in
+	  let t2s, t2s' = processTerms ts in
+	  t1::t2s, t1s@t2s') in
+     let t1s, t1s' = processTerms terms in
+     let (p1',p1s) = split_process bv bn p in
+     Assign(List.combine cells t1s,p1',occ), t1s'@p1s
+       
 (* [check_no_barrier p] stops with an error message
    when [p] contains a barrier. *)
 
@@ -177,6 +209,8 @@ let rec check_no_barrier = function
       Parsing_helper.user_error "Sync should not occur under replication.\n"
   | AnnBarrier _ ->
       Parsing_helper.internal_error "Annotated barriers should not occur in check_no_barrier"
+
+  | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_) | ReadAs(_,p,_) | Assign(_,p,_) -> check_no_barrier p
 	
 (* [annotate p] transforms all barriers in [p] into
    annotated barriers, and returns the resulting process.
@@ -226,7 +260,12 @@ let rec annotate = function
       AnnBarrier(n,tag',a,c,s,annotate p',occ)
   | AnnBarrier _ ->
       Parsing_helper.internal_error "Annotated barriers should not occur in annotate"
-	
+  | Lock(cells,p,occ) -> Lock(cells, annotate p, occ)
+  | Unlock(cells,p,occ) -> Unlock(cells, annotate p, occ)
+  | Open(cells,p,occ) -> Open(cells, annotate p, occ)
+  | ReadAs(items,p,occ) -> ReadAs(items, annotate p, occ)
+  | Assign(items,p,occ) -> Assign(items, annotate p, occ)
+
 
 (* Compilation function: [compile p], where [p] is a process with
    annotated barriers, returns the implementation of [p] using inputs
@@ -262,6 +301,12 @@ let rec compile = function
       Output(FunApp(a,[]), FunApp(tuple_symb, tl), pin, Terms.new_occurrence())
   | Barrier _ ->
       Parsing_helper.internal_error "Unannotated barriers should not occur in compile"
+  | Lock(cells,p,occ) -> Lock(cells, compile p, occ)
+  | Unlock(cells,p,occ) -> Unlock(cells, compile p, occ)
+  | Open(cells,p,occ) -> Open(cells, compile p, occ)
+  | ReadAs(items,p,occ) -> ReadAs(items, compile p, occ)
+  | Assign(items,p,occ) -> Assign(items, compile p, occ)
+
 
 (* Barrier function: [barriers [] p] returns the list of all barriers in [p].
    The barriers must be annotated, and the image of the substitution inside
@@ -281,6 +326,7 @@ let rec barriers accu = function
       Parsing_helper.internal_error "All barriers should have been annotated"
   | AnnBarrier(n,tag,a,c,subst,p,_) ->
       barriers ((n,tag,a,c,List.map fst subst,p)::accu) p
+  | Lock(_,p,_) | Unlock(_,p,_) | Open(_,p,_) | ReadAs(_,p,_) | Assign(_,p,_) -> barriers accu p
 
 (* Comparison function for sorting of barriers.
    We sort according to the barrier number. *)
@@ -775,6 +821,11 @@ let rec annotate = function
       AnnBarrier(n,tag',a,c,[],annotate p,occ)
   | AnnBarrier _ ->
       Parsing_helper.internal_error "Annotated barriers should not occur in annotate"
+  | Lock(cells,p,occ) -> Lock(cells, annotate p, occ)
+  | Unlock(cells,p,occ) -> Unlock(cells, annotate p, occ)
+  | Open(cells,p,occ) -> Open(cells, annotate p, occ)
+  | ReadAs(items,p,occ) -> ReadAs(items, annotate p, occ)
+  | Assign(items,p,occ) -> Assign(items, annotate p, occ)
 
 (* [synch next_f barriers] calls [next_f p] for each process [p] in [chi(barriers)]
    for the function [chi] defined in the paper. *)
