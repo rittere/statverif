@@ -1,0 +1,63 @@
+
+
+set verboseCompleted = true.
+
+type key.
+fun sign(bitstring, key): bitstring.
+reduc forall x:bitstring, k: key; checksign(sign(x, k), k) = x.
+reduc forall x:bitstring, k: key; getmsg(sign(x, k)) = x.
+
+channel ch.
+
+free K: key [private].
+free L: key [private].
+free zero: bitstring [private].
+
+event gate_open(bitstring,bitstring).
+event gate_debit(bitstring).
+event card_permit(bitstring).
+event card_add(bitstring).
+
+query x:bitstring,y:bitstring; inj-event(card_permit(x)) ==> inj-event(card_add(x)).
+(*query x:bitstring,y:bitstring; inj-event(gate_open(x,y)) ==> inj-event(gate_debit(x)).*)
+(*query x:bitstring,y:bitstring; inj-event(card_add(x)) ==> inj-event(gate_debit(x)).*)
+(*query x:bitstring,y:bitstring; inj-event(gate_open(x,y)) ==> inj-event(card_permit(x,y)).*)
+
+cell s : bitstring := (zero, zero).
+
+let gate_open = !
+    new n: bitstring;
+    out(ch, n);
+    in(ch, z : bitstring);
+    let (x:bitstring, =n) = checksign(z, K) in
+    event gate_open(x, n).
+let gate_debit = !
+    in(ch, x_m : bitstring);
+    event gate_debit(x_m);
+    out(ch, sign(x_m, L)).
+
+let card_permit = !
+    lock s;
+    read s as (s_1: bitstring, s_2: bitstring);
+    if s_2 <> zero then
+       event card_permit(s_2);
+       s := (s_1, zero)
+    else if s_1 <> zero then
+       event card_permit(s_1);
+       s := (zero, zero).
+let card_add = !
+    lock s;
+    new m: bitstring;
+    out(ch, m);
+    in(ch, x_s: bitstring);
+    if x_s = sign(m, L) then
+    read s as (s_1: bitstring, s_2: bitstring);
+    if s_1 = zero then
+       event card_add(m);
+       s := (m, zero)
+    else if s_2 = zero then
+       event card_add(m);
+       s := (s_1, m).
+
+process gate_debit | gate_open | card_permit | card_add
+

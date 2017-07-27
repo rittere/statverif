@@ -1,0 +1,29 @@
+(* param debugOutput = true. *)
+param verboseClauses = explained.
+
+free c.
+
+free initKey.
+private free beep.
+fun enc/2.
+reduc dec(enc(m,k),k)= m.
+
+cell s:=initKey.
+query ev:beep_received(kk) ==> ev:stored_key(kk).
+
+let A =
+! new k;
+out (c, k);
+s := k;
+event stored_key(k);
+out (c, enc(beep, k)).
+
+let B =
+! read s as k;
+in (c, xm);
+if dec(xm, k) = beep then
+out(c, xm);
+event beep_received(k).
+
+process A | B
+

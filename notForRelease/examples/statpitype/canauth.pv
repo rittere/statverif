@@ -1,0 +1,39 @@
+type Key.
+type Cnt.
+type Msg.
+
+channel ch.
+
+fun hmac(Key, bitstring): bitstring.
+reduc forall sk:Key, m:bitstring; checksign(sk, hmac(sk, m)) = m.
+
+free z: Cnt.
+cell c1: Cnt := z.
+cell c2: Cnt := z.
+cell c3: Cnt := z.
+
+event send(Msg).
+event accept(Msg).
+
+(* query attacker(new sk). *)
+query x: Msg; inj-event(accept(x)) ==> event(send(x)).
+
+let M(sk: Key) =
+    new msg: Msg;
+    new cnt: Cnt;
+    event send(msg);
+    out(ch, (msg, cnt, hmac(sk, (msg,cnt)))).
+
+let P(sk: Key) =
+    in(ch, (x_msg : Msg, x_cnt : Cnt, x_sig : bitstring));
+    lock c1,c2,c3;
+    read c1,c2,c3 as xc1:Cnt, xc2:Cnt, xc3:Cnt;
+    if x_cnt <> xc1 && x_cnt <> xc2 && x_cnt <> xc3 then
+      let (= x_msg, = x_cnt) = checksign(sk, x_sig) in (
+      	if xc1 = z then c1 := x_cnt; event accept(x_msg); unlock c1,c2,c3
+	else if xc2 = z then c2 := x_cnt; event accept(x_msg); unlock c1,c2,c3
+	else if xc3 = z then c3 := x_cnt; event accept(x_msg); unlock c1,c2,c3
+      ).
+
+process new sk : Key;
+        (!M(sk)) | (!P(sk))

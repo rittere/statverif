@@ -1,0 +1,68 @@
+% Created 2016-11-01 Tue 18:53
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{fixltx2e}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{textcomp}
+\usepackage{marvosym}
+\usepackage{wasysym}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\tolerance=1000
+\author{Eike Ritter}
+\date{\today}
+\title{transitivity}
+\hypersetup{
+  pdfkeywords={},
+  pdfsubject={},
+  pdfcreator={Emacs 24.5.1 (Org mode 8.2.10)}}
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+\section{Resolution steps for transitivity}
+\label{sec-1}
+
+
+\begin{itemize}
+\item Introduce also reachability predicate $reach(x)$
+\item Have sets ${\cal R}$ and ${\cal S}$
+\item initially, \$\{\cal R\} is equal to $\{reach(s)\}$, where $s$ is the
+initial state
+\item every rule with conclusion $\reach (M)$ is added to ${\cal R}$,
+every rule with conclusion $\seq(x, y)$ is added to ${\cal S}$
+\item Add transitivity rule $seq(x, y) \wedge seq (y, z) \supset seq(y,
+  z)$
+\item Add also rules $reach(x) \wedge seq(x, y) \supset reach(y)$ and
+$reach(x) \supset seq(x, x)$.
+\item All three rules  are applied in stages:
+\begin{itemize}
+\item Let $R = H \supset C$ be the rule obtained by composition
+with this particular rule.
+\item Let ${\cal C}$ be the set of rules obtained by
+composing $R$ with all rules in ${\cal R}$.
+\item Let ${\cal C}'$ be the set of all rules obtained by composing all
+rule in ${\cal C}$ with all rules in ${\cal S}$ if the original
+rule has seq(x, y)\$ as a hypothesis.
+\item The set ${\cal C}'$ is the result of the composition with the
+transitivity rule.
+\end{itemize}
+\end{itemize}
+
+\section{Modification to translation}
+\label{sec-2}
+
+To be done.
+
+\def\sem\#1\{[\hspace{-0.05cm}[#1]\hspace{-0.05cm}]\}
+$\sem{4}$
+% Emacs 24.5.1 (Org mode 8.2.10)
+\end{document}
