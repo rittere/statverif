@@ -5,7 +5,7 @@
 *.annot
 *~
 TAGS
-proverif
+statverif
 proveriftotex
 src/TODO
 src/code.txt
@@ -20,4 +20,6 @@ src/pitlexer.ml
 src/pitlexertotex.ml
 src/pitparser.ml
 src/pitparser.mli
-
+src/_build
+src/main.byte
+src/main.native
