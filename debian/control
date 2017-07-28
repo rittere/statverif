@@ -1,0 +1,16 @@
+Source: statverif
+Section: Science
+Priority: optional
+Maintainer: Eike Ritter <E.Ritter@cs.bham.ac.uk>
+Build-Depends: debhelper (>=9), ocaml-findlib
+Standards-Version: 3.9.6
+Homepage: https://markryan.eu/research/statverif
+Vcs-Git: git://github.com/rittere/statverif.git
+Vcs-Browser: https://github.com/rittere/statverif.git
+
+Package: statverif
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends},ocaml(>=3.0)
+Description: Automated security protocol verifier
+ Automated security protocol verifier
+
