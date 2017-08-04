@@ -702,12 +702,12 @@ tprocess:
 	    input_error "Sync numbers should be positive integers" (parse_extent());
           Param.has_barrier := true;
 	  PBarrier($2, Some $4, $6) }
-|       LOCK neidentseq opttprocess
-        { PLock($2, $3) }
-|       UNLOCK neidentseq opttprocess
-        { PUnlock($2, $3) }
-|       OPEN neidentseq opttprocess
-        { POpen($2, $3) }
+|       LOCK LPAREN neidentseq RPAREN opttprocess
+        { PLock($3, $5) }
+|       UNLOCK LPAREN neidentseq RPAREN opttprocess
+        { PUnlock($3, $5) }
+|       OPEN LPAREN neidentseq RPAREN opttprocess
+        { POpen($3, $5) }
 |       READ neidentseq AS nepatternseq opttprocess
         { PReadAs(List.combine $2 $4, $5) }
 |       neidentseq ASSIGN neptermseq opttprocess

@@ -1,0 +1,165 @@
+type key.
+
+free c:channel.
+free loc2pub:channel.
+free u0,u1:bitstring.
+free fpc:bitstring.	
+free slbA:bitstring.
+free extend,seal,unseal:bitstring.
+
+
+free allow_login:bitstring[private].
+free tpmPf:bitstring[private].
+free loc2priv:channel[private].
+free b0:bitstring[private].
+free s1,s2,s3,s4,s5:bitstring[private].
+free pwd:bitstring[private].
+
+fun pk(key):key.
+fun h(bitstring,bitstring):bitstring.
+fun md5(bitstring):bitstring.
+fun senc(key,bitstring):bitstring.
+fun aenc(key,bitstring,bitstring):bitstring.
+fun bt(bitstring):bitstring[private].
+
+
+reduc forall x:key,y:bitstring; sdec(x,senc(x,y)) = y.
+reduc forall x:key, y:bitstring, z:bitstring; adec(x,aenc(pk(x),y,z))	= z.
+
+
+cell state := (b0,u1,false).
+
+query attacker(pwd).
+query attacker(allow_login).		(* Sanity check *)
+(* query att:u,s1[]. *)			(* Sanity check *)
+(* query att:u,s2[]. *)			(* Sanity check *)
+(* query att:u,s3[]. *)			(* Sanity check *)
+(* query att:u,s4[]. *)			(* Sanity check *)
+(* query att:u,s5[]. *)			(* Sanity check *)
+
+
+let Client(pwd:bitstring,skSlb:key) = 
+	new r:bitstring;
+	in(c,xNonce:bitstring);
+	let xCipher = aenc(pk(skSlb),r,(pwd,xNonce)) in
+	out(c,xCipher).
+
+
+let Server(pwd:bitstring,salt:bitstring) =
+	in(c,xHash:bitstring);
+	if xHash = md5((salt,pwd)) then
+	(* Sanity Check *)
+	out(c,allow_login).
+
+
+let Skinit =
+	lock(state);
+  	read state as (xBoot:bitstring, xPcr:bitstring, xFlag:bool);
+	if xFlag = false then
+	if xBoot = b0 then
+	state := (bt(b0), h(u0,slbA), true);
+
+	(* PAL operation starts *)
+	in(c,xCipher:bitstring);
+	in(c,xSalt:bitstring);
+	in(c,xSdata:bitstring);
+	in(c,xNonce:bitstring);
+	out(loc2priv, (unseal, xSdata));
+	in(loc2priv, xsk_Slb:key);
+	let xTemp = adec(xsk_Slb,xCipher) in
+	let (xPwd:bitstring, xNonce':bitstring) = xTemp in
+	if xNonce = xNonce' then
+	let hash = md5((xSalt,xPwd)) in
+	out(c, hash);
+	(* PAL operation ends *)
+
+	read state as (xBoot':bitstring, xPcr':bitstring,xFlag':bool);
+	state := (xBoot', h(xPcr',fpc), false);
+	(* out(c,s1); *)
+	unlock(state).
+	
+
+let Auxproc(skSlb:key) = 
+	in(c,xCipher:bitstring);
+	in(c,xSalt:bitstring);
+	in(c,xNonce:bitstring);
+	let (xPwd:bitstring,xNonce':bitstring) = adec(skSlb,xCipher) in
+	if xNonce = xNonce' then
+	let hash = md5((xSalt,xPwd)) in
+	out(c, hash).
+
+
+let Tpm(skSrk:key) =
+	! (	
+		(* Commands received from loc2priv *)
+		lock(state);
+		in(loc2priv, (xComName:bitstring,xSBlob:bitstring));
+		(* TPM_UnSeal branch *)
+		if xComName = unseal then
+			let (xTpmPf:bitstring,xReqPCR:bitstring,xSecret:bitstring) = adec(skSrk, xSBlob) in
+			if xTpmPf = tpmPf then
+				read state as (xBoot:bitstring,xPcr:bitstring,xFlag:bitstring);
+				if xPcr = xReqPCR then
+				out(loc2priv, xSecret);
+			(* out(c,s2); *)
+		unlock(state)
+	)
+	|
+	! (	
+		(* Commands received from loc2pub *)		
+		lock(state);
+	  	read state as (xBoot:bitstring,xPcr:bitstring,xFlag:bool);
+		if xFlag = false then
+		new r:bitstring;
+		in(loc2pub, xArgs:bitstring);
+		(* TPM_Extend & TPM_UnSeal branches *)
+		let (xComName:bitstring,xArg2:bitstring) = xArgs in
+		(
+			(* TPM_Extend branch *)	
+			if xComName = extend then	
+			(
+			  	state := (xBoot, h(xPcr, xArg2), xFlag);
+				(* out(c,s3); *)
+			  	unlock(state)
+			)
+			(* TPM_UnSeal branch *)	
+			else if xComName = unseal then
+			(
+			  	let (xTpmPf:bitstring,xReqPCR:bitstring,xSecret:bitstring) = adec(skSrk, xArg2) in
+			  	if xTpmPf = tpmPf then
+			  	if xPcr = xReqPCR then
+			  	out(loc2pub, xSecret);
+				(* out(c,s4); *)
+			  	unlock(state)
+			)
+		)
+		(* TPM_Seal branch *)
+		else let (xComName:bitstring,xReqPCR:bitstring,xInData:bitstring) = xArgs in
+		(	
+			if xComName = seal then
+		  	out(loc2pub, aenc(pk(skSrk),r,(tpmPf,xReqPCR,xInData)));
+			(* out(c,s5); *)
+		  	unlock(state)
+		)
+	  ).
+
+
+process
+	(
+		(* The platform state include (boot,pcr17,flag) *)
+		(
+			(* private part of SRK *)
+			new skSrk:key;
+			out(c, pk(skSrk));
+			(* asymmetric key pair shared between the client and server *)
+			new skSlb:key;
+			out(c, pk(skSlb));
+			(* the password of the SSH client *)
+			new salt:bitstring;
+			out(c, salt);
+			new r:bitstring;
+			let sData = aenc(pk(skSrk),r,(tpmPf,h(u0,slbA),skSlb)) in
+			out(c, sData);
+			( Tpm(skSrk) | !Skinit | !Client(pwd,skSlb) | !Server(pwd,salt) | !Auxproc(skSlb) )
+		)
+	)

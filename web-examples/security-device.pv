@@ -1,0 +1,37 @@
+type key.
+
+free left:bitstring.
+free right:bitstring.
+free init:bitstring.
+free c:channel.
+free sl:bitstring[private].
+free sr:bitstring[private].
+
+fun pk(key):key.
+fun aenc(key,bitstring,bitstring):bitstring.
+
+reduc forall x:key, y:bitstring, z:bitstring; adec(x,aenc(pk(x),y,z))	= z.
+
+
+cell s := init.
+
+
+query
+    attacker((sl,sr)).
+
+let device(k:key)  =
+    out(c, pk(k)) ;
+    ( ! lock(s) ; in(c, x:bitstring); read s as y;
+        if y = init then
+            (if x = left then s := x; unlock(s)
+            else if x = right then s := x; unlock(s))  ) |
+    ( ! lock(s); in(c, x:bitstring); read s as y; let (zl:bitstring,zr:bitstring) = adec(k, x) in
+        (if y = left then out(c, zl); unlock(s) else
+         (if y = right then out(c, zr); unlock(s)))).
+
+let user(k:key,sl:bitstring,sr:bitstring) =
+    new r:bitstring;
+        out(c, aenc(pk(k), r, (sl,sr))).
+
+process
+    new k:key;  (device(k) | user(k,sl,sr) | ! (new sl:bitstring; new sr:bitstring; user(k,sl,sr)))

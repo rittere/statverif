@@ -2048,9 +2048,7 @@ let display_step_low n =
     end
 
 let display_attacker_fact = function
-  Pred({p_info = [Attacker(n,_)]}, args) ->
-     let phi, [v] = Lists.head_tail args 1 in
-
+  Pred({p_info = [Attacker(n,_)]}, [phi;v]) ->
       WithLinks.term v;
       if n > 0 then 
 	print_string (" in phase " ^ (string_of_int n))

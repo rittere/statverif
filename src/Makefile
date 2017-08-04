@@ -1,3 +1,4 @@
+prefix=/usr
 
 all:
 	ocamlbuild -use-ocamlfind main.native
@@ -6,6 +7,7 @@ all:
 clean:
 	ocamlbuild -clean
 
-install: _build/main.native _build/statveriftotex.native
-	install -m 755 _build/main.native /usr/local/bin/statverif
-	install -m 755 _build/statveriftotex.native /usr/local/bin/statveriftotex
+install: all
+	mkdir -p $(DESTDIR)$(prefix)/bin
+	install -m 755 _build/main.native $(DESTDIR)$(prefix)/bin/statverif
+	install -m 755 _build/statveriftotex.native $(DESTDIR)$(prefix)/bin/statveriftotex

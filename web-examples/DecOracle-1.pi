@@ -30,8 +30,8 @@ reduc snd3(tuple3(x,y,z)) = y.
 reduc trd3(tuple3(x,y,z)) = z.
 
 
-query attacker:u,symKey[].
-query attacker:u,usersecret[].			(* Sanity check *)
+query attacker:symKey[].
+query attacker:usersecret[].			(* Sanity check *)
 (* query att:u,s1[]. *)			(* Sanity check *)
 (* query att:u,s2[]. *)			(* Sanity check *)
 (* query att:u,s3[]. *)			(* Sanity check *)

@@ -1,6 +1,25 @@
 This file summarizes the most important changes between versions
 of the cryptographic protocol verifier.
 
+Version 1.97
+
+- In the display of traces, showed the recipe used by the adversary
+compute the terms he sends; minor revision of messages.
+- In the graphical display of traces, 
+  * explained why the trace is an attack.
+  * introduced abbreviations when the label on an edge is too long.
+  * added syntactic colors to the keywords and the name of the processes.
+  * added line numbers referring to the process.
+- Syntactic coloring in the long trace display.
+- Fixed display of attacks against observational equivalence that
+come from pattern-matchings in inputs.
+- Fixed bug that could lead to an infinite loop in
+the unification that precedes trace reconstruction.
+- Fixed bug that could lead to an internal error
+due to bad types in pattern matching.
+- Fixed a bug when the goal is a communication on a private channel 
+  (trivial attacks were not found).
+
 Version 1.96
 
 - Graphical display of attacks
@@ -73,7 +92,7 @@ fails, it is still passed to the process. When "or fail" is absent
 and the argument fails, the process stops (as in version 1.90).
 - Fixed internal error when using the construct new a[x,y...]:t
 inside letfun
-- Fixed internal error in process simplification, when a process 
+- Fixed internal error in process simplification, when a process
 macro that defines a fresh name is expanded several times.
 
 Version 1.90
@@ -86,19 +105,19 @@ a name should have, using the construct new a[x,y,...]:t
 with options [convergent] or [linear]. This extension allows one
 to bypass the termination test for equations corresponding to a
 convergent rewrite system: ProVerif continues with a warning when
-the termination test fails for equations marked [convergent]. 
+the termination test fails for equations marked [convergent].
 - Modified the semantics of boolean operators && and ||: when the result
 is known from the first argument, the second argument is supposed not
 to be evaluated, so the conjunction or disjunction succeeds in this case
 even if the second argument fails.
-- Fixed serious bug that could yield incorrect result with 
+- Fixed serious bug that could yield incorrect result with
 "set ignoreTypes = false".
 - Fixed bug in display of an error message in the verification of
 the implementability of predicates
 - Fixed bug with "set movenew = true" and queries "new a[x = ...]":
 when x was defined above "new a" and also under "new a" and movenew
 lead to moving "new a" under the second definition of x, the wrong
-occurrence of x was used in the query. 
+occurrence of x was used in the query.
 
 Version 1.89
 
@@ -113,7 +132,7 @@ stack overflow.
 
 Version 1.88pl1
 
-- Changed priorities in the parser, so that (! P1 | ! P2) is 
+- Changed priorities in the parser, so that (! P1 | ! P2) is
 interpreted as ((! P1) | (! P2)) and not as (! (P1 | ! P2)).
 - Fixed bug that could lead to an internal error when a query, a not, or
 a nounif declaration refers to a bound name that is never generated.
@@ -126,7 +145,7 @@ before displaying them.
 
 Version 1.87beta6
 
-- Fixed several bugs that lead to internal errors instead of 
+- Fixed several bugs that lead to internal errors instead of
 displaying a proper error message.
 - Elimination of redundant hypotheses now considers blocking predicates
 like events.
@@ -134,13 +153,13 @@ like events.
 Summary of changes between version 1.86pl4 and version 1.87beta5:
 
 - Typed and untyped pi calculus front-ends:
-  Extended definition of destructors, by Vincent Cheval. 
+  Extended definition of destructors, by Vincent Cheval.
   Now, destructors must be deterministic.
 - Typed pi calculus front-end:
    - Extension of the class of observational equivalences that can be proved,
-   by encoding more operations into terms. Automatic transformation of 
+   by encoding more operations into terms. Automatic transformation of
    processes to benefit from this extension, by Vincent Cheval.
-   - Query "equivalence P1 P2" to prove the observational equivalence between 
+   - Query "equivalence P1 P2" to prove the observational equivalence between
    two processes P1 and P2, by Vincent Cheval.
    - Functions marked "typeConverter" are now automatically marked "data" as
    well.
@@ -172,10 +191,10 @@ Summary of changes between version 1.86pl4 and version 1.87beta5:
    - Fixed bug with nested "letfun" with local variables (there was some
    mixing between these variables)
    - Fixed bug: choice was ignored when it occurred only in patterns.
-   - Fixed bug: "else" branches could not be omitted in "if" and 
+   - Fixed bug: "else" branches could not be omitted in "if" and
    "let...suchthat" terms.
-- Improved the proof of equivalences in case "if M then P else Q" 
-with Q = 0: the case in which M fails and the case in which M succeeds 
+- Improved the proof of equivalences in case "if M then P else Q"
+with Q = 0: the case in which M fails and the case in which M succeeds
 and is false cannot be distinguished by the adversary.
 - The term "let pat = M in M'" has changed meaning: when M or the
 pattern-matching fails, its value is fail, instead of stopping the
@@ -187,7 +206,7 @@ that event).
 (Use pattern matching followed by a test to encode that.)
 - Optimized elimination of redundant hypotheses
 
-Details of the changes in the beta releases: 
+Details of the changes in the beta releases:
 
 * Version 1.87beta5
 
@@ -199,9 +218,9 @@ Details of the changes in the beta releases:
 - New destructors in the untyped front-end
 - Simplified the test that destructors are deterministic
 - Optimized elimination of redundant hypotheses
-- When proving equivalences, the arguments of names are now 
+- When proving equivalences, the arguments of names are now
 choice[.,.] instead of pairs.
-- Fixed soundness bugs with choice and with noninterf in case of 
+- Fixed soundness bugs with choice and with noninterf in case of
 inputs with pattern-matching
 - Fixed bug in the generation of Horn clauses for trace properties
 (some branches were cut too quickly)
@@ -232,18 +251,18 @@ rules of destructors, when the new destructors of ProVerif 1.87beta
 were combined with equational theories. (This bug was quickly patched
 in version 1.87beta2.)
 - Fixed bug in which a non-deterministic destructor was not detected as such.
-- With respect to ProVerif version 1.86, the term "let pat = M in M'" has 
-changed meaning: when M or the pattern-matching fails, its value is fail, 
+- With respect to ProVerif version 1.86, the term "let pat = M in M'" has
+changed meaning: when M or the pattern-matching fails, its value is fail,
 instead of stopping the whole process.
 
 * Version 1.87beta2 (not a public release; restricted to the typed
 front-end)
 
-- Re-allow proofs of trace properties, noninterf, weaksecr, 
+- Re-allow proofs of trace properties, noninterf, weaksecr,
 updated to the new destructors of ProVerif 1.87beta
 - Added an "else" branch to the "get" construct
-- Improved the proof of equivalences in case "if M then P else Q" 
-with Q = 0: the case in which M fails and the case in which M succeeds 
+- Improved the proof of equivalences in case "if M then P else Q"
+with Q = 0: the case in which M fails and the case in which M succeeds
 and is false cannot be distinguished by the adversary.
 - Fixed bug in attack reconstruction: f(...fail...) was left as it is
 instead of reducing it to fail, when f is a constructor.
@@ -271,12 +290,12 @@ were combined with equational theories
 * Version 1.87beta (restricted to the typed front-end and to proofs of
 equivalences with choice)
 
-- Extended definition of destructors, by Vincent Cheval. 
+- Extended definition of destructors, by Vincent Cheval.
 Now, destructors must be deterministic.
 - Extension of the class of observational equivalences that can be proved,
-by encoding more operations into terms. Automatic transformation of 
+by encoding more operations into terms. Automatic transformation of
 processes to benefit from this extension, by Vincent Cheval.
-- Query "equivalence P1 P2" to prove the observational equivalence between 
+- Query "equivalence P1 P2" to prove the observational equivalence between
 two processes P1 and P2, by Vincent Cheval.
 - Functions marked "typeConverter" are now automatically marked "data" as
 well.
@@ -307,7 +326,7 @@ Version 1.86pl2
 
 Version 1.86pl1
 
-- Fixed minor display bug (missing parenthesis in display of outputs 
+- Fixed minor display bug (missing parenthesis in display of outputs
 on private channels)
 - Fixed bug in the proof of non-blocking predicates in queries
 
@@ -328,7 +347,7 @@ omit trailing 0, reuse initial variable name when possible, ...
 
 Version 1.84pl2
 
-- fixed bug in the generation of clauses for observational 
+- fixed bug in the generation of clauses for observational
 equivalence (choice)
 
 Version 1.84pl1
@@ -356,7 +375,7 @@ to reconstruct attacks against injective correspondences.
 
 Version 1.82
 
-- fixed bug in the compromise of session keys (free names were missing 
+- fixed bug in the compromise of session keys (free names were missing
   in the terms that are allowed to build compromised terms).
 - fixed two bugs in trace reconstruction (one in the presence of choice,
   one in the presence of phases).
@@ -364,7 +383,7 @@ Version 1.82
 - fixed bugs in proveriftotex (use LaTeX macros when special TeX characters
   appear in the ProVerif file to convert; some ProVerif constructs were
   not handled due to an outdated lexer file).
-- typed front-end: for CryptoVerif compatibility, 
+- typed front-end: for CryptoVerif compatibility,
    - added a def/expand macro mechanism
    - added -lib command-line option
    - added tables, in particular useful for tables of keys
@@ -387,20 +406,20 @@ by the extension of the file:
     .horntype for the typed Horn clauses front-end
 In all other cases, the untyped Horn clauses front-end. Case is not
 significant in file extensions.
-- typed front-end: 
-   - type "bool" and constants "true" and "false" now declared by default; 
-   - "not" allowed as an ordinary function; 
-   - bound names of the process must be preceded by "new" when they are 
+- typed front-end:
+   - type "bool" and constants "true" and "false" now declared by default;
+   - "not" allowed as an ordinary function;
+   - bound names of the process must be preceded by "new" when they are
      used in queries, for more clarity;
    - "if", "let", "new" now allowed in terms (by expanding them into processes).
-   - declarations "param", "proba", "proof" allowed (but ignored) for 
+   - declarations "param", "proba", "proof" allowed (but ignored) for
      compatibility with CryptoVerif
-   - for type declarations, options between brackets allowed (but ignored) for 
+   - for type declarations, options between brackets allowed (but ignored) for
      compatibility with CryptoVerif
    - ! i <= N allowed for compatibility with CryptoVerif.
    - yield allowed as a synonym of 0 for compatibility with CryptoVerif
    - declarations "letfun f(x1:t1, ..., xn:tn) = M"
-   - declaration "channel c1,...,cn." as a synonym for 
+   - declaration "channel c1,...,cn." as a synonym for
      "free c1,...,cn:channel." for compatibility with CryptoVerif.
 
 Version 1.80 (not a public release)
@@ -410,7 +429,7 @@ Version 1.80 (not a public release)
 - do not display the generated clauses by default (but a command-line
 option "-test" and a setting "param verboseClauses = explained" display them)
 - removed setting "param channels = names"
-- allow injective events to occur several times (but only in different 
+- allow injective events to occur several times (but only in different
 branches of tests)
 - fixed bug in the verification that a rewrite system is confluent
 
@@ -455,12 +474,12 @@ Version 1.14
 
 - fixed some bugs.
 - removed "param allVarsInNames = ...", replaced with an automatic mechanism
-- improved naming of variables in clauses, so that they use process variable 
+- improved naming of variables in clauses, so that they use process variable
   names more often.
 - extended "nounif" instructions.
 - removed limitation to 10 phases.
 - added optimization "refTransAtt" for reflexive and transitive predicates
-  whose arguments are known by the attacker (by Avik Chaudhuri and 
+  whose arguments are known by the attacker (by Avik Chaudhuri and
   Bruno Blanchet).
 
 Version 1.13
@@ -479,8 +498,8 @@ Version 1.11
 - verification of observational equivalence of processes that differ
   only by the terms they use
 - reconstruction of an execution trace that corresponds to an attack
-- generalization of the optimizations 
-  pred p/n decompData (see rules F1 & ... & Fn <-> F and F1 & ... & Fn <=> F), 
+- generalization of the optimizations
+  pred p/n decompData (see rules F1 & ... & Fn <-> F and F1 & ... & Fn <=> F),
   pred p/n elimVar (see elimtrue F),
   and, for the pi-calculus front-end, not F.
 - reworked treatment of equations
