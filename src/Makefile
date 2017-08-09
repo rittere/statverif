@@ -1,4 +1,4 @@
-prefix=/usr
+prefix=/usr/local
 
 all:
 	ocamlbuild -use-ocamlfind main.native
