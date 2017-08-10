@@ -17,7 +17,7 @@ Automated Security Protocol Verifier
 %build
 make
 %install
-%make_install
+make prefix=%{buildroot}%{_prefix} install
 %files
 %{_bindir}/*
 
