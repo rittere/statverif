@@ -1,0 +1,64 @@
+set verboseRules = true.
+set verboseClauses = explained.
+set debugOutput = true.
+
+type key.
+
+fun sign(key,bitstring):bitstring.
+fun pk(key):key.
+
+free c:channel.
+
+event balance_sent(channel).
+event authenticated(channel).
+
+free init_ch:channel[private].
+
+reduc forall k:key,m:bitstring; checksign(pk(k),sign(k,m)) = m.
+
+query ch:channel ; event(balance_sent(ch)) ==> event(authenticated(ch)).
+
+cell state_ch:channel.
+cell state_ch_authenticated := false.
+
+let SendBalance(balance:bitstring) =
+   read state_ch,state_ch_authenticated as ch,ch_authenticated;
+   if ch_authenticated then
+       event balance_sent(ch);
+       out(c, balance).
+
+let ReceiveNewChannel =
+   in(c, xch:channel);
+   state_ch,state_ch_authenticated := xch,false.
+
+let Signer(k:key) =
+    new ch:channel;
+    out (c, ch);
+    in(ch,n:bitstring);
+    out(ch,sign(k,n)).
+
+let Authenticator(pkSignKey:key) =
+    lock(state_ch,state_ch_authenticated);
+    read state_ch,state_ch_authenticated as ch,ch_authenticated;
+    if ch_authenticated = false then
+    (new n:bitstring;
+    out (ch,n);
+    in(ch,xs:bitstring);
+    if checksign(pkSignKey,xs) = n then
+         state_ch:= ch;
+         state_ch_authenticated := true;
+	 event authenticated(ch);
+	 unlock(state_ch,state_ch_authenticated)
+    else unlock(state_ch,state_ch_authenticated))
+    else unlock(state_ch,state_ch_authenticated).
+
+
+process
+  new balance:bitstring;
+  new k:key;
+  out (c, pk(k));
+  (!(SendBalance(balance)) | !ReceiveNewChannel | !Signer(k) | !Authenticator(pk(k)))
+       
+    
+
+
