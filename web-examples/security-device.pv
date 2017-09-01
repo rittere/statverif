@@ -1,3 +1,9 @@
+(*  Example file for StatVerif version 1.97.
+    Available from https://sec.cs.bham.ac.uk/StatVerif 
+    August 2017 *)
+
+(* A simple security device *)
+
 type key.
 
 free left:bitstring.

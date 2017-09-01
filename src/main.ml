@@ -316,7 +316,11 @@ let interface_for_merging_process p =
   
   if !simpl_process_list <> []
   then interface_general_merg !simpl_process_list
-  else Printf.printf "No simplified process found\n"  
+  else Printf.printf "No simplified process found\n"
+
+let show_version () =
+  Printf.printf "StatVerif 1.97. Cryptographic protocol verifier by Eike Ritter and Mark Ryan. Based on ProVerif\n";
+  exit 0
 
 (*********************************************
                Analyser
@@ -324,11 +328,9 @@ let interface_for_merging_process p =
     
 let first_file = ref true
 
-
-
 let anal_file s =
   if not (!first_file) then
-    Parsing_helper.user_error "Error: You can analyze a single ProVerif file for each run of ProVerif.\nPlease rerun ProVerif with your second file.\n";
+    Parsing_helper.user_error "Error: You can analyze a single StatVerif file for each run of StatVerif.\nPlease rerun ProVerif with your second file.\n";
   first_file := false;
   try
     let in_front_end =
@@ -879,8 +881,8 @@ let _ =
 	Param.html_output := true;
 	Param.html_dir := s;
 	if !Param.tulafale == 0 then
-          Param.verbose_explain_clauses := Param.ExplainedClauses), 
-        "\t\t\tHTML display"
+          Param.verbose_explain_clauses := Param.ExplainedClauses), "\t\t\tHTML display";
+      "-v", Arg.Unit show_version, "Show version information"
     ]
-    anal_file "Proverif. Cryptographic protocol verifier, by Bruno Blanchet, Vincent Cheval, and Marc Sylvestre";
+    anal_file "StatVerif 1.97. Cryptographic protocol verifier by Eike Ritter and Mark Ryan. Based on ProVerif";
   if !gc then Gc.print_stat stdout

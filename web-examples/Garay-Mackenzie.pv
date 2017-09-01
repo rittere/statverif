@@ -1,3 +1,7 @@
+(* Example file for StatVerif version 1.97. 
+   Available from https://sec.cs.bham.ac.uk/StatVerif 
+   August 2017 *)
+
 (* Two-party instance of the Garay and Mackenzie contract signing protocol. *)
 
  set verboseClauses = explained. 
@@ -54,8 +58,7 @@ reduc forall Contract:bitstring, Secret_Key_X:key, Public_Key_Y:key, Public_Key_
         = OK.
 
 (* Convert a private contract signature to a signature. *)
-reduc forall Secret_Key_X: key, Public_Key_Y:key, Secret_Key_Z:key, Contract:bitstring; Convert_PCS (Secret_Key_Z,  (* BUG: Secret key !! *)
-                   PCS (Secret_Key_X,
+reduc forall Secret_Key_X: key, Public_Key_Y:key, Secret_Key_Z:key, Contract:bitstring; Convert_PCS (Secret_Key_Z,                    PCS (Secret_Key_X,
                         Public_Key_Y,
                         Public_Key (Secret_Key_Z),
                         Contract))
@@ -163,16 +166,9 @@ let Stateless_Abort_1_Process(Bogus_Contract:bitstring, Public_Key_1:key, Public
           = ( Contract, Parties )
         then
           lock (Trusted_Party_State);
-(*        read Trusted_Party_State as              *)   (* BUG: removed the state from *)
-(*          ( Current_State, Current_Signatures ); *)   (*      the stateless process. *)
-(*        if Current_State = Aborted then          *)   (* NOTE: lock and unkock kept  *)
-(*          unlock (Trusted_Party_State);          *)   (*       as in the paper.      *)
-(*          out (Internet, Current_Signatures)     *)
-(*        else if Current_State = Init then        *)
             let TP_Signature = Sign (Trusted_Party_Secret_Key,
                                   ( ( Contract, Parties ),
                                     Signature )) in
-(*          Trusted_Party_State := ( Aborted, TP_Signature ); *)   (* BUG: idem. *)
             unlock (Trusted_Party_State);
             out (Internet, TP_Signature) .
 
@@ -189,15 +185,9 @@ let Stateless_Resolve_2_Process(Bogus_Contract:bitstring, Public_Key_1:key, Publ
                   PCS_1) = OK
     then
       lock (Trusted_Party_State);
-(*    read Trusted_Party_State as ( Current_Status, Current_Signatures ); *)
-(*    if Current_Status = Resolved_2 then                                 *)
-(*      unlock (Trusted_Party_State);                                     *)
-(*      out (Internet, Current_Signatures)                                *)
-(*    else if Current_Status = Init then                                  *)
         let Signature_1 = Convert_PCS (Trusted_Party_Secret_Key, PCS_1) in
         let TP_Signature = Sign (Trusted_Party_Secret_Key,
                               ( Signature_1, Signature_2 )) in
-(*      Trusted_Party_State := ( Resolved_2, TP_Signature ); *)
         unlock (Trusted_Party_State);
         out (Internet, TP_Signature) .
 
@@ -244,7 +234,6 @@ let Stateless_Trusted_Party =
 let Trusted_Party =
   (* Contract for which the security properties will
      be verified. *)
-  (* new Witnessing_Contract;  --  BUG : multiply defined    *)
 
   out (Internet, Witnessing_Contract);
   let Public_Key_1 = Public_Key (Secret_Key_1) in
@@ -257,5 +246,5 @@ let T' =
   out (Internet, Public_Key (Trusted_Party_Secret_Key));
   Trusted_Party | ! Stateless_Trusted_Party .
 
-process (* Trusted_Party  --  BUG ! should be T' instead. *)
+process (* Trusted_Party *)
         T'

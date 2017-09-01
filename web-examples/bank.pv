@@ -1,3 +1,9 @@
+(* Example file for StatVerif version 1.97.
+   Available from https://sec.cs.bham.ac.uk/StatVerif 
+   August 2017 *)
+
+(* A simple banking app. *)
+
 type key.
 
 fun sign(key,bitstring):bitstring.
