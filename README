@@ -8,18 +8,21 @@ of cryptographic protocols.
 
 INSTALL
 
+* from packages
+
 To run this software, you need Objective Caml version 3.00 or
 higher. For installation instructions see
-http://ocaml.org/docs/install.html. 
+http://ocaml.org/docs/install.html.
 
+Binary packages are provided for Ubuntu 16.04 and Fedora 26. StatVerif
+is also available via opam as package statverif. 
 
-The installation of graphviz is required if you want to have a drawing
-of graphs representing attacks that ProVerif found. It can be downloaded from
-	http://graphviz.org
+* from source code
 
-Furthermore, on Mac OS X, you need to install XCode if you do not
+On Mac OS X, you need to install XCode if you do not
 already have it. It can be downloaded from
 	https://developer.apple.com/xcode/
+
 
 * under Unix / Mac
 
@@ -36,21 +39,12 @@ sudo make install
 
 This will create a binary called statverif and place it in /usr/local/bin.
 
-* under Windows 
+* under Windows
 
-*TODO* needs to be adapted.
+The best way to run statverif under Windows is to use the package
+provided in opam. 
 
 
-Uncompress the archives proverif1.97.tar.gz and proverifdoc1.97.tar.gz
-using Winzip, in the directory of your choice. This will create a
-subdirectory named proverif1.97. Open a DOS window, cd into the
-proverif1.97 directory and run the build .BAT file:
-
-	build
-
-The system can run under Windows, but it is not very Windows-friendly:
-you have to use the command line to run the programs. Improving the interface
-is on the to-do list...
 
 USAGE
 
@@ -67,7 +61,7 @@ Examples of protocol descriptions can be found in the webexamples subdirectory.
 To run these examples, use 
         statverif <filename>
 	
-The program proveriftotex takes as input a protocol description
+The program statveriftotex takes as input a protocol description
 and converts it into a LaTeX file. This is useful for including
 protocols in research papers.
 
