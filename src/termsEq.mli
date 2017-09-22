@@ -55,6 +55,7 @@ val close_term_list_eq : (term list -> unit) -> term list -> unit
 val close_fact_eq : (fact -> unit) -> fact -> unit
 val close_fact_list_eq : (fact list -> unit) -> fact list -> unit
 val close_rule_eq : (reduction -> unit) -> reduction -> unit
+val close_rule_hyp_eq : (reduction -> unit) -> reduction -> unit
 
 (* Close terms by rewrite rules of constructors and destructors. *)
 val close_term_destr_eq : (term * term) list -> ((term * term) list -> term -> unit) -> term -> unit

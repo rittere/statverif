@@ -37,69 +37,78 @@ val bi_term_to_term : term * term -> term
 val term_to_term : term -> term
 
 type cl = CFun | CName | CVar | CPred | CType | CExplain | CKeyword | CConn | CProcess
-module LangHtml :
-sig
-val proverifurl : string ref
-val openfile : string -> string -> unit
-val close : unit -> unit
-end
 
-(** Main module to display traces. The display functions write on a buffer "buff" *)
-(** inhereted from LangGviz (an internal module). *)
-(** The functions "openfile" and "closefile" respectively open and close a file. *)
-(** The function write_state_to_dot_file write a state in a good dot's format in *)
-(** the open dot file. The function "create_pdf_trace" defined in reduction_interact *)
-(** uses this function to create and display the pdf trace associated to the *)
-(** open dot file *)
-module AttGraph :
+module type LangSig =
+  sig
+    val indentstring : string
+    val print_string : string -> unit
+    val display_occ : int -> unit
+    val display_occ_ref : int -> unit
+    val display_clause_link : int -> unit
+    val display_step_link : int -> unit
+    val start_cl : cl -> unit
+    val end_cl : cl -> unit
+    val convert_funname : string -> string
+    val and_connective : unit -> string
+    val or_connective : unit -> string
+    val impl_connective : string
+    val red_connective : string
+    val before_connective : string
+    val diff_connective : string
+    val equal_connective : string
+    val eq1_connective : string
+    val eq2_connective : string
+    val hline : string
+    val start_numbered_list : unit -> unit
+    val end_numbered_list : unit -> unit
+    val start_list : unit -> unit
+    val end_list : unit -> unit
+    val clause_item : int -> unit
+    val history_item : int -> unit
+    val basic_item : unit -> unit
+    val wrap_if_necessary : unit -> unit
+    val newline : unit -> unit
+  end
+
+module type LangDispSig =
 sig
-  val close : unit -> unit
-  val openfile : string -> unit
-  val write_state_to_dot_file :
-    ('a -> term) -> ('a Pitypes.noninterf_test -> string) -> 'a Pitypes.reduc_state -> unit
-  val display_term2 :  term -> unit
+  val print_string : string -> unit
+  val newline : unit -> unit
+  val print_line : string -> unit
+
+  val display_occ : int -> unit
+  val display_keyword : string -> unit
+  val varname : binder -> string
+  val display_list : ('a -> unit) -> string -> 'a list -> unit
+  val display_item_list : ('a -> unit) -> 'a list -> unit
+  val display_term : term -> unit
+  val display_term_list : term list -> unit
+  val display_fact : fact -> unit
+  val display_fact_format : fact_format -> unit
+  val display_constra : constraints list -> unit
+  val display_constra_list : constraints list list -> unit
+  val display_rule_nonewline : reduction -> unit
+  val display_rule : reduction -> unit
+  val display_inside_query : fact list -> constraints list list -> fact list -> fact list -> unit
+  val display_inside_query_success : constraints list list -> unit
+  val display_initial_clauses : reduction list -> unit
+  val display_eq : term * term -> unit
+  val display_red : funsymb -> (term list * term * (term * term) list) list -> unit
+
+  val display_term2 : term -> unit
+  val display_pattern : pattern -> unit
+  val display_fact2 : fact -> unit
   val display_process : string -> process -> unit
-  (** write the content of buff in the open dot file, clear the buffer, raise Failure otherwise *)
-  (** val print_buffer : unit -> unit TO DELETE *)
-end
+  val display_process_occ : string -> process -> unit
+  val display_corresp_query : Pitypes.realquery -> unit
+  val display_corresp_putbegin_query : Pitypes.query -> unit
+  val display_eq_query : Pitypes.eq_query -> unit
 
-module Html :
-sig
-val print_string : string -> unit
-val newline : unit -> unit
-val print_line : string -> unit
-
-val display_occ : int -> unit
-val display_keyword : string -> unit
-val varname : binder -> string
-val display_list : ('a -> unit) -> string -> 'a list -> unit
-val display_item_list : ('a -> unit) -> 'a list -> unit
-val display_term : term -> unit
-val display_term_list : term list -> unit
-val display_fact : fact -> unit
-val display_fact_format : fact_format -> unit
-val display_constra : constraints list -> unit
-val display_constra_list : constraints list list -> unit
-val display_rule_nonewline : reduction -> unit
-val display_rule : reduction -> unit
-val display_initial_clauses : reduction list -> unit
-val display_eq : term * term -> unit
-val display_red : funsymb -> (term list * term * (term * term) list) list -> unit
-
-val display_term2 : term -> unit
-val display_pattern : pattern -> unit
-val display_fact2 : fact -> unit
-val display_process : string -> process -> unit
-val display_process_occ : string -> process -> unit
-val display_corresp_query : Pitypes.realquery -> unit
-val display_corresp_putbegin_query : Pitypes.query -> unit
-val display_eq_query : Pitypes.eq_query -> unit
-
-val display_function_name : funsymb -> unit
-val display_phase : predicate -> unit
+  val display_function_name : funsymb -> unit
+  val display_phase : predicate -> unit
 
 
-module WithLinks :
+  module WithLinks :
   sig
     val term : term -> unit
     val term_list : term list -> unit
@@ -120,74 +129,38 @@ val display_labeled_trace :
 val display_goal :
   ('a -> term) ->
   ('a Pitypes.noninterf_test -> string) ->
-  'a Pitypes.goal_t -> (Types.term option * Types.fact) list -> unit
+  'a Pitypes.reduc_state -> unit
 end
+
+module LangDisp : functor (Lang : LangSig) -> LangDispSig
+
+    
+module LangHtml :
+sig
+  val proverifurl : string ref
+  val openfile : string -> string -> unit
+  val close : unit -> unit
+end
+
+(* Display HTML *)
+module Html : LangDispSig
 
 (* Display text on standard output *)
-
-module Text : 
-sig
-val print_string : string -> unit
-val newline : unit -> unit
-val print_line : string -> unit
-
-val display_occ : int -> unit
-val display_keyword : string -> unit
-val varname : binder -> string
-val display_list : ('a -> unit) -> string -> 'a list -> unit
-val display_item_list : ('a -> unit) -> 'a list -> unit
-val display_term : term -> unit
-val display_term_list : term list -> unit
-val display_fact : fact -> unit
-val display_fact_format : fact_format -> unit
-val display_constra : constraints list -> unit
-val display_constra_list : constraints list list -> unit
-val display_rule_nonewline : reduction -> unit
-val display_rule : reduction -> unit
-val display_initial_clauses : reduction list -> unit
-val display_eq : term * term -> unit
-val display_red : funsymb -> (term list * term * (term * term) list) list -> unit
-
-val display_term2 : term -> unit
-val display_pattern : pattern -> unit
-val display_fact2 : fact -> unit
-val display_process : string -> process -> unit
-val display_process_occ : string -> process -> unit
-val display_corresp_query : Pitypes.realquery -> unit
-val display_corresp_putbegin_query : Pitypes.query -> unit
-val display_eq_query : Pitypes.eq_query -> unit
-
-val display_function_name : funsymb -> unit
-val display_phase : predicate -> unit
-
-
-module WithLinks :
-  sig
-    val term : term -> unit
-    val term_list : term list -> unit
-    val fact : fact -> unit
-    val constra : constraints list -> unit
-    val constra_list : constraints list list -> unit
-    val concl : bool -> fact -> hypspec list -> unit
-  end
-
-val display_history_tree : string -> fact_tree -> unit
-val explain_history_tree : fact_tree -> unit
-val display_abbrev_table : (term * term) list -> unit
-
-val display_reduc_state :
-  ('a -> term) -> bool -> 'a Pitypes.reduc_state -> int
-val display_labeled_trace :
-      'a Pitypes.reduc_state -> unit
-val display_goal :
-   ('a -> term) ->
-   ('a Pitypes.noninterf_test -> string) ->
-   'a Pitypes.goal_t -> (Types.term option * Types.fact) list -> unit
-end
+module Text : LangDispSig
 
 (* Display either HTML or text depending on the settings *)
-
 module Def :
 sig
-val print_line : string -> unit
+  val print_line : string -> unit
+end
+
+(** Main module to display traces. *)
+(** [write_state_to_dot_file fname a_to_term noninterf_test_to_string state] *)
+(** writes the state [state] in .dot format in the file [fname]. *)
+(** The function "create_pdf_trace" defined in reduction_helper *)
+(** uses this function to create and display the pdf trace *)
+module AttGraph :
+sig
+  val write_state_to_dot_file :
+    string -> ('a -> term) -> ('a Pitypes.noninterf_test -> string) -> 'a Pitypes.reduc_state -> unit
 end

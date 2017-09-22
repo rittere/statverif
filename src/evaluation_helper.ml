@@ -31,6 +31,9 @@ open Terms
 open Reduction_helper
 
 
+let debug_print s = ()
+  (* print_endline s *)
+
 let rec term_evaluation = function
     Var v ->
     begin
@@ -138,11 +141,11 @@ let rec match_pattern p t =
 
 (* Decompose tuples *)
 
-let rec decompose_term ((calcul, t) as pair) =
+let rec decompose_term ((recipe, t) as pair) =
   match t with
     FunApp({f_cat = Tuple } as f,l) ->
       let projs = get_all_projection_fun f in
-      decompose_list (List.map2 (fun fi ti -> FunApp(fi, [calcul]), ti) projs l)
+      decompose_list (List.map2 (fun fi ti -> FunApp(fi, [recipe]), ti) projs l)
   | t -> [pair]
 
 and decompose_list = function
@@ -222,9 +225,9 @@ let update_term_list oldpub public tc_list =
 
 let rec add_public_and_close state l (* l contains a list of recipe and the corresponding term *)=
   let queue = ref l in
-  let rec remove_from_att_rules public ((calcul, t) as pair) = function
+  let rec remove_from_att_rules public ((recipe, t) as pair) = function
       [] -> []
-    | (p, hyp_terms, (calc_concl, concl_term))::attacker_rules ->
+    | (p, hyp_terms, (recipe_concl, concl_term))::attacker_rules ->
       let attacker_rules' = remove_from_att_rules public pair attacker_rules in
       if getphase p < state.current_phase then attacker_rules' else
 	let hyp_terms' =
@@ -233,7 +236,7 @@ let rec add_public_and_close state l (* l contains a list of recipe and the corr
 	  | (c0,t0)::l0 ->
 	    if equal_terms_modulo t0 t then
 	      begin
-		link c0 (TLink calcul);
+		link c0 (TLink recipe);
 		remove_first_in_public public l0
 	      end
 	    else
@@ -241,12 +244,12 @@ let rec add_public_and_close state l (* l contains a list of recipe and the corr
 	in
 	if (hyp_terms' = []) && (getphase p = state.current_phase) then
 	  begin
-            queue := (decompose_term (Terms.copy_term4 calc_concl, concl_term)) @ (!queue);
+            queue := (decompose_term (Terms.copy_term4 recipe_concl, concl_term)) @ (!queue);
 	    attacker_rules'
 	  end
 	else
           (* Keep the rule, removing hypotheses that are already in *)
-	  (p, hyp_terms', (calc_concl, concl_term)) :: attacker_rules'
+	  (p, hyp_terms', (recipe_concl, concl_term)) :: attacker_rules'
   in
   let rec do_close state =
     match !queue with
@@ -263,26 +266,26 @@ let rec add_public_and_close state l (* l contains a list of recipe and the corr
   in
   do_close state
 
-let rec add_public_with_calc state (calcul, t) =
+let rec add_public_with_recipe state (recipe, t) =
   match t with
     FunApp({ f_cat = Tuple } as f, l) ->
     let projs = get_all_projection_fun f in
-    add_public_list state (List.map2 (fun fi ti -> (FunApp(fi, [calcul]), ti)) projs l)
-  | t -> add_public_and_close state [(calcul, t)]
+    add_public_list state (List.map2 (fun fi ti -> (FunApp(fi, [recipe]), ti)) projs l)
+  | t -> add_public_and_close state [(recipe, t)]
 
 and add_public_list state = function
     [] -> state
-  | (a::l) -> add_public_list (add_public_with_calc state a) l
+  | (a::l) -> add_public_list (add_public_with_recipe state a) l
 
 let reclose_public state =
   add_public_list { state with public = [] } state.public
 
 let add_public state t =
-  let new_calcul = new_var "~M" (get_term_type t) in
-  let l = decompose_term_rev (new_calcul, t) in
+  let new_recipe = new_var "~M" (get_term_type t) in
+  let l = decompose_term_rev (new_recipe, t) in
   let l' = List.map (fun (b,t) -> (Var b, t)) l in
   let state' = add_public_and_close state l' in
-  (Terms.copy_term4 (Var new_calcul), state')
+  (Terms.copy_term4 (Var new_recipe), state')
 
 let rec extract_phase n = function
     [] -> []

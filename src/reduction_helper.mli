@@ -112,6 +112,9 @@ val reduction_check_several_patterns : Pitypes.term_occ -> bool
 
 val check_delayed_names : Pitypes.query -> Pitypes.query
 
+val collect_constraints : fact_tree -> constraints list list
+val close_constraints : constraints list list -> unit
+    
 val create_pdf_trace : ('a -> term) -> ('a Pitypes.noninterf_test -> string) -> string -> 'a Pitypes.reduc_state -> int
 
 

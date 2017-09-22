@@ -25,25 +25,27 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
 *)
+open Types
 
-val add_not : Types.fact -> unit
-val add_elimtrue : int * Types.fact -> unit
-val add_equiv : Types.fact list * Types.fact * int -> unit
+val add_not : fact -> unit
+val add_elimtrue : int * fact -> unit
+val add_equiv : fact list * fact * int -> unit
 
 val display_debug : bool ref
 
-val implies : Types.reduction -> Types.reduction -> bool
-val reorder : Types.fact list -> Types.fact list
+val implies : reduction -> reduction -> bool
+val reorder : fact list -> fact list
 
-val current_states : (Types.reduction  list) ref
-val assignment_rules : (Types.reduction  list) ref
+val current_states : (reduction  list) ref
+val assignment_rules : (reduction  list) ref
 
-val completion : Types.reduction list -> unit
-val query_goal_std : Types.fact -> Types.reduction list
+val completion : reduction list -> unit
+val resolve_hyp : reduction -> reduction list
+val query_goal_std : fact -> reduction list
 
-val main_analysis : Types.reduction list -> Types.fact list -> unit
-val bad_derivable : Types.reduction list -> Types.reduction list
-val sound_bad_derivable : Types.reduction list -> Types.reduction list
+val main_analysis : reduction list -> fact list -> unit
+val bad_derivable : reduction list -> reduction list
+val sound_bad_derivable : reduction list -> reduction list
 
 
 val reset : unit -> unit

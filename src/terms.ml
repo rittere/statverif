@@ -284,7 +284,7 @@ let rec occurs_var v = function
 
 let occurs_var_fact v = function
     Pred(_,l) -> List.exists (occurs_var v) l
-  | Out _ -> internal_error "Unexpected Out fact in occurs_var_fact"
+  | Out (t, bt_list) -> List.exists (fun (_,t) -> occurs_var v t) bt_list || occurs_var v t
 
 (* [occurs_f f t] determines whether the function symbol [f] occurs in the term [t] *)
 
@@ -863,6 +863,12 @@ let rec replace_name f t = function
   | FunApp(f',[]) -> if f' == f then t else FunApp(f',[])
   | FunApp(f',l') -> FunApp(f', List.map (replace_name f t) l')
 
+(* Return true when the term contains a variable *)
+
+let rec has_vars = function
+    Var _ -> true
+  | FunApp(f, l) -> List.exists has_vars l
+    	
 (* List of variables *)
 
 let rec get_vars vlist = function

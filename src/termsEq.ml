@@ -133,6 +133,23 @@ let close_rule_eq restwork (hyp,concl,hist,constra) =
       current_bound_vars := tmp_bound
 		  ) concl) hyp
 
+let close_rule_hyp_eq restwork (hyp,concl,hist,constra) =
+  close_fact_list_eq (fun hyp' ->
+      let tmp_bound = !current_bound_vars in
+      current_bound_vars := [];
+      let hyp'' = List.map copy_fact2 hyp' in
+      let histref = ref hist in
+      let rank = ref 0 in
+      List.iter2 (fun hyp1 hyp1' ->
+	if not (equal_facts hyp1 hyp1') then
+	  histref := HEquation(!rank, copy_fact2 hyp1, copy_fact2 hyp1', !histref);
+	incr rank) hyp hyp'; 
+      let r = (hyp'', copy_fact2 concl, (!histref),
+	       List.map copy_constra2 constra) in
+      cleanup();
+      restwork r;
+      current_bound_vars := tmp_bound
+		  ) hyp
 
 let close_term_eq restwork t =
   if hasEquations() then close_term_eq restwork t else restwork t

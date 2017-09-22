@@ -1084,18 +1084,6 @@ let rec complete_rules_eq () =
 	 end;
        complete_rules_eq()
 
-(* Close fact under equations *)
-
-let combine_fact_eq fact =
-   let accu = ref [] in
-   close_fact_eq (fun fact' ->
-     let tmp_bound = !current_bound_vars in
-     current_bound_vars := [];
-     accu := (copy_fact2 fact') :: (!accu);
-     cleanup();
-     current_bound_vars := tmp_bound) fact;
-   !accu
-
 (* End equations *)
 
 (* [compos] unifies [concl1] with the selected hypothesis of [hyp2]
@@ -1292,7 +1280,18 @@ let redundant_res res_list =
 
 (* Search algo *)
 
-let query_goal_std g =
+let normal_rule_hyp restwork r = 
+  let rec normal_rule_hyp_rec r =
+    assert (!Terms.current_bound_vars == []);
+    decompose_hyp_tuples2
+      (elim_any_x2 
+      (simplify_rule_constra_normal (elem_simplif (elem_simplif2
+      (elim_redundant_hyp restwork normal_rule_hyp_rec) 
+       normal_rule_hyp_rec) normal_rule_hyp_rec))) r
+  in
+  normal_rule_hyp_rec r
+      
+let resolve_hyp r0 =
   let success_accu = ref [] in
   let rec goal_reachable_rec ((subgoals, orig_fact, hist_done, constra) as rule) 
     seen_list =
@@ -1308,16 +1307,12 @@ let query_goal_std g =
 	  if not (List.exists (fun r -> implies r rule) seen_list) then 
 	  let seen_list = rule :: seen_list in
 	  List.iter (fun rule1 ->
-	    compos (simplify_rule_constra (fun r -> 
-	      goal_reachable_rec (elim_any_x (decompose_hyp_tuples r)) seen_list)) 
+	    compos (normal_rule_hyp (fun r -> goal_reachable_rec r seen_list)) 
 	      rule1 (rule,sel_index)
 		    ) (!rule_base_ns)
 	end
   in
-  let do_query a =
-    goal_reachable_rec (elim_any_x (decompose_hyp_tuples ([a], a, Empty(a),[]))) []
-  in
-  List.iter do_query (combine_fact_eq g);
+  TermsEq.close_rule_hyp_eq (normal_rule_hyp (fun r -> goal_reachable_rec r [])) r0;
   redundant_res (!success_accu)
 (*
   let r = redundant_res (!success_accu) in
@@ -1325,6 +1320,9 @@ let query_goal_std g =
   print_string " resolution steps since the beginning\n";
   r
 *)
+
+let query_goal_std g =
+  resolve_hyp ([g], g, Empty(g),[])
 
 let query_goal g = 
   match query_goal_std g with
@@ -1408,7 +1406,7 @@ let completion rulelist =
 	if !is_inside_query then
 	  "inside" ^ (string_of_int (!Param.inside_query_number))
 	else
-	  Printf.sprintf "%s" (string_of_int (!Param.current_query_number))
+	  (string_of_int (!Param.current_query_number))
       in
       Display.LangHtml.openfile ((!Param.html_dir) ^ "/clauses" ^ qs ^ ".html") ("ProVerif: clauses for query " ^ qs);
       Display.Html.print_string "<H1>Initial clauses</H1>\n";

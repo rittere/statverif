@@ -2546,7 +2546,12 @@ let get_ident_any env (s, ext) =
 	   end
        | EName r -> 
 	   FunApp(r, [])
-       | EFun f -> 
+       | EFun f ->
+	   begin
+	     match f.f_cat with
+	       Eq _ | Tuple -> ()
+	     | _ ->  input_error ("function " ^ s ^ " is defined by \"reduc\". Such a function should not be used in a query") ext
+	   end;
 	   if fst f.f_type == [] then 
 	     FunApp(f,[]) 
 	   else
@@ -2777,7 +2782,7 @@ let rec check_event names_must_be_encoded env (f,e) =
       QFact(get_pred env p [], [])
   | PGLet(id,t,t') -> check_event names_must_be_encoded (add_binding false env (id,t)) t'
   | _ -> input_error "an event should be a predicate application" e
-      
+	
 let rec check_hyp env = function
     (* FunApp: ==>, ||, && allowed, or what is allowed in events *)
     PGFunApp(("==>", _), [ev; hypll]), _ ->
@@ -2786,7 +2791,7 @@ let rec check_hyp env = function
        match ev' with
 	 QNeq _ | QEq _ -> input_error "Inequalities or equalities cannot occur before ==> in queries" (snd ev)
        | _ -> ()
-      );
+	     );
       let hypll' = check_hyp env hypll in
       [[NestedQuery(Before(ev', hypll'))]]
   | PGFunApp(("||", _), [he1;he2]), _ -> 
@@ -2804,7 +2809,7 @@ let rec check_real_query_top env = function
       let ev' = check_event false env ev in
       let ev'' = 
 	match ev' with
-	  QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur before ==> in queries\n"
+	  QNeq _ | QEq _ -> input_error "Inequalities or equalities cannot occur before ==> in queries" (snd ev)
 	| QFact _ -> ev'
 	| QSEvent _ when !Param.key_compromise == 0 -> ev'
 	| QSEvent(inj, FunApp(f, sid::l)) ->
@@ -2819,7 +2824,7 @@ let rec check_real_query_top env = function
       let ev' = check_event false env ev in
       let ev'' = 
 	match ev' with
-	  QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur alone queries\n"
+	  QNeq _ | QEq _ -> input_error "Inequalities or equalities cannot occur alone queries\n" (snd ev)
 	| QFact _ ->  ev'
 	| QSEvent _ when !Param.key_compromise == 0 -> ev'
 	| QSEvent(inj, FunApp(f, sid::l)) ->
@@ -2932,6 +2937,11 @@ let fget_ident_any env (s, ext) =
        | EName r -> 
 	   (FFunApp(r, []), snd r.f_type)
        | EFun f -> 
+	   begin
+             match f.f_cat with
+               Eq _ | Tuple -> ()
+             | _ ->  input_error ("function " ^ s ^ " is defined by \"reduc\". Such a function should not be used in a \"nounif\" declaration") ext
+	   end;
 	   if fst f.f_type == [] then 
 	     (FFunApp(f,[]), snd f.f_type)
 	   else

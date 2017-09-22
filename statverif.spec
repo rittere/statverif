@@ -1,5 +1,5 @@
 Name:    statverif
-Version: 1.97
+Version: 1.97pl1
 Release: 1
 Summary: Automated Security Protocol Verifier
 BuildRequires: ocaml-ocamlbuild,ocaml-findlib

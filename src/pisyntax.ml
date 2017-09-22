@@ -1083,6 +1083,9 @@ let rec get_ident_any names_must_be_encoded s ext =
 	       | _ -> internal_error "name expected here"
 	     end
        | EFun f -> 
+           (match f.f_cat with
+             Eq _ | Tuple -> ()
+           | _ ->  input_error ("function " ^ s ^ " is defined by reduction. Such a function should not be used in a \"nounif\" declaration") ext);
 	   let f_arity = List.length (fst f.f_type) in
 	   if f_arity = 0 then 
 	     FunApp(f,[]) 
@@ -1270,7 +1273,7 @@ let rec check_real_query = function
        match ev' with
 	 QNeq _ | QEq _ -> user_error "Inequalities or equalities cannot occur before ==> in queries\n"
        | _ -> ()
-      );
+	     );
       let hypll' = check_hyp hypll in
       Before(ev', hypll')
 
@@ -1299,7 +1302,7 @@ let check_real_query_top = function
 	    internal_error "Bad format for events in queries"
       in
       let hypll' = check_hyp hypll in
-      Before(ev'', hypll')
+      Before(ev'', hypll')     
 
 let check_query = function
     PRealQuery q -> RealQuery(check_real_query_top q)
@@ -1451,6 +1454,9 @@ let fget_ident_any s ext =
 	       | _ -> internal_error "name expected here"
 	     end
        | EFun f -> 
+           (match f.f_cat with
+             Eq _ | Tuple -> ()
+           | _ ->  input_error ("function " ^ s ^ " is defined by reduction. Such a function should not be used in a \"nounif\" declaration") ext);
 	   let f_arity = List.length (fst f.f_type) in
 	   if f_arity = 0 then 
 	     FFunApp(f,[]) 

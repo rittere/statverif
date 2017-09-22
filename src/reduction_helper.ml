@@ -671,6 +671,29 @@ let equal_facts_modulo f1 f2 =
       equal_open_terms_modulo t1 t2
   | _ -> false
 
+(* Close constraints. Also uses close_term_tmp since the
+   names do not need to be registered in Rev_name_tab. *)
+
+let close_constraints constra =
+  List.iter (List.iter (function
+    | Neq(t1,t2) -> close_term_tmp t1; close_term_tmp t2)) constra  
+
+(* Collect constraints that occur in a derivation tree *)
+
+let rec collect_constraints_rec accu tree =
+  match tree.desc with
+    FHAny | FEmpty -> ()
+  | FRemovedWithProof _ -> ()
+  | FRule(_,_,constra, l) ->
+      accu := constra @ (!accu);
+      List.iter (collect_constraints_rec accu) l
+  | FEquation t -> collect_constraints_rec accu t
+
+let collect_constraints tree =
+  let accu = ref [] in
+  collect_constraints_rec accu tree;
+  !accu
+    
 (* Copy a closed term *)
 
 let rec copy_closed = function
@@ -891,7 +914,7 @@ let check_delayed_names = function
 
 
 (* create a pdf file representing the trace in final_state *)
-let create_pdf_trace display_a noninterf_test_to_string inj_string final_state =
+let create_pdf_trace a_to_term noninterf_test_to_string inj_string final_state =
   if !Param.html_output && !Param.graph_output then
     Parsing_helper.user_error ("\"-html\" and \"-graph\" options have both been specified. This is not allowed.\n")
   else
@@ -903,16 +926,14 @@ let create_pdf_trace display_a noninterf_test_to_string inj_string final_state =
 	else
 	  begin
 	    let qs = string_of_int (!Param.derivation_number) in
-            Display.AttGraph.openfile ((!Param.html_dir) ^ "/trace" ^ inj_string ^ qs ^ ".dot");
-            ignore (Display.AttGraph.write_state_to_dot_file display_a noninterf_test_to_string final_state);
-	    Display.AttGraph.close();
+	    let output = (!Param.html_dir ^ "/trace" ^ inj_string ^ qs) in
+            Display.AttGraph.write_state_to_dot_file (output ^ ".dot") a_to_term noninterf_test_to_string final_state;
 	    let replace input output =
 	      Str.global_replace (Str.regexp_string input) output in
-	    let output = (!Param.html_dir ^ "/trace" ^ inj_string ^ qs) in
 	    let command = replace "%1" output !Param.command_line_graph in
 	    let dot_err = Sys.command command in
 	    if dot_err <> 0 then
-	      if String.compare !Param.command_line_graph ("dot -Tpdf %1.dot -o %1.pdf") = 0 then
+	      if (!Param.command_line_graph) = "dot -Tpdf %1.dot -o %1.pdf" then
 		print_string ("Warning: Could not create PDF version of the trace.\nPlease verify that graphviz is installed in your computer.\n")
 	      else
 		print_string ("Warning: The command line you specified to create the graph trace from the dot file does not seem to work.\n");
@@ -922,12 +943,3 @@ let create_pdf_trace display_a noninterf_test_to_string inj_string final_state =
     else
       -1
 
-(* create a pdf file representing the trace in final_state *)
-let create_interact_trace noninterf_test_to_string state =
-  ignore (open_out "trace.dot");
-  ignore (Display.AttGraph.write_state_to_dot_file Display.term_to_term noninterf_test_to_string state);
-  Display.AttGraph.close();
-  let command = "dot -Tpdf trace.dot -o trace.pdf" in
-  let dot_err = Sys.command command in
-  if dot_err <> 0 then
-      print_string ("Warning: Could not create PDF version of the trace.\nPlease verify that graphviz is installed")

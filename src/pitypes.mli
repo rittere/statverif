@@ -132,7 +132,7 @@ type name_param_info =
 
 (**The 'a may be term (for reduction.ml) or term * term (for reduction_bipro.ml) *)
 
-type 'a info = 
+type 'a info =
     InputInfo of (binder * 'a) list * (term * 'a) list * 'a * name_param_info list * hypspec list *
                  ('a * (term * (binder * 'a) list * (term * 'a) list) option) list
 	(** Channel name after decomposition of tuples,
@@ -211,11 +211,11 @@ type 'a noninterf_test =
   | NIEqTest of ('a * term option ref) * ('a * term option ref)
 
 type 'a goal_t =
-    Fact of fact * term list option ref (* the second component stores the recipes used to 
+    Fact of fact * term list option ref (* the second component stores the recipes used to
                                            by the adversary to compute terms in the fact *)
   | WeakSecrGoal of (term * binder * term option ref (*recipe*)) list * weak_test * term * term
 	(**  [WeakSecrGoal(l, t, w1, w2)] where [l] is the
-          list of terms that the attacker has to know with the recipies to obtain them, 
+          list of terms that the attacker has to know with the recipies to obtain them,
           with arbitrary variables
 	  to store them, [t] is
 	  the term that the attacker computes to test its guess,
@@ -234,7 +234,7 @@ type 'a reduc_state =
       subprocess : 'a sub_proc list; (** process list *)
       public : (term * 'a) list; (** attacker knowledge, and the calculus that leads to it *)
       tables : 'a list; (** contents of tables *)
-      prepared_attacker_rule : (predicate * (binder * 'a) list * (term * 'a)) list; 
+      prepared_attacker_rule : (predicate * (binder * 'a) list * (term * 'a)) list;
       (** attacker rules: predicate, hypothesis, conclusion *)
       io_rule : (int * fact list * hypspec list * term list * fact) list; (** process rules *)
                 (** rule number, hypotheses, occurrence labels, name params, conclusion *)
@@ -242,6 +242,10 @@ type 'a reduc_state =
       previous_state : ('a reduc_state) option; (** previous semantic state *)
    
       hyp_not_matched : (term option * fact) list;
+      assumed_false : fact list list; (* Blocking facts that need to be assumed false to execute the considered trace,
+					 to execute else branches of let...suchthat. 
+					 More precisely, for each list of facts [f1; ..., fn] in [assumed_false],
+					 we assume [not (f1 && ... && fn)]. *) 
       current_phase : int;
       comment : reduc_type  (** type of the reduction *)
     }
@@ -255,3 +259,6 @@ type term_occ =
     | OInChannel of int
     | OEvent of int
     | OLetFilter of int
+
+(** Type data for interact version of proverif *)
+type data = {public_lst: string list; titles: string list; proc_llst: string list list}

@@ -29,6 +29,8 @@ open Types
 
 val get_rule_hist : rulespec -> history
 
+val build_fact_tree : history -> fact_tree
+    
 type recheck_t = (reduction -> bool) option
 
 (* [build_history recheck clause] builds a derivation for the clause

@@ -179,6 +179,9 @@ val copy_term4 : term -> term
 val term_size : term -> int
 val fact_size : fact -> int
 
+(* Return true when the term contains a variable *)
+val has_vars : term -> bool
+    
 (* [get_var vlist t] accumulate in reference list [vlist] the list of variables
    in the term [t].
    [get_vars_constra vlist c] does the same for the constraint [c], and

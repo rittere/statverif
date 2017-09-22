@@ -116,11 +116,11 @@ let abbreviate_derivation tree =
   	
 (* Decompose tuples to simplify the display *)
 
-let rec decompose_tuples accu calcul t =
-  match calcul, t with
+let rec decompose_tuples accu recipe t =
+  match recipe, t with
     (FunApp(f, l), FunApp(f', l')) when f == f' && (f.f_cat = Tuple) ->
       decompose_tuples_list accu l l'
-  | _ -> (calcul, t)::accu
+  | _ -> (recipe, t)::accu
 
 and decompose_tuples_list accu l l' =
   match (l, l') with
@@ -129,11 +129,11 @@ and decompose_tuples_list accu l l' =
   | [],[] -> accu
   | _ -> Parsing_helper.internal_error "Lists should have same length in decompose_tuples_list"
 
-let rec decompose_tuples_var accu calcul t =
-  match calcul, t with
+let rec decompose_tuples_var accu recipe t =
+  match recipe, t with
     (FunApp(f, l), FunApp(f', l')) when f == f' && (f.f_cat = Tuple) ->
       decompose_tuples_list_var accu l l'
-  | (Var _, _) -> (calcul, t)::accu
+  | (Var _, _) -> (recipe, t)::accu
   | _ -> raise Not_found
 
 and decompose_tuples_list_var accu l l' =
@@ -174,7 +174,7 @@ let rec get_choice_component side = function
 let rec count_true_l = function
     [] -> 0
   | (_, b)::l -> (if b then 1 else 0) + count_true_l l
-	
+
 let rec minimal_choice t1 t2 =
   match t1, t2 with
     Var b1, Var b2 when b1 == b2 ->
@@ -193,7 +193,7 @@ let rec minimal_choice t1 t2 =
       end
   | _ ->
       (Terms.make_choice (get_choice_component 1 t1) (get_choice_component 2 t2), true)
-	
+
 let rec simplify_choice = function
     FunApp(f, [t1;t2]) when f.f_cat = Choice ->
       fst (minimal_choice t1 t2)
@@ -233,6 +233,68 @@ val history_item : int -> unit
 val basic_item : unit -> unit
 val wrap_if_necessary : unit -> unit
 val newline : unit -> unit
+end
+
+module type LangDispSig =
+sig
+  val print_string : string -> unit
+  val newline : unit -> unit
+  val print_line : string -> unit
+
+  val display_occ : int -> unit
+  val display_keyword : string -> unit
+  val varname : binder -> string
+  val display_list : ('a -> unit) -> string -> 'a list -> unit
+  val display_item_list : ('a -> unit) -> 'a list -> unit
+  val display_term : term -> unit
+  val display_term_list : term list -> unit
+  val display_fact : fact -> unit
+  val display_fact_format : fact_format -> unit
+  val display_constra : constraints list -> unit
+  val display_constra_list : constraints list list -> unit
+  val display_rule_nonewline : reduction -> unit
+  val display_rule : reduction -> unit
+  val display_inside_query : fact list -> constraints list list -> fact list -> fact list -> unit
+  val display_inside_query_success : constraints list list -> unit
+  val display_initial_clauses : reduction list -> unit
+  val display_eq : term * term -> unit
+  val display_red : funsymb -> (term list * term * (term * term) list) list -> unit
+
+  val display_term2 : term -> unit
+  val display_pattern : pattern -> unit
+  val display_fact2 : fact -> unit
+  val display_process : string -> process -> unit
+  val display_process_occ : string -> process -> unit
+  val display_corresp_query : Pitypes.realquery -> unit
+  val display_corresp_putbegin_query : Pitypes.query -> unit
+  val display_eq_query : Pitypes.eq_query -> unit
+
+  val display_function_name : funsymb -> unit
+  val display_phase : predicate -> unit
+
+
+  module WithLinks :
+  sig
+    val term : term -> unit
+    val term_list : term list -> unit
+    val fact : fact -> unit
+    val constra : constraints list -> unit
+    val constra_list : constraints list list -> unit
+    val concl : bool -> fact -> hypspec list -> unit
+  end
+
+  val display_history_tree : string -> fact_tree -> unit
+  val explain_history_tree : fact_tree -> unit
+  val display_abbrev_table : (term * term) list -> unit
+
+  val display_reduc_state :
+    ('a -> term) -> bool -> 'a Pitypes.reduc_state -> int
+  val display_labeled_trace :
+    'a Pitypes.reduc_state -> unit
+  val display_goal :
+    ('a -> term) ->
+    ('a Pitypes.noninterf_test -> string) ->
+    'a Pitypes.reduc_state -> unit
 end
 
 module LangText : LangSig =
@@ -993,6 +1055,29 @@ let display_rule_nonewline (hyp, concl, hist, constra) =
 
 let display_rule r =
   display_rule_nonewline r;
+  newline()
+
+let display_inside_query hyp1_preds' constr1' hyp2_preds_block' hyp2_preds' =
+  print_string "Inside query: trying to prove ";
+  display_hyp hyp1_preds';
+  if (constr1' != []) && (hyp1_preds' != []) then
+    display_connective (Lang.and_connective());
+  display_constra_list constr1';
+  let hyp2_preds_normal_block = hyp2_preds_block' @ hyp2_preds' in
+  if hyp2_preds_normal_block != [] then
+    begin
+      print_string " from ";
+      display_hyp hyp2_preds_normal_block
+    end;
+  newline()
+
+let display_inside_query_success constr1'' =
+  print_string "Inside query: proof succeeded";
+  if constr1'' != [] then
+    begin
+      print_string " provided ";
+      display_list_and WithLinks.constra constr1''
+    end;
   newline()
 
 
@@ -2680,44 +2765,44 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 
          (* Display reduction step *)
 
-    let display_value_calc calc t =
+    let display_value_recipe recipe t =
       let t' = simplify_choice t in
-      let list = List.rev (decompose_tuples [] calc t') in
+      let list = List.rev (decompose_tuples [] recipe t') in
       let first = ref true in
-      List.iter (fun (calc1, t1) ->
-        if not (Terms.equal_terms calc1 t1) then
+      List.iter (fun (recipe1, t1) ->
+        if not (Terms.equal_terms recipe1 t1) then
 	  begin
 	    print_string (if !first then " with " else ", ");
-            NoArgNames.term calc1;
+            NoArgNames.term recipe1;
             print_string " = ";
 	    NoArgNames.term t1;
 	    first := false
 	  end) list
 
-    let display_calc_term calc t =
+    let display_recipe_term recipe t =
       let t' = simplify_choice t in
-      if not(Terms.equal_terms calc t') then
+      if not(Terms.equal_terms recipe t') then
 	begin
-	  NoArgNames.term calc;
+	  NoArgNames.term recipe;
 	  print_string " = ";
 	end;
       NoArgNames.term t'
 
-    let display_calcopt_term calcopt t =
-      match calcopt with
+    let display_recipeopt_term recipeopt t =
+      match recipeopt with
 	None -> display_term2 t
-      |	Some calc -> display_calc_term calc t
-	
+      |	Some recipe -> display_recipe_term recipe t
+
 
          (* In RIO and RIO2, when the adversary is passive,
             he receives the communicated message.
             This function displays this information. *)
-    let display_calcopt calcopt =
-      match calcopt with
+    let display_recipeopt recipeopt =
+      match recipeopt with
       | None -> ()
-      | Some calc ->
+      | Some recipe ->
           print_string "; the attacker receives the message as ";
-          NoArgNames.term calc
+          NoArgNames.term recipe
 
   let display_step = function
   RNil(n) -> print_string ((order_of_int n) ^" process: Reduction 0")
@@ -2736,20 +2821,20 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
           print_string ((order_of_int n) ^" process: ");
 	  display_prefix_let pat t;
           print_string ": else branch taken"
-      | RInput(n, tc, pat, calc, mess_term) ->
+      | RInput(n, tc, pat, recipe, mess_term) ->
           print_string ((order_of_int n) ^" process: ");
 	  display_prefix_in tc pat;
           print_string " done with message ";
-	  display_calc_term calc mess_term
-      | RInput2(n, tc, pat, calc, mess_term) ->
+	  display_recipe_term recipe mess_term
+      | RInput2(n, tc, pat, recipe, mess_term) ->
           print_string ((order_of_int n) ^" process: ");
 	  display_prefix_in tc pat;
           print_string ": pattern matching fails with message ";
-	  display_calc_term calc mess_term
-      | ROutput1(n, tc, calc, t) ->
+	  display_recipe_term recipe mess_term
+      | ROutput1(n, tc, recipe, t) ->
           print_string ((order_of_int n) ^" process: ");
-	  display_prefix_out tc calc;
-          display_value_calc calc t;
+	  display_prefix_out tc recipe;
+          display_value_recipe recipe t;
           print_string " done"
     | ROutput2 (n, tc, t) ->
           print_string ((order_of_int n) ^" process: ");
@@ -2791,20 +2876,20 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
           print_string ((order_of_int n) ^" process: ");
 	  display_prefix_letfilter bl f;
           print_string ": else branch taken"
-      | RIO(ninput, tc', pat, n, tc, calcopt, t, _) ->
+      | RIO(ninput, tc', pat, n, tc, recipeopt, t, _) ->
           print_string ((order_of_int n) ^" process: ");
 	  display_prefix_out tc t;
           print_string " reduces with ";
           print_string ((order_of_int ninput) ^" process: ");
 	  display_prefix_in tc' pat;
-          display_calcopt calcopt
-      | RIO2(ninput, tc', pat, n, tc, calcopt, t, _) ->
+          display_recipeopt recipeopt
+      | RIO2(ninput, tc', pat, n, tc, recipeopt, t, _) ->
           print_string ((order_of_int n) ^" process: ");
 	  display_prefix_out tc t;
           print_string " reduces with ";
           print_string ((order_of_int ninput) ^" process: ");
 	  display_prefix_in tc' pat;
-          display_calcopt calcopt;
+          display_recipeopt recipeopt;
           print_string " but input fails"
       | RInsert1(n, t, _) ->
           print_string ((order_of_int n) ^" process: ");
@@ -2829,21 +2914,21 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 	  display_prefix_namedprocess name tl
 
   let display_step_short display_loc = function
-      | RInput(n, tc, pat, calc, mess_term) ->
+      | RInput(n, tc, pat, recipe, mess_term) ->
     display_keyword "in";
     print_string "(";
     display_term2 tc;
     print_string ", ";
-	  display_term2 calc;
+	  display_term2 recipe;
     print_string ")";
-          display_value_calc calc mess_term;
+          display_value_recipe recipe mess_term;
     display_loc n;
     newline();
     newline()
 
-      | ROutput1(n, tc, calc, t) ->
-	  display_prefix_out tc calc;
-          display_value_calc calc t;
+      | ROutput1(n, tc, recipe, t) ->
+	  display_prefix_out tc recipe;
+          display_value_recipe recipe t;
       display_loc n;
       newline();
       newline()
@@ -2877,21 +2962,21 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_loc n;
       newline();
       newline()
-      | RIO(ninput, tc', pat, n, tc, calcopt, t, _) ->
+      | RIO(ninput, tc', pat, n, tc, recipeopt, t, _) ->
 	  display_prefix_out tc t;
       display_loc n;
       print_string " received";
       display_loc ninput;
-          display_calcopt calcopt;
+          display_recipeopt recipeopt;
       newline();
       newline()
-      | RIO2(ninput, tc', pat, n, tc, calcopt, t, _) ->
+      | RIO2(ninput, tc', pat, n, tc, recipeopt, t, _) ->
 	  display_prefix_out tc t;
       display_loc n;
       print_string " received";
       display_loc ninput;
       print_string " (input fails)";
-          display_calcopt calcopt;
+          display_recipeopt recipeopt;
       newline();
       newline()
     | _ -> ()
@@ -2939,9 +3024,9 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
         begin
           print_string "Additional knowledge of the attacker:";
             Lang.start_list();
-            itern (fun (calc, x) ->
+            itern (fun (recipe, x) ->
 	    Lang.basic_item();
-              display_calc_term calc (a_to_term x);
+              display_recipe_term recipe (a_to_term x);
               ) (size_public - old_size_public) state.public;
             Lang.end_list();
           print_string Lang.hline
@@ -2979,7 +3064,7 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
         LetFilter(_,_,_,_,occ) | Event(_,_,_,occ) | Insert(_,_,occ) | Get(_,_,_,_,occ) ->
 	  display_occ occ
       | _ -> Parsing_helper.internal_error "Unexpected process"
-    
+
     let display_process_loc (proc, name_params, _, _, _) =
     print_string " at ";
       display_occ_process proc;
@@ -3021,17 +3106,17 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
         display_step_short display_loc state.comment
       end
 
-  let display_explained_fact f calc_lst =
+  let display_explained_fact f recipe_lst =
     match f with
   Pred({p_info = [Attacker(n,_)]} as p, [_;v]) ->
     print_string "The attacker has the message ";
-    (match !calc_lst with
+    (match !recipe_lst with
       None -> display_term2 v
-    | Some [calc] -> display_calc_term calc v
+    | Some [recipe] -> display_recipe_term recipe v
     | _ -> assert false);
     display_phase p
     | Pred({p_info = [Mess(n,_)]} as p, [vc;v]) ->
-          (match !calc_lst with
+          (match !recipe_lst with
           | None ->
 	      (* This case, without a recipe for the channel and the message,
                  happens when the message is sent via a RIO rule
@@ -3039,15 +3124,15 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
 	     print_string "The message ";
 	    print_string " is sent on channel ";
 	    display_term2 vc;
-          | Some [calc1;calc2] ->
+          | Some [recipe1;recipe2] ->
 	      (* This case happens when the message can be sent
 		 by the adversary, because he can compute the message and
-	         the channel using the recipes calc1 and calc2
+	         the channel using the recipes recipe1 and recipe2
 	         respectively *)
               print_string "The attacker sends the message ";
-              display_calc_term calc1 v;
+              display_recipe_term recipe1 v;
 	      print_string " on channel ";
-              display_calc_term calc2 vc;
+              display_recipe_term recipe2 vc;
           | _ -> assert false);
           display_phase p
     | Pred({p_info = [AttackerBin(n,_)]} as p, [_;v;_;v']) ->
@@ -3084,10 +3169,10 @@ let display_clause_explain n lbl hyp_num_list hl constra concl =
       display_phase p
     | _ -> Parsing_helper.internal_error "Unexpected goal"
 
-let display_attack_goal a_to_term noninterftest_to_string g =
-      match g with
-    Fact (f, calc_lst) ->
-      display_explained_fact f calc_lst;
+let display_attack_goal a_to_term noninterftest_to_string state =
+      match state.goal with
+    Fact (f, recipe_lst) ->
+      display_explained_fact f recipe_lst;
           print_string ".";
           newline()
   | NoGoal -> ()
@@ -3145,7 +3230,7 @@ let display_attack_goal a_to_term noninterftest_to_string g =
 		display_idcl CVar (varname b);
 		print_string " = "
 	  end;
-	  display_calcopt_term (!c) t
+	  display_recipeopt_term (!c) t
 	    ) l' ;
 	print_string ".";
 	newline());
@@ -3181,9 +3266,9 @@ let display_attack_goal a_to_term noninterftest_to_string g =
 		  Param.NoDisplay | Param.ShortDisplay ->
 		    begin
 		    match oloc with
-		      LocAttacker calc ->
+		      LocAttacker recipe ->
 			print_string "The attacker sends the message ";
-			display_calc_term calc mess_term;
+			display_recipe_term recipe mess_term;
 			print_string " to "
 		    | LocProcess(noutput, ((procoutput,_,_,_,_) as poutput)) ->
 			display_proc_prefix false procoutput;
@@ -3195,9 +3280,9 @@ let display_attack_goal a_to_term noninterftest_to_string g =
 		| Param.LongDisplay ->
 		    begin
 		    match oloc with
-		      LocAttacker calc ->
+		      LocAttacker recipe ->
 			print_string "The attacker sends the message ";
-			display_calc_term calc mess_term;
+			display_recipe_term recipe mess_term;
 			print_string " to the "
 		    | LocProcess(noutput, (procoutput,_,_,_,_)) ->
 			print_string ("The " ^ (order_of_int noutput) ^" process: ");
@@ -3216,18 +3301,18 @@ let display_attack_goal a_to_term noninterftest_to_string g =
 	   display_function_name f;
 	  print_string " to the message(s)";
 	  newline();
-	  let print_mess_and_calcul (mess, calc) =
-	    display_calcopt_term (!calc) (a_to_term mess);
+	  let print_mess_and_recipe (mess, recipe) =
+	    display_recipeopt_term (!recipe) (a_to_term mess);
 	    newline()
 	  in
-	  List.iter print_mess_and_calcul tl;
+	  List.iter print_mess_and_recipe tl;
 	  print_string "that he has.";
 	   newline();
 	   print_string (noninterftest_to_string t);
 	   newline()
-      | NIFailTest (t', calc) ->
+      | NIFailTest (t', recipe) ->
 	    print_string "The attacker tests whether ";
-	  display_calcopt_term (!calc) (a_to_term t');
+	  display_recipeopt_term (!recipe) (a_to_term t');
 	   print_string " is fail.";
 	   newline();
 	   print_string (noninterftest_to_string t);
@@ -3254,42 +3339,52 @@ let display_attack_goal a_to_term noninterftest_to_string g =
 	   end;
 	   print_string (noninterftest_to_string t);
 	   newline()
-      | NIEqTest((t1, calc1),(t2, calc2)) ->
+      | NIEqTest((t1, recipe1),(t2, recipe2)) ->
 	  print_string "The attacker tests whether";
 	   newline();
-	  display_calcopt_term (!calc1) (a_to_term t1);
+	  display_recipeopt_term (!recipe1) (a_to_term t1);
 	   newline();
 	  print_string "is equal to";
 	  newline();
-	  display_calcopt_term (!calc2) (a_to_term t2);
+	  display_recipeopt_term (!recipe2) (a_to_term t2);
 	   print_string ".";
 	   newline();
 	   print_string (noninterftest_to_string t);
 	   newline()
 
-    let display_trace_found hyp =
-    if hyp = [] then
-      begin
-        print_string "A trace has been found.";
-        newline()
-      end
-    else
-      begin
-        print_string "A trace has been found, assuming the following hypothesis:";
-	  display_item_list (function
+    let display_trace_found state =
+      if (state.hyp_not_matched = []) && (state.assumed_false = []) then
+	begin
+	  print_string "A trace has been found.";
+	  newline()
+	end
+      else
+	begin
+	  print_string "A trace has been found, assuming the following hypothesis:";
+	  Lang.start_list();
+	  List.iter (fun x ->
+	    Lang.basic_item();
+	    match x with
 	    | None, fact ->
 		WithLinks.fact fact
-	    | Some calc, fact ->
+	    | Some recipe, fact ->
 		print_string "The attacker has ";
-		display_term2 calc;
+		display_term2 recipe;
 		print_string " = ";
 		display_attacker_fact fact
-		  ) hyp
-      end
+		  ) state.hyp_not_matched;
+	  List.iter (fun l ->
+	    Lang.basic_item();
+	    display_idcl CKeyword "not";
+	    print_string "(";
+	    display_list_and WithLinks.fact l;
+	    print_string ")") state.assumed_false;
+	  Lang.end_list()
+	end
 
-    let display_goal a_to_term noninterftest_to_string g hyp =
-      display_attack_goal a_to_term noninterftest_to_string g;
-      display_trace_found hyp
+    let display_goal a_to_term noninterftest_to_string state =
+      display_attack_goal a_to_term noninterftest_to_string state;
+      display_trace_found state
 
   end
 
@@ -3370,8 +3465,8 @@ module LangGviz  =
     (* [print_string s] adds the string [s]
        to the buffer [buff], wrapping at spaces if necessary *)
     let print_string s = print_string_from s 0
-	
-	
+
+
     (* Type used to syntacticaly color the key work on boxes or above edges.f_private *)
     (* We use HTML labels for the graph, and nodes are actually tables *)
     type color =
@@ -3470,51 +3565,47 @@ module LangGviz  =
 (* This module gives display functions "for free" using the functor "LangDisp" *)
 module Gviz = LangDisp(LangGviz)
 
-(** Main module to display traces. The display fonctions write on a buffer "buff". *)
-(** The functions "openfile" and "closefile" respectively open and close a file. *)
-(** The function write_state_to_dot_file writes a state in a good dot's format in *)
-(** the open dot file. The function "create_pdf_trace" defined in Reduction_helper *)
-(** uses this function to create and display the pdf trace associated to the *)
-(** open dot file *)
+(** Main module to display traces.  *)
+(** [write_state_to_dot_file fname a_to_term noninterf_test_to_string state] *)
+(** writes the state [state] in .dot format in the file [fname]. *)
+(** The function "create_pdf_trace" defined in reduction_helper *)
+(** uses this function to create and display the pdf trace *)
 module AttGraph =
   struct
     include Gviz
     open LangGviz
 
-         (* function to manipulate dot file *)
-    let previousf = ref []
-
-    let f = ref stdout
+    (* functions to manipulate dot file *)
+    (* The functions "openfile" and "close" respectively open and close a file. *)
+    let f = ref None
 
     let close() =
-      match !previousf with
-        [] -> Parsing_helper.internal_error "No dot file to close"
-      | (f'::r) ->
-          close_out (!f);
-          f := f';
-          previousf := r
+      match !f with
+        None -> Parsing_helper.internal_error "No dot file to close"
+      | Some file ->
+          close_out file;
+          f := None
 
     let openfile fname =
-      previousf := (!f) :: (!previousf);
-	  begin
+      begin
         try
-          f := open_out fname
+          f := Some (open_out fname)
         with Sys_error _ ->
           Parsing_helper.user_error ("Error: could not open dot file.
 				       The html directory that you specified, " ^ (!Param.html_dir) ^ ",
 				     probably does not exist.\n")
-	  end
-
+      end
+	
     (* write the content of buff in the open dot file, clear the buffer.
        Internal_error when no dot file is open. *)
     let print_buffer () =
-      if (!previousf) == [] then
-        Parsing_helper.internal_error "dot output with no open dot file.\n"
-      else
-        begin
-          Buffer.output_buffer (!f) buff;
-          Buffer.clear buff;
-        end
+      match !f with
+	None -> Parsing_helper.internal_error "dot output with no open dot file.\n"
+      | Some file ->
+          begin
+            Buffer.output_buffer file buff;
+            Buffer.clear buff;
+          end
 
     (* Append 3 lists *)
   let append3 l1 l2 l3 =
@@ -3691,22 +3782,22 @@ module AttGraph =
     let abbrev_nb = ref 0
     let max_lines_label_edge = 3
 
-    (* [write_edge_label calc_lab t] writes an edge label:
-       When [calc_lab = Some calc], writes [calc = t].
+    (* [write_edge_label recipe_lab t] writes an edge label:
+       When [recipe_lab = Some recipe], writes [recipe = t].
        Otherwise, writes [t].
        Uses abbreviations when the label is too long.
        To be used as argument [label_fun] of [write_edge]. *)
-    let write_edge_label calc_lab t () =
+    let write_edge_label recipe_lab t () =
       let abbrev_in_table abbrev_string = List.exists (fun (a, _) -> (String.compare a abbrev_string = 0)) in
       print_buffer ();
-      display_calcopt_term calc_lab t;
+      display_recipeopt_term recipe_lab t;
       let len_term = Buffer.length buff in
       if len_term > max_lines_label_edge * (!wrap_limit) then
         begin
 	  try
-	    match calc_lab with
+	    match recipe_lab with
 	      Some (Var _) ->
-                (* Use calc as abbreviation *)
+                (* Use recipe as abbreviation *)
 		let s = Buffer.contents buff in
 		let pos = String.index s '=' in
 		let abbrev_string = String.sub s 0 (pos-1) in
@@ -3715,18 +3806,18 @@ module AttGraph =
 		  abbrev_tab := (abbrev_string, content_string)::!abbrev_tab;
 		Buffer.clear buff;
 		print_string abbrev_string
-	    | Some calcul ->
+	    | Some recipe ->
 		let s = Buffer.contents buff in
 		let pos = String.index s '=' in
 		if pos-1 > max_lines_label_edge * (!wrap_limit) then raise Not_found;
-		let lcalcult = List.rev (decompose_tuples_var [] calcul t) in
-		List.iter (fun (calcul, t) ->
+		let lrecipet = List.rev (decompose_tuples_var [] recipe t) in
+		List.iter (fun (recipe, t) ->
 		  let t' = simplify_choice t in
-		  if not (Terms.equal_terms calcul t') then
+		  if not (Terms.equal_terms recipe t') then
 		    begin
 		      reset_wrap_mark();
 		      Buffer.clear buff;
-		      NoArgNames.term calcul;
+		      NoArgNames.term recipe;
 		      let abbrev_string = Buffer.contents buff in
 		      Buffer.clear buff;
 		      NoArgNames.term t';
@@ -3734,7 +3825,7 @@ module AttGraph =
 		      if not (abbrev_in_table abbrev_string !abbrev_tab) then
                         abbrev_tab := (abbrev_string, content_string)::!abbrev_tab
 		    end
-		      ) lcalcult;
+		      ) lrecipet;
 		let abbrev_string = String.sub s 0 (pos-1) in
 		Buffer.clear buff;
 		print_string abbrev_string
@@ -3752,7 +3843,7 @@ module AttGraph =
     (* [write_edge_no_label] writes no label.
        To be used as argument [label_fun] of [write_edge]. *)
     let write_edge_no_label() = ()
-	  
+
     (* [write_edge p1 p2 label_fun options] writes an edge in the open dot file *)
     (* between node p1 and p2. *)
     (* The label of the edge is printed by the function [label_fun]. *)
@@ -3765,7 +3856,7 @@ module AttGraph =
       add_buffer " [label = <";
       label_fun();
       add_buffer ">";
-      List.iter (fun x -> 
+      List.iter (fun x ->
 	add_buffer ", ";
 	add_buffer x) options;
     add_buffer "]\n";
@@ -4035,30 +4126,30 @@ module AttGraph =
 	  n_proc
              end
 
-    let less_loc l1 l2 = 
+    let less_loc l1 l2 =
       match l1, l2 with
 	_, LocAttacker _ -> true
       |	LocAttacker _, _ -> false
       |	LocProcess(n1,_), LocProcess(n2,_) -> n1 <= n2
 
-    (* [dummy_process] and [dummy_calc] can be used in [LocProcess]
+    (* [dummy_process] and [dummy_recipe] can be used in [LocProcess]
        and [LocAttacker] when calling [write_edge_with_boxes] and a
        precise value is not known. *)
     let dummy_process = (Types.Nil, [], [], [], Nothing)
-    let dummy_calc = Terms.true_term
-	    
+    let dummy_recipe = Terms.true_term
+
     (* [write_edge_with_boxes ginfo oloc iloc obox ibox edge_label edge_options]
        writes an edge from [oloc] to [iloc], optionally with a box
-       [obox] at [oloc] and a box [ibox] at [iloc]. 
+       [obox] at [oloc] and a box [ibox] at [iloc].
        The edge has a label defined by [edge_label] and options defined
        by [edge_options].
        [oloc] and [iloc] are either
-       - [LocAttacker(calc)] for the attacker ([calc] is unused), or
+       - [LocAttacker(recipe)] for the attacker ([recipe] is unused), or
        - [LocProcess(n,p)] for the n-th process ([p] is unused).
        [obox] and [ibox] are as in [write_box] above. *)
     let write_edge_with_boxes ginfo oloc iloc obox ibox edge_label edge_options =
       (* [align plst] creates new nodes for each process in [plst]
-	  and aligns them horizontally. *)	  
+	  and aligns them horizontally. *)
       let align plst =
 	let n_plst = List.rev_map new_node_proc plst in
 	write_same_rank n_plst;
@@ -4066,7 +4157,7 @@ module AttGraph =
     in
       (* [write_edge_lst plst box1 box2 edge_label edge_options]
          writes an edge from the first process in [plst] to the
-         last process of [plst]. 
+         last process of [plst].
          Optionally, a box [box1] is displayed at the beginning of the edge
          and a box [box2] at the end. *)
       let write_edge_lst plst box1 box2 edge_label edge_options =
@@ -4116,14 +4207,14 @@ module AttGraph =
           let n_plst = append3 first n_lst_draw last in
           create_ginfo n_plst attacker None n_low Point false
 
-		
-    (* [write_edge_public ginfo noutput ninput (calc_label, term_label) 
+
+    (* [write_edge_public ginfo noutput ninput (recipe_label, term_label)
        edge_options] writes two edges: *)
     (*    - from [noutput] to [ninput], labeled [term_label] *)
     (*    using the options in edge_options *)
-    (*    - dotted, from the bigger among [noutput] and [ninput] to attacker, labeled [calc_label] *)
+    (*    - dotted, from the bigger among [noutput] and [ninput] to attacker, labeled [recipe_label] *)
     (* Returns the updated [ginfo] *)
-    let write_edge_public ginfo noutput ninput (calc_label, term_label) edge_options =
+    let write_edge_public ginfo noutput ninput (recipe_label, term_label) edge_options =
       (* align also the inactive processes iff align_inactives is true *)
       let rec align2 (plst, rest_plst, attacker) =
         let n_plst = List.rev_map new_node_proc plst in
@@ -4146,7 +4237,7 @@ module AttGraph =
         write_edge attacker n_attacker write_edge_no_label ["weight = 100"];
         write_same_rank [n_last; n_fst; n_attacker];
         write_edge n_fst n_last (write_edge_label None term_label) edge_options;
-        write_edge n_last n_attacker (write_edge_label None calc_label) ["arrowhead = normal"; "style = dotted"];
+        write_edge n_last n_attacker (write_edge_label None recipe_label) ["arrowhead = normal"; "style = dotted"];
         (* return the updated list *)
         (n_fst::(List.rev_append plst_tl_without_last_rev [n_last]), rest_plst, n_attacker)
       in
@@ -4218,36 +4309,36 @@ module AttGraph =
           print_buffer ()
         end
 
-    let write_explained_fact_dot  f calc_lst ginfo =
-      match f, !calc_lst with
+    let write_explained_fact_dot  f recipe_lst ginfo =
+      match f, !recipe_lst with
       | (Pred({p_info = [Attacker(n,_)]}, _), Some _)
       | (Pred({p_info = [Mess(n,_)]}, _), Some _) ->
 	  (* This function displays a box on the attacker trace
-	     only when recipes are present (!calc_lst = Some ...).
+	     only when recipes are present (!recipe_lst = Some ...).
 	     Recipes may be absent in the case Mess, when
              the message is sent via RIO. This case is displayed
              elsewhere by drawing the RIO arrow in red. *)
 	  add_in_box_attacker BRed ginfo (fun () ->
-	    display_explained_fact f calc_lst)
+	    display_explained_fact f recipe_lst)
       | _ -> ginfo
 
     let write_loc = function
 	LocProcess(_,(proc,_,_,_,_)) ->
 	  display_occ_process proc
-      | LocAttacker _ -> 
+      | LocAttacker _ ->
 	  ()
 
 
 
-    let write_goal_to_dot_file  a_to_term noninterftest_to_string state g ginfo =
+    let write_goal_to_dot_file  a_to_term noninterftest_to_string state ginfo =
       begin
-        match g with
-        | Fact (f, calc_lst) ->
-            write_explained_fact_dot  f calc_lst ginfo
+        match state.goal with
+        | Fact (f, recipe_lst) ->
+            write_explained_fact_dot  f recipe_lst ginfo
         | InjGoal _ | NoGoal -> ginfo
         | WeakSecrGoal(l, t, w1, w2) ->
 	    add_in_box_attacker BRed ginfo (fun () ->
-	      display_attack_goal a_to_term noninterftest_to_string g)
+	      display_attack_goal a_to_term noninterftest_to_string state)
         | NonInterfGoal t ->
             match t with
               ProcessTest(hypspec,tl,loc) ->
@@ -4277,21 +4368,21 @@ module AttGraph =
 			newline();
 			print_string (noninterftest_to_string t))
 		      in
-		      let calc_lab =
+		      let recipe_lab =
 			match oloc with
-			  LocAttacker calc -> Some calc
+			  LocAttacker recipe -> Some recipe
 			| LocProcess _ -> None
 		      in
-		      let edge_options = 
+		      let edge_options =
 			[ "arrowhead = normal" ]
 		      in
-		      let n_ginfo = write_edge_with_boxes ginfo oloc iloc None ibox (write_edge_label calc_lab mess_term) edge_options in
+		      let n_ginfo = write_edge_with_boxes ginfo oloc iloc None ibox (write_edge_label recipe_lab mess_term) edge_options in
 		      wrap_limit := old_wrap_limit;
 		      n_ginfo
 		end
             | ApplyTest _ | NIFailTest _ ->
 		add_in_box_attacker BRed ginfo (fun () ->
-		  display_attack_goal a_to_term noninterftest_to_string g)
+		  display_attack_goal a_to_term noninterftest_to_string state)
             | CommTest(t1,t2,loc) ->
 		begin
 		  match !loc with
@@ -4313,7 +4404,7 @@ module AttGraph =
 			display_term2 (a_to_term t1);
 			print_string ",...)")
 		      in
-		      let edge_options = 
+		      let edge_options =
 			[ "arrowhead = normal"; "style = dashed"; "color = red"]
 		      in
 		      let n_ginfo = write_edge_with_boxes ginfo oloc iloc obox ibox
@@ -4322,14 +4413,14 @@ module AttGraph =
 		      wrap_limit := old_wrap_limit;
 		      n_ginfo
 		end
-            | NIEqTest((t1, calc1),(t2, calc2)) ->
+            | NIEqTest((t1, recipe1),(t2, recipe2)) ->
 		add_in_box_attacker BRed ginfo (fun () ->
-		  display_attack_goal a_to_term noninterftest_to_string g)
+		  display_attack_goal a_to_term noninterftest_to_string state)
       end
 
-    let write_a_trace_has_been_found hyp =
+    let write_a_trace_has_been_found final_state =
       print_string "Trace [label = <";
-      display_trace_found hyp;
+      display_trace_found final_state;
       print_string ">, shape = plaintext]\n"
 
     let make_par ginfo n1 n2 =
@@ -4360,7 +4451,7 @@ module AttGraph =
   (* add to the open dot file the necessary lines to display the state state *)
   (* with respect to the given parameters in the open dot file. *)
   (* Return the modified ginfo. *)
-    let rec write_step_to_dot_file ginfo state hyp =
+    let rec write_step_to_dot_file ginfo state final_state =
     let (plst, attacker, rparinfo, prev_pnb, prev_pstyle, ins_or_get) =
       get_ginfo_params ginfo in
       match rparinfo, state.comment with
@@ -4374,7 +4465,7 @@ module AttGraph =
         let proc1 = next_pstate Point proc0 in
           let string_of_proc0 = string_of_proc proc0 in
           if (not !Param.interactive_mode) then
-            write_a_trace_has_been_found hyp;
+            write_a_trace_has_been_found final_state;
         write_node proc0 "Honest Process" ["shape = plaintext"];
           write_node attacker "Attacker" ["shape = plaintext"];
           add_buffer ("Trace -> " ^ string_of_proc0);
@@ -4437,40 +4528,40 @@ module AttGraph =
          add_nil ginfo n
        else
          add_in_box_and_nil ginfo n state
-      | None, ROutput1(n, _, calc, t) ->
+      | None, ROutput1(n, _, recipe, t) ->
 	  write_edge_with_boxes ginfo (LocProcess(n,dummy_process))
-	    (LocAttacker(calc)) None None (write_edge_label (Some calc) t)
+	    (LocAttacker(recipe)) None None (write_edge_label (Some recipe) t)
 	    ["arrowhead = normal"]
-      | None, RInput(n, _, _, calc, t) ->
-	  write_edge_with_boxes ginfo (LocAttacker(calc))
-	    (LocProcess(n,dummy_process)) None None (write_edge_label (Some calc) t)
+      | None, RInput(n, _, _, recipe, t) ->
+	  write_edge_with_boxes ginfo (LocAttacker(recipe))
+	    (LocProcess(n,dummy_process)) None None (write_edge_label (Some recipe) t)
 	    ["arrowhead = normal"]
       | None, RPhase(n) ->
 	  write_edge_with_boxes ginfo (LocProcess(0, dummy_process))
-	    (LocAttacker(dummy_calc)) None None
+	    (LocAttacker(dummy_recipe)) None None
 	    (fun () -> print_string ("Phase " ^(string_of_int n)))
 	    ["style = dotted"]
-      | None, RInput2(n, _, _, calc, t) ->
+      | None, RInput2(n, _, _, recipe, t) ->
           let n_ginfo =
-	    write_edge_with_boxes ginfo (LocAttacker(calc))
-	      (LocProcess(n,dummy_process)) None None (write_edge_label (Some calc) t)
+	    write_edge_with_boxes ginfo (LocAttacker(recipe))
+	      (LocProcess(n,dummy_process)) None None (write_edge_label (Some recipe) t)
 	      ["arrowhead = normal"]
        in
           add_nil n_ginfo n
-      | None,  RIO(ninput, _, _, n, _, calc, t, flag) ->
+      | None,  RIO(ninput, _, _, n, _, recipe, t, flag) ->
 	  let edge_options = "arrowhead = normal" :: (if flag then ["color = red"] else []) in
 	  begin
-	    match calc with
+	    match recipe with
 	      None ->
 		write_edge_with_boxes ginfo (LocProcess(n,dummy_process))
 		  (LocProcess(ninput,dummy_process)) None None (write_edge_label None t)
 		  edge_options
-	    | Some calc' ->
-		write_edge_public ginfo n ninput (calc', t) edge_options
+	    | Some recipe' ->
+		write_edge_public ginfo n ninput (recipe', t) edge_options
 	  end
-      | None, RIO2(ninput, tc', pat, n, tc, calcopt, t, flag) ->
+      | None, RIO2(ninput, tc', pat, n, tc, recipeopt, t, flag) ->
        let n_ginfo =
-            write_step_to_dot_file ginfo {state with comment = RIO(ninput, tc', pat, n, tc,  calcopt, t, flag)} hyp in
+            write_step_to_dot_file ginfo {state with comment = RIO(ninput, tc', pat, n, tc,  recipeopt, t, flag)} final_state in
        add_nil n_ginfo ninput
     | None, RPar(n) ->
        let n_ginfo = close_prev_if_box ginfo in
@@ -4480,27 +4571,28 @@ module AttGraph =
        create_ginfo plst attacker (Some(n1, n2 + 1)) n Point false
     | Some(n1, n2), s ->
 	  let n_ginfo = make_par ginfo n1 n2 in
-          write_step_to_dot_file n_ginfo state hyp
+          write_step_to_dot_file n_ginfo state final_state
 
  (* write_state_to_dot_file state: write the necessary lines to display the *)
  (* trace represented by state in the open dot file. *)
-    let write_state_to_dot_file a_to_term noninterftest_to_string state =
+    let write_state_to_dot_file fname a_to_term noninterftest_to_string final_state =
     let rec aux ginfo state =
       if (!Param.display_init_state || (not (state.previous_state = None))) then
         match state.previous_state with
           Some s ->
             let n_ginfo = aux ginfo s in
-              write_step_to_dot_file n_ginfo state state.hyp_not_matched
+              write_step_to_dot_file n_ginfo state final_state
         | None ->
-              write_step_to_dot_file ginfo state state.hyp_not_matched
+              write_step_to_dot_file ginfo state final_state
       else
         ginfo
     in
+      openfile fname;
       abbrev_tab := [];
       abbrev_nb := 0;
     let ginfo =
         create_ginfo [] {pnb = []; pstate = 0; pstyle = Point} None 0 Point false in
-    let n_ginfo = aux ginfo state in
+    let n_ginfo = aux ginfo final_state in
       let n_ginfo =
 	match get_rparinfo n_ginfo with
 	  None -> n_ginfo
@@ -4509,7 +4601,7 @@ module AttGraph =
       print_buffer ();
       let nn_ginfo =
         if (not !Param.interactive_mode) then
-	  write_goal_to_dot_file a_to_term noninterftest_to_string state state.goal n_ginfo
+	  write_goal_to_dot_file a_to_term noninterftest_to_string final_state n_ginfo
         else
 	  n_ginfo
       in
@@ -4517,5 +4609,6 @@ module AttGraph =
       write_abbrev ();
       if not (!abbrev_tab = []) then
 	add_buffer "Abbrev -> P__0 [style = invisible, weight =100]";
-      end_dot_file()
+      end_dot_file();
+      close()
   end
