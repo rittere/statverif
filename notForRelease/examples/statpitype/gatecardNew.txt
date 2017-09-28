@@ -1,0 +1,1387 @@
+Process:
+(
+    {1}!
+    {2}in(ch, x_m: bitstring);
+    {3}event gate_debit(x_m);
+    {4}out(ch, sign(x_m,L))
+) | (
+    {5}!
+    {6}new n: bitstring;
+    {7}out(ch, n);
+    {8}in(ch, z: bitstring);
+    {9}let (x_47: bitstring,=n) = checksign(z,K) in
+    {10}event gate_open(x_47,n)
+) | (
+    {11}!
+    {12}lock s;
+    {13}read s as (s_1_48: bitstring,s_2_49: bitstring);
+    {14}if (s_2_49 <> zero) then
+        {15}event card_permit(s_2_49);
+        {16}s := (s_1_48,zero);
+        0
+    else
+        {17}if (s_1_48 <> zero) then
+        {18}event card_permit(s_1_48);
+        {19}s := (zero,zero);
+        0
+) | (
+    {20}!
+    {21}lock s;
+    {22}new m: bitstring;
+    {23}out(ch, m);
+    {24}in(ch, x_s: bitstring);
+    {25}if (x_s = sign(m,L)) then
+    {26}read s as (s_1_50: bitstring,s_2_51: bitstring);
+    {27}if (s_1_50 = zero) then
+        {28}event card_add(m);
+        {29}s := (m,zero);
+        0
+    else
+        {30}if (s_2_51 = zero) then
+        {31}event card_add(m);
+        {32}s := (s_1_50,m);
+        0
+)
+
+-- Query inj-event(card_permit(x_52)) ==> inj-event(card_add(x_52))
+nounif attacker(cells(*s_63),v_64)/-5000
+Completing...
+nounif attacker(cells((zero[],zero[])),x_m_412)/-5000
+nounif attacker(cells((m[!1 = *@sid_448],zero[])),x_m_449)/-5000
+nounif attacker(cells((m[!1 = *@sid_861],m[!1 = *@sid_862])),x_m_863)/-5000
+200 rules inserted. The rule base contains 192 rules. 46 rules in the queue.
+Completed clauses:
+begin(card_permit(m[!1 = @sid_8474])) && begin(card_add(m[!1 = @sid_8474]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_8475], x_s = sign(m[!1 = @sid_8474],L[]), @sid_256 = @sid_8474, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_8475])) && begin(card_add(m[!1 = @sid_8475]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_8475],L[]), @sid_256 = @sid_8475, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_8472]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_8471], x_s = sign(m[!1 = @sid_8472],L[]), @sid_256 = @sid_8472, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_8471]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_8471],L[]), @sid_256 = @sid_8471, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_8471],zero[])),v_8473) -> attacker(cells((m[!1 = @sid_8471],m[!1 = @sid_8472])),v_8473)
+begin(card_permit(m[!1 = @sid_8118])) && begin(card_add(m[!1 = @sid_8118]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_8119], x_s = sign(m[!1 = @sid_8118],L[]), @sid_256 = @sid_8118, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_8119])) && begin(card_add(m[!1 = @sid_8119]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_8119],L[]), @sid_256 = @sid_8119, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_8116]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_8115], x_s = sign(m[!1 = @sid_8116],L[]), @sid_256 = @sid_8116, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_8115]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_8115],L[]), @sid_256 = @sid_8115, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_8115],zero[])),cells((m[!1 = @sid_8115],m[!1 = @sid_8116])))
+begin(card_permit(m[!1 = @sid_6030])) && begin(card_add(m[!1 = @sid_6030]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_6031], x_s = sign(m[!1 = @sid_6030],L[]), @sid_256 = @sid_6030, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_6032]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_6031], x_s = sign(m[!1 = @sid_6032],L[]), @sid_256 = @sid_6032, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_6031]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_6031],L[]), @sid_256 = @sid_6031, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_6031],m[!1 = @sid_6032])),cells((m[!1 = @sid_6031],m[!1 = @sid_6032])))
+begin(card_permit(m[!1 = @sid_5871])) && begin(card_add(m[!1 = @sid_5871]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5871],L[]), @sid_256 = @sid_5871, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_5872])) && begin(card_add(m[!1 = @sid_5872]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_5873], x_s = sign(m[!1 = @sid_5872],L[]), @sid_256 = @sid_5872, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_5874]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_5873], x_s = sign(m[!1 = @sid_5874],L[]), @sid_256 = @sid_5874, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_5873]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5873],L[]), @sid_256 = @sid_5873, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_5873],m[!1 = @sid_5874])),cells((m[!1 = @sid_5873],m[!1 = @sid_5874])))
+begin(card_permit(m[!1 = @sid_5771])) && begin(card_add(m[!1 = @sid_5771]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5771],L[]), @sid_256 = @sid_5771, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_5772])) && begin(card_add(m[!1 = @sid_5772]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_5767], x_s = sign(m[!1 = @sid_5772],L[]), @sid_256 = @sid_5772, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_5768]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_5767], x_s = sign(m[!1 = @sid_5768],L[]), @sid_256 = @sid_5768, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_5767]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5767],L[]), @sid_256 = @sid_5767, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_5771],zero[])),v_5769) -> attacker(cells((m[!1 = @sid_5767],m[!1 = @sid_5768])),v_5769)
+begin(card_permit(m[!1 = @sid_5443])) && begin(card_add(m[!1 = @sid_5443]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_5444], x_s = sign(m[!1 = @sid_5443],L[]), @sid_256 = @sid_5443, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_5444])) && begin(card_add(m[!1 = @sid_5444]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5444],L[]), @sid_256 = @sid_5444, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_5445]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5445],L[]), @sid_256 = @sid_5445, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_5445],zero[])),cells((m[!1 = @sid_5445],zero[])))
+begin(card_permit(m[!1 = @sid_5016])) && begin(card_add(m[!1 = @sid_5016]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_5017], x_s = sign(m[!1 = @sid_5016],L[]), @sid_256 = @sid_5016, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_5017])) && begin(card_add(m[!1 = @sid_5017]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5017],L[]), @sid_256 = @sid_5017, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_5019]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_5018], x_s = sign(m[!1 = @sid_5019],L[]), @sid_256 = @sid_5019, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_5018]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_5018],L[]), @sid_256 = @sid_5018, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_5018],m[!1 = @sid_5019])),cells((m[!1 = @sid_5018],m[!1 = @sid_5019])))
+begin(card_permit(m[!1 = @sid_4912])) && begin(card_add(m[!1 = @sid_4912]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4912],L[]), @sid_256 = @sid_4912, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_4913])) && begin(card_add(m[!1 = @sid_4913]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4914], x_s = sign(m[!1 = @sid_4913],L[]), @sid_256 = @sid_4913, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_4914])) && begin(card_add(m[!1 = @sid_4914]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4914],L[]), @sid_256 = @sid_4914, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_4909]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4908], x_s = sign(m[!1 = @sid_4909],L[]), @sid_256 = @sid_4909, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4908]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4908],L[]), @sid_256 = @sid_4908, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_4912],zero[])),v_4910) -> attacker(cells((m[!1 = @sid_4908],m[!1 = @sid_4909])),v_4910)
+begin(card_permit(m[!1 = @sid_4517])) && begin(card_add(m[!1 = @sid_4517]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4517],L[]), @sid_256 = @sid_4517, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_4518])) && begin(card_permit(m[!1 = @sid_4519])) && begin(card_add(m[!1 = @sid_4519]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4518], x_s = sign(m[!1 = @sid_4519],L[]), @sid_256 = @sid_4519, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4518]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4518],L[]), @sid_256 = @sid_4518, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_4517],zero[])),v_4515) -> attacker(cells((zero[],zero[])),v_4515)
+attacker(cells((m[!1 = @sid_4283],m[!1 = @sid_4284])),x_m_4285) && begin(card_permit(m[!1 = @sid_4286])) && begin(card_add(m[!1 = @sid_4286]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4283], x_s = sign(m[!1 = @sid_4286],L[]), @sid_256 = @sid_4286, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4284]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4283], x_s = sign(m[!1 = @sid_4284],L[]), @sid_256 = @sid_4284, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4283]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4283],L[]), @sid_256 = @sid_4283, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_4283],m[!1 = @sid_4284])),sign(x_m_4285,L[]))
+begin(card_permit(m[!1 = @sid_4275])) && begin(card_add(m[!1 = @sid_4275]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4276], x_s = sign(m[!1 = @sid_4275],L[]), @sid_256 = @sid_4275, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4277]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4276], x_s = sign(m[!1 = @sid_4277],L[]), @sid_256 = @sid_4277, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4276]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4276],L[]), @sid_256 = @sid_4276, @occ28 = @occ_cst) -> end(@sid_4278,card_permit(m[!1 = @sid_4277]))
+begin(card_permit(m[!1 = @sid_4261])) && begin(card_add(m[!1 = @sid_4261]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4262], x_s = sign(m[!1 = @sid_4261],L[]), @sid_256 = @sid_4261, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4263]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4262], x_s = sign(m[!1 = @sid_4263],L[]), @sid_256 = @sid_4263, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4262]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4262],L[]), @sid_256 = @sid_4262, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_4262],m[!1 = @sid_4263])),m[!1 = @sid_4264])
+begin(card_add(m[!1 = @sid_4171]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4170], x_s = sign(m[!1 = @sid_4171],L[]), @sid_256 = @sid_4171, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_4172])) && begin(card_add(m[!1 = @sid_4172]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4170], x_s = sign(m[!1 = @sid_4172],L[]), @sid_256 = @sid_4172, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4170]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4170],L[]), @sid_256 = @sid_4170, @occ28 = @occ_cst) && attacker(cells((zero[],zero[])),x_4173) -> attacker(cells((m[!1 = @sid_4170],m[!1 = @sid_4171])),x_4173)
+begin(card_permit(m[!1 = @sid_4140])) && begin(card_add(m[!1 = @sid_4140]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4141], x_s = sign(m[!1 = @sid_4140],L[]), @sid_256 = @sid_4140, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_4141])) && begin(card_add(m[!1 = @sid_4141]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4141],L[]), @sid_256 = @sid_4141, @occ28 = @occ_cst) -> attacker(cells((zero[],zero[])),m[!1 = @sid_4142])
+begin(card_permit(m[!1 = @sid_4099])) && begin(card_add(m[!1 = @sid_4099]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4100], x_s = sign(m[!1 = @sid_4099],L[]), @sid_256 = @sid_4099, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_4100])) && begin(card_add(m[!1 = @sid_4100]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4100],L[]), @sid_256 = @sid_4100, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_4101]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4101],L[]), @sid_256 = @sid_4101, @occ28 = @occ_cst) -> end(@sid_4102,card_permit(m[!1 = @sid_4101]))
+begin(card_permit(m[!1 = @sid_4081])) && begin(card_add(m[!1 = @sid_4081]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4082], x_s = sign(m[!1 = @sid_4081],L[]), @sid_256 = @sid_4081, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_4082])) && begin(card_add(m[!1 = @sid_4082]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4082],L[]), @sid_256 = @sid_4082, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_4083]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4083],L[]), @sid_256 = @sid_4083, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_4083],zero[])),m[!1 = @sid_4084])
+begin(card_permit(m[!1 = @sid_4012])) && begin(card_add(m[!1 = @sid_4012]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4013], x_s = sign(m[!1 = @sid_4012],L[]), @sid_256 = @sid_4012, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_4013])) && begin(card_add(m[!1 = @sid_4013]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4013],L[]), @sid_256 = @sid_4013, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_4015]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4014], x_s = sign(m[!1 = @sid_4015],L[]), @sid_256 = @sid_4015, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4014]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4014],L[]), @sid_256 = @sid_4014, @occ28 = @occ_cst) -> end(@sid_4016,card_permit(m[!1 = @sid_4015]))
+begin(card_permit(m[!1 = @sid_3998])) && begin(card_add(m[!1 = @sid_3998]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3999], x_s = sign(m[!1 = @sid_3998],L[]), @sid_256 = @sid_3998, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_3999])) && begin(card_add(m[!1 = @sid_3999]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3999],L[]), @sid_256 = @sid_3999, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_4001]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_4000], x_s = sign(m[!1 = @sid_4001],L[]), @sid_256 = @sid_4001, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_4000]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_4000],L[]), @sid_256 = @sid_4000, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_4000],m[!1 = @sid_4001])),m[!1 = @sid_4002])
+begin(card_permit(m[!1 = @sid_3972])) && begin(card_add(m[!1 = @sid_3972]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3973], x_s = sign(m[!1 = @sid_3972],L[]), @sid_256 = @sid_3972, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_3973])) && begin(card_add(m[!1 = @sid_3973]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3973],L[]), @sid_256 = @sid_3973, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_3969]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3968], x_s = sign(m[!1 = @sid_3969],L[]), @sid_256 = @sid_3969, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_3968]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3968],L[]), @sid_256 = @sid_3968, @occ28 = @occ_cst) && attacker(cells((zero[],zero[])),v_3970) -> attacker(cells((m[!1 = @sid_3968],m[!1 = @sid_3969])),v_3970)
+begin(card_permit(m[!1 = @sid_3916])) && begin(card_add(m[!1 = @sid_3916]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3917], x_s = sign(m[!1 = @sid_3916],L[]), @sid_256 = @sid_3916, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_3918])) && begin(card_add(m[!1 = @sid_3918]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3918],L[]), @sid_256 = @sid_3918, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_3919]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3917], x_s = sign(m[!1 = @sid_3919],L[]), @sid_256 = @sid_3919, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_3917]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3917],L[]), @sid_256 = @sid_3917, @occ28 = @occ_cst) -> end(@sid_3920,card_permit(m[!1 = @sid_3919]))
+begin(card_permit(m[!1 = @sid_3902])) && begin(card_add(m[!1 = @sid_3902]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3903], x_s = sign(m[!1 = @sid_3902],L[]), @sid_256 = @sid_3902, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_3904])) && begin(card_add(m[!1 = @sid_3904]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3904],L[]), @sid_256 = @sid_3904, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_3905]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3903], x_s = sign(m[!1 = @sid_3905],L[]), @sid_256 = @sid_3905, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_3903]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3903],L[]), @sid_256 = @sid_3903, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_3903],m[!1 = @sid_3905])),m[!1 = @sid_3906])
+begin(card_permit(m[!1 = @sid_3000])) && begin(card_add(m[!1 = @sid_3000]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_3001], x_s = sign(m[!1 = @sid_3000],L[]), @sid_256 = @sid_3000, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_3001])) && begin(card_add(m[!1 = @sid_3001]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_3001],L[]), @sid_256 = @sid_3001, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_3001],m[!1 = @sid_3000])),v_2998) -> attacker(cells((zero[],zero[])),v_2998)
+begin(card_permit(m[!1 = @sid_2969])) && begin(card_add(m[!1 = @sid_2969]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2968], x_s = sign(m[!1 = @sid_2969],L[]), @sid_256 = @sid_2969, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2970]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2968], x_s = sign(m[!1 = @sid_2970],L[]), @sid_256 = @sid_2970, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2968]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2968],L[]), @sid_256 = @sid_2968, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2968],zero[])),cells((m[!1 = @sid_2968],m[!1 = @sid_2970])))
+begin(card_permit(m[!1 = @sid_2961])) && begin(card_add(m[!1 = @sid_2961]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2960], x_s = sign(m[!1 = @sid_2961],L[]), @sid_256 = @sid_2961, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2962]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2960], x_s = sign(m[!1 = @sid_2962],L[]), @sid_256 = @sid_2962, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2960]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2960],L[]), @sid_256 = @sid_2960, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_2960],m[!1 = @sid_2961])),v_2963) -> attacker(cells((m[!1 = @sid_2960],m[!1 = @sid_2962])),v_2963)
+begin(card_permit(m[!1 = @sid_2955])) && begin(card_add(m[!1 = @sid_2955]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2954], x_s = sign(m[!1 = @sid_2955],L[]), @sid_256 = @sid_2955, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2956]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2954], x_s = sign(m[!1 = @sid_2956],L[]), @sid_256 = @sid_2956, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2954]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2954],L[]), @sid_256 = @sid_2954, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_2954],m[!1 = @sid_2956])))
+begin(card_permit(m[!1 = @sid_2929])) && begin(card_add(m[!1 = @sid_2929]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2929],L[]), @sid_256 = @sid_2929, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2931])) && begin(card_add(m[!1 = @sid_2931]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2930], x_s = sign(m[!1 = @sid_2931],L[]), @sid_256 = @sid_2931, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2932]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2930], x_s = sign(m[!1 = @sid_2932],L[]), @sid_256 = @sid_2932, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2930]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2930],L[]), @sid_256 = @sid_2930, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_2930],m[!1 = @sid_2931])),v_2933) -> attacker(cells((m[!1 = @sid_2930],m[!1 = @sid_2932])),v_2933)
+begin(card_permit(m[!1 = @sid_2921])) && begin(card_add(m[!1 = @sid_2921]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2921],L[]), @sid_256 = @sid_2921, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2923])) && begin(card_add(m[!1 = @sid_2923]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2922], x_s = sign(m[!1 = @sid_2923],L[]), @sid_256 = @sid_2923, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2924]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2922], x_s = sign(m[!1 = @sid_2924],L[]), @sid_256 = @sid_2924, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2922]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2922],L[]), @sid_256 = @sid_2922, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_2922],m[!1 = @sid_2924])))
+begin(card_permit(m[!1 = @sid_2903])) && begin(card_add(m[!1 = @sid_2903]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2903],L[]), @sid_256 = @sid_2903, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2905])) && begin(card_add(m[!1 = @sid_2905]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2904], x_s = sign(m[!1 = @sid_2905],L[]), @sid_256 = @sid_2905, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2906]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2904], x_s = sign(m[!1 = @sid_2906],L[]), @sid_256 = @sid_2906, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2904]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2904],L[]), @sid_256 = @sid_2904, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2903],zero[])),cells((m[!1 = @sid_2904],m[!1 = @sid_2906])))
+begin(card_permit(m[!1 = @sid_2895])) && begin(card_add(m[!1 = @sid_2895]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2895],L[]), @sid_256 = @sid_2895, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2897])) && begin(card_add(m[!1 = @sid_2897]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2896], x_s = sign(m[!1 = @sid_2897],L[]), @sid_256 = @sid_2897, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2898]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2896], x_s = sign(m[!1 = @sid_2898],L[]), @sid_256 = @sid_2898, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2896]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2896],L[]), @sid_256 = @sid_2896, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2896],zero[])),cells((m[!1 = @sid_2896],m[!1 = @sid_2898])))
+begin(card_permit(m[!1 = @sid_2860])) && begin(card_add(m[!1 = @sid_2860]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2861], x_s = sign(m[!1 = @sid_2860],L[]), @sid_256 = @sid_2860, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2861])) && begin(card_add(m[!1 = @sid_2861]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2861],L[]), @sid_256 = @sid_2861, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2857]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2857],L[]), @sid_256 = @sid_2857, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_2861],m[!1 = @sid_2860])),v_2858) -> attacker(cells((m[!1 = @sid_2857],zero[])),v_2858)
+begin(card_permit(m[!1 = @sid_2847])) && begin(card_add(m[!1 = @sid_2847]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2848], x_s = sign(m[!1 = @sid_2847],L[]), @sid_256 = @sid_2847, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2848])) && begin(card_add(m[!1 = @sid_2848]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2848],L[]), @sid_256 = @sid_2848, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2845]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2845],L[]), @sid_256 = @sid_2845, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_2845],zero[])))
+begin(card_permit(m[!1 = @sid_2819])) && begin(card_add(m[!1 = @sid_2819]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2819],L[]), @sid_256 = @sid_2819, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2821])) && begin(card_add(m[!1 = @sid_2821]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2820], x_s = sign(m[!1 = @sid_2821],L[]), @sid_256 = @sid_2821, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2820])) && begin(card_add(m[!1 = @sid_2820]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2820],L[]), @sid_256 = @sid_2820, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2822]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2822],L[]), @sid_256 = @sid_2822, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2819],zero[])),cells((m[!1 = @sid_2822],zero[])))
+begin(card_permit(m[!1 = @sid_2815])) && begin(card_add(m[!1 = @sid_2815]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2812], x_s = sign(m[!1 = @sid_2815],L[]), @sid_256 = @sid_2815, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2812])) && begin(card_add(m[!1 = @sid_2812]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2812],L[]), @sid_256 = @sid_2812, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2813]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2813],L[]), @sid_256 = @sid_2813, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2812],zero[])),cells((m[!1 = @sid_2813],zero[])))
+begin(card_permit(m[!1 = @sid_2769])) && begin(card_add(m[!1 = @sid_2769]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2770], x_s = sign(m[!1 = @sid_2769],L[]), @sid_256 = @sid_2769, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2770])) && begin(card_add(m[!1 = @sid_2770]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2770],L[]), @sid_256 = @sid_2770, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2766]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2765], x_s = sign(m[!1 = @sid_2766],L[]), @sid_256 = @sid_2766, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2765]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2765],L[]), @sid_256 = @sid_2765, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_2770],m[!1 = @sid_2769])),v_2767) -> attacker(cells((m[!1 = @sid_2765],m[!1 = @sid_2766])),v_2767)
+begin(card_permit(m[!1 = @sid_2753])) && begin(card_add(m[!1 = @sid_2753]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2754], x_s = sign(m[!1 = @sid_2753],L[]), @sid_256 = @sid_2753, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2754])) && begin(card_add(m[!1 = @sid_2754]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2754],L[]), @sid_256 = @sid_2754, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2751]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2750], x_s = sign(m[!1 = @sid_2751],L[]), @sid_256 = @sid_2751, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2750]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2750],L[]), @sid_256 = @sid_2750, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_2750],m[!1 = @sid_2751])))
+begin(card_permit(m[!1 = @sid_2718])) && begin(card_add(m[!1 = @sid_2718]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2718],L[]), @sid_256 = @sid_2718, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2720])) && begin(card_add(m[!1 = @sid_2720]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2719], x_s = sign(m[!1 = @sid_2720],L[]), @sid_256 = @sid_2720, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2719])) && begin(card_add(m[!1 = @sid_2719]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2719],L[]), @sid_256 = @sid_2719, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2722]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2721], x_s = sign(m[!1 = @sid_2722],L[]), @sid_256 = @sid_2722, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2721]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2721],L[]), @sid_256 = @sid_2721, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2718],zero[])),cells((m[!1 = @sid_2721],m[!1 = @sid_2722])))
+begin(card_permit(m[!1 = @sid_2713])) && begin(card_add(m[!1 = @sid_2713]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2709], x_s = sign(m[!1 = @sid_2713],L[]), @sid_256 = @sid_2713, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2709])) && begin(card_add(m[!1 = @sid_2709]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2709],L[]), @sid_256 = @sid_2709, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2711]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2710], x_s = sign(m[!1 = @sid_2711],L[]), @sid_256 = @sid_2711, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2710]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2710],L[]), @sid_256 = @sid_2710, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2709],zero[])),cells((m[!1 = @sid_2710],m[!1 = @sid_2711])))
+begin(card_add(m[!1 = @sid_2659]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2658], x_s = sign(m[!1 = @sid_2659],L[]), @sid_256 = @sid_2659, @occ31 = @occ_cst) && attacker(cells((m[!1 = @sid_2658],zero[])),x_2660) && begin(card_permit(m[!1 = @sid_2661])) && begin(card_add(m[!1 = @sid_2661]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2658], x_s = sign(m[!1 = @sid_2661],L[]), @sid_256 = @sid_2661, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2658]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2658],L[]), @sid_256 = @sid_2658, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_2658],m[!1 = @sid_2659])),x_2660)
+begin(card_add(m[!1 = @sid_2649]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2648], x_s = sign(m[!1 = @sid_2649],L[]), @sid_256 = @sid_2649, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2648]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2648],L[]), @sid_256 = @sid_2648, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2650])) && attacker(cells((m[!1 = @sid_2650],zero[])),x_2651) && begin(card_permit(m[!1 = @sid_2652])) && begin(card_add(m[!1 = @sid_2652]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2650], x_s = sign(m[!1 = @sid_2652],L[]), @sid_256 = @sid_2652, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2650]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2650],L[]), @sid_256 = @sid_2650, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_2648],m[!1 = @sid_2649])),x_2651)
+begin(card_permit(m[!1 = @sid_2613])) && begin(card_add(m[!1 = @sid_2613]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2613],L[]), @sid_256 = @sid_2613, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2614])) && begin(card_permit(m[!1 = @sid_2615])) && begin(card_add(m[!1 = @sid_2615]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2614], x_s = sign(m[!1 = @sid_2615],L[]), @sid_256 = @sid_2615, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2614]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2614],L[]), @sid_256 = @sid_2614, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2613],zero[])),cells((zero[],zero[])))
+begin(card_permit(m[!1 = @sid_2608])) && begin(card_permit(m[!1 = @sid_2609])) && begin(card_add(m[!1 = @sid_2609]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2608], x_s = sign(m[!1 = @sid_2609],L[]), @sid_256 = @sid_2609, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2608]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2608],L[]), @sid_256 = @sid_2608, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_2608],zero[])),v_2606) -> attacker(cells((zero[],zero[])),v_2606)
+begin(card_permit(m[!1 = @sid_2598])) && begin(card_permit(m[!1 = @sid_2599])) && begin(card_add(m[!1 = @sid_2599]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2598], x_s = sign(m[!1 = @sid_2599],L[]), @sid_256 = @sid_2599, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2598]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2598],L[]), @sid_256 = @sid_2598, @occ28 = @occ_cst) -> reach(cells((zero[],zero[])))
+begin(card_permit(m[!1 = @sid_2485])) && begin(card_add(m[!1 = @sid_2485]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2486], x_s = sign(m[!1 = @sid_2485],L[]), @sid_256 = @sid_2485, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2487]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2486], x_s = sign(m[!1 = @sid_2487],L[]), @sid_256 = @sid_2487, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2486]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2486],L[]), @sid_256 = @sid_2486, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_2486],m[!1 = @sid_2487])))
+begin(card_permit(m[!1 = @sid_2409])) && begin(card_add(m[!1 = @sid_2409]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2410], x_s = sign(m[!1 = @sid_2409],L[]), @sid_256 = @sid_2409, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2410])) && begin(card_add(m[!1 = @sid_2410]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2410],L[]), @sid_256 = @sid_2410, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((zero[],zero[])))
+begin(card_permit(m[!1 = @sid_2393])) && begin(card_add(m[!1 = @sid_2393]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2394], x_s = sign(m[!1 = @sid_2393],L[]), @sid_256 = @sid_2393, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2394])) && begin(card_add(m[!1 = @sid_2394]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2394],L[]), @sid_256 = @sid_2394, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2391]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2391],L[]), @sid_256 = @sid_2391, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_2391],zero[])))
+begin(card_permit(m[!1 = @sid_2381])) && begin(card_add(m[!1 = @sid_2381]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2382], x_s = sign(m[!1 = @sid_2381],L[]), @sid_256 = @sid_2381, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2382])) && begin(card_add(m[!1 = @sid_2382]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2382],L[]), @sid_256 = @sid_2382, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2379]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2378], x_s = sign(m[!1 = @sid_2379],L[]), @sid_256 = @sid_2379, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2378]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2378],L[]), @sid_256 = @sid_2378, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_2378],m[!1 = @sid_2379])))
+begin(card_permit(m[!1 = @sid_2359])) && begin(card_add(m[!1 = @sid_2359]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2356], x_s = sign(m[!1 = @sid_2359],L[]), @sid_256 = @sid_2359, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2358])) && begin(card_add(m[!1 = @sid_2358]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2358],L[]), @sid_256 = @sid_2358, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2357]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2356], x_s = sign(m[!1 = @sid_2357],L[]), @sid_256 = @sid_2357, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2356]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2356],L[]), @sid_256 = @sid_2356, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_2356],m[!1 = @sid_2357])))
+begin(card_permit(m[!1 = @sid_2151])) && begin(card_add(m[!1 = @sid_2151]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2152], x_s = sign(m[!1 = @sid_2151],L[]), @sid_256 = @sid_2151, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_2153])) && begin(card_add(m[!1 = @sid_2153]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2153],L[]), @sid_256 = @sid_2153, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_2154]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2152], x_s = sign(m[!1 = @sid_2154],L[]), @sid_256 = @sid_2154, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2152]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2152],L[]), @sid_256 = @sid_2152, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2152],m[!1 = @sid_2151])),cells((m[!1 = @sid_2152],m[!1 = @sid_2154])))
+begin(card_permit(m[!1 = @sid_2030])) && begin(card_add(m[!1 = @sid_2030]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2030],L[]), @sid_256 = @sid_2030, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_2032])) && begin(card_add(m[!1 = @sid_2032]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_2031], x_s = sign(m[!1 = @sid_2032],L[]), @sid_256 = @sid_2032, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_2031]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_2031],L[]), @sid_256 = @sid_2031, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_2031],zero[])),cells((m[!1 = @sid_2031],zero[])))
+begin(card_permit(m[!1 = @sid_1871])) && begin(card_add(m[!1 = @sid_1871]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1872], x_s = sign(m[!1 = @sid_1871],L[]), @sid_256 = @sid_1871, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_1872])) && begin(card_add(m[!1 = @sid_1872]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1872],L[]), @sid_256 = @sid_1872, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1872],m[!1 = @sid_1871])),cells((zero[],zero[])))
+begin(card_permit(m[!1 = @sid_1863])) && begin(card_add(m[!1 = @sid_1863]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1864], x_s = sign(m[!1 = @sid_1863],L[]), @sid_256 = @sid_1863, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1865]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1864], x_s = sign(m[!1 = @sid_1865],L[]), @sid_256 = @sid_1865, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1864]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1864],L[]), @sid_256 = @sid_1864, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1864],m[!1 = @sid_1863])),cells((m[!1 = @sid_1864],m[!1 = @sid_1865])))
+begin(card_permit(m[!1 = @sid_1857])) && begin(card_add(m[!1 = @sid_1857]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1858], x_s = sign(m[!1 = @sid_1857],L[]), @sid_256 = @sid_1857, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_1858])) && begin(card_add(m[!1 = @sid_1858]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1858],L[]), @sid_256 = @sid_1858, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1859]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1859],L[]), @sid_256 = @sid_1859, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1858],m[!1 = @sid_1857])),cells((m[!1 = @sid_1859],zero[])))
+begin(card_permit(m[!1 = @sid_1849])) && begin(card_add(m[!1 = @sid_1849]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1850], x_s = sign(m[!1 = @sid_1849],L[]), @sid_256 = @sid_1849, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_1850])) && begin(card_add(m[!1 = @sid_1850]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1850],L[]), @sid_256 = @sid_1850, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1852]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1851], x_s = sign(m[!1 = @sid_1852],L[]), @sid_256 = @sid_1852, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1851]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1851],L[]), @sid_256 = @sid_1851, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1850],m[!1 = @sid_1849])),cells((m[!1 = @sid_1851],m[!1 = @sid_1852])))
+begin(card_permit(m[!1 = @sid_1834])) && begin(card_add(m[!1 = @sid_1834]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1834],L[]), @sid_256 = @sid_1834, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_1835])) && begin(card_add(m[!1 = @sid_1835]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1836], x_s = sign(m[!1 = @sid_1835],L[]), @sid_256 = @sid_1835, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1836]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1836],L[]), @sid_256 = @sid_1836, @occ28 = @occ_cst) -> end(@sid_1837,card_permit(m[!1 = @sid_1836]))
+begin(card_permit(m[!1 = @sid_1816])) && begin(card_add(m[!1 = @sid_1816]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1816],L[]), @sid_256 = @sid_1816, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_1817])) && begin(card_add(m[!1 = @sid_1817]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1818], x_s = sign(m[!1 = @sid_1817],L[]), @sid_256 = @sid_1817, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1818]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1818],L[]), @sid_256 = @sid_1818, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_1818],zero[])),m[!1 = @sid_1819])
+attacker(cells((m[!1 = @sid_1772],zero[])),x_m_1773) && begin(card_permit(m[!1 = @sid_1774])) && begin(card_add(m[!1 = @sid_1774]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1772], x_s = sign(m[!1 = @sid_1774],L[]), @sid_256 = @sid_1774, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1772]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1772],L[]), @sid_256 = @sid_1772, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_1772],zero[])),sign(x_m_1773,L[]))
+begin(card_permit(m[!1 = @sid_1766])) && begin(card_add(m[!1 = @sid_1766]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1767], x_s = sign(m[!1 = @sid_1766],L[]), @sid_256 = @sid_1766, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1767]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1767],L[]), @sid_256 = @sid_1767, @occ28 = @occ_cst) -> end(@sid_1768,card_permit(m[!1 = @sid_1767]))
+begin(card_permit(m[!1 = @sid_1762])) && begin(card_permit(m[!1 = @sid_1763])) && begin(card_add(m[!1 = @sid_1763]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1762], x_s = sign(m[!1 = @sid_1763],L[]), @sid_256 = @sid_1763, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1762]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1762],L[]), @sid_256 = @sid_1762, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1762],zero[])),cells((zero[],zero[])))
+begin(card_permit(m[!1 = @sid_1751])) && begin(card_add(m[!1 = @sid_1751]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1752], x_s = sign(m[!1 = @sid_1751],L[]), @sid_256 = @sid_1751, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1752]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1752],L[]), @sid_256 = @sid_1752, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_1752],zero[])),m[!1 = @sid_1753])
+begin(card_permit(m[!1 = @sid_1731])) && begin(card_add(m[!1 = @sid_1731]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1732], x_s = sign(m[!1 = @sid_1731],L[]), @sid_256 = @sid_1731, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1732]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1732],L[]), @sid_256 = @sid_1732, @occ28 = @occ_cst) && attacker(cells((zero[],zero[])),v_1733) -> attacker(cells((m[!1 = @sid_1732],zero[])),v_1733)
+begin(card_permit(m[!1 = @sid_1682])) && begin(card_add(m[!1 = @sid_1682]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1682],L[]), @sid_256 = @sid_1682, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_1684])) && begin(card_add(m[!1 = @sid_1684]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1683], x_s = sign(m[!1 = @sid_1684],L[]), @sid_256 = @sid_1684, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1683]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1683],L[]), @sid_256 = @sid_1683, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1682],zero[])),cells((m[!1 = @sid_1683],zero[])))
+begin(card_permit(m[!1 = @sid_1648])) && begin(card_add(m[!1 = @sid_1648]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1648],L[]), @sid_256 = @sid_1648, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_1650])) && begin(card_add(m[!1 = @sid_1650]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1649], x_s = sign(m[!1 = @sid_1650],L[]), @sid_256 = @sid_1650, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1649]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1649],L[]), @sid_256 = @sid_1649, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_1649],zero[])))
+begin(card_permit(m[!1 = @sid_1636])) && begin(card_add(m[!1 = @sid_1636]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1636],L[]), @sid_256 = @sid_1636, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1635]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1634], x_s = sign(m[!1 = @sid_1635],L[]), @sid_256 = @sid_1635, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1634]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1634],L[]), @sid_256 = @sid_1634, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1634],zero[])),cells((m[!1 = @sid_1634],m[!1 = @sid_1635])))
+begin(card_permit(m[!1 = @sid_1593])) && begin(card_add(m[!1 = @sid_1593]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1593],L[]), @sid_256 = @sid_1593, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_1595])) && begin(card_add(m[!1 = @sid_1595]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1594], x_s = sign(m[!1 = @sid_1595],L[]), @sid_256 = @sid_1595, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1594]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1594],L[]), @sid_256 = @sid_1594, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_1594],m[!1 = @sid_1595])),v_1596) -> attacker(cells((m[!1 = @sid_1594],zero[])),v_1596)
+attacker(cells((m[!1 = @sid_1446],m[!1 = @sid_1447])),x_m_1448) && begin(card_permit(m[!1 = @sid_1449])) && begin(card_add(m[!1 = @sid_1449]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1449],L[]), @sid_256 = @sid_1449, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1447]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1446], x_s = sign(m[!1 = @sid_1447],L[]), @sid_256 = @sid_1447, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1446]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1446],L[]), @sid_256 = @sid_1446, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_1446],m[!1 = @sid_1447])),sign(x_m_1448,L[]))
+begin(card_permit(m[!1 = @sid_1438])) && begin(card_add(m[!1 = @sid_1438]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1438],L[]), @sid_256 = @sid_1438, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1440]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1439], x_s = sign(m[!1 = @sid_1440],L[]), @sid_256 = @sid_1440, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1439]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1439],L[]), @sid_256 = @sid_1439, @occ28 = @occ_cst) -> end(@sid_1441,card_permit(m[!1 = @sid_1440]))
+begin(card_permit(m[!1 = @sid_1432])) && begin(card_permit(m[!1 = @sid_1433])) && begin(card_add(m[!1 = @sid_1433]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1433],L[]), @sid_256 = @sid_1433, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1432]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1434], x_s = sign(m[!1 = @sid_1432],L[]), @sid_256 = @sid_1432, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1434]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1434],L[]), @sid_256 = @sid_1434, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1434],m[!1 = @sid_1432])),cells((m[!1 = @sid_1434],zero[])))
+begin(card_permit(m[!1 = @sid_1424])) && begin(card_add(m[!1 = @sid_1424]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1424],L[]), @sid_256 = @sid_1424, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1426]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1425], x_s = sign(m[!1 = @sid_1426],L[]), @sid_256 = @sid_1426, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1425]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1425],L[]), @sid_256 = @sid_1425, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_1425],m[!1 = @sid_1426])),m[!1 = @sid_1427])
+begin(card_permit(m[!1 = @sid_1262])) && begin(card_add(m[!1 = @sid_1262]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1262],L[]), @sid_256 = @sid_1262, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1264]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1263], x_s = sign(m[!1 = @sid_1264],L[]), @sid_256 = @sid_1264, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1263]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1263],L[]), @sid_256 = @sid_1263, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_1263],zero[])),v_1265) -> attacker(cells((m[!1 = @sid_1263],m[!1 = @sid_1264])),v_1265)
+begin(card_permit(m[!1 = @sid_1240])) && begin(card_add(m[!1 = @sid_1240]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1239], x_s = sign(m[!1 = @sid_1240],L[]), @sid_256 = @sid_1240, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1239]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1239],L[]), @sid_256 = @sid_1239, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1239],zero[])),cells((m[!1 = @sid_1239],zero[])))
+begin(card_permit(m[!1 = @sid_1234])) && begin(card_add(m[!1 = @sid_1234]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1233], x_s = sign(m[!1 = @sid_1234],L[]), @sid_256 = @sid_1234, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1233]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1233],L[]), @sid_256 = @sid_1233, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_1233],m[!1 = @sid_1234])),v_1235) -> attacker(cells((m[!1 = @sid_1233],zero[])),v_1235)
+begin(card_permit(m[!1 = @sid_1230])) && begin(card_add(m[!1 = @sid_1230]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1229], x_s = sign(m[!1 = @sid_1230],L[]), @sid_256 = @sid_1230, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1229]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1229],L[]), @sid_256 = @sid_1229, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_1229],zero[])))
+begin(card_permit(m[!1 = @sid_1217])) && begin(card_add(m[!1 = @sid_1217]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1217],L[]), @sid_256 = @sid_1217, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_1219])) && begin(card_add(m[!1 = @sid_1219]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1218], x_s = sign(m[!1 = @sid_1219],L[]), @sid_256 = @sid_1219, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1218]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1218],L[]), @sid_256 = @sid_1218, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_1218],zero[])))
+begin(card_permit(m[!1 = @sid_1214])) && begin(card_add(m[!1 = @sid_1214]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1213], x_s = sign(m[!1 = @sid_1214],L[]), @sid_256 = @sid_1214, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1213]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1213],L[]), @sid_256 = @sid_1213, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_1213],zero[])))
+begin(card_permit(m[!1 = @sid_1185])) && begin(card_add(m[!1 = @sid_1185]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1185],L[]), @sid_256 = @sid_1185, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1187]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1186], x_s = sign(m[!1 = @sid_1187],L[]), @sid_256 = @sid_1187, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1186]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1186],L[]), @sid_256 = @sid_1186, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_1185],zero[])),v_1188) -> attacker(cells((m[!1 = @sid_1186],m[!1 = @sid_1187])),v_1188)
+begin(card_permit(m[!1 = @sid_1113])) && begin(card_add(m[!1 = @sid_1113]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1113],L[]), @sid_256 = @sid_1113, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1115]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_1114], x_s = sign(m[!1 = @sid_1115],L[]), @sid_256 = @sid_1115, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_1114]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1114],L[]), @sid_256 = @sid_1114, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_1114],m[!1 = @sid_1115])),cells((m[!1 = @sid_1114],m[!1 = @sid_1115])))
+attacker(cells((m[!1 = @sid_1047],zero[])),x_m_1048) && begin(card_permit(m[!1 = @sid_1049])) && begin(card_add(m[!1 = @sid_1049]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1049],L[]), @sid_256 = @sid_1049, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1047]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1047],L[]), @sid_256 = @sid_1047, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_1047],zero[])),sign(x_m_1048,L[]))
+begin(card_permit(m[!1 = @sid_1041])) && begin(card_add(m[!1 = @sid_1041]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1041],L[]), @sid_256 = @sid_1041, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1042]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1042],L[]), @sid_256 = @sid_1042, @occ28 = @occ_cst) -> end(@sid_1043,card_permit(m[!1 = @sid_1042]))
+begin(card_permit(m[!1 = @sid_1026])) && begin(card_add(m[!1 = @sid_1026]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1026],L[]), @sid_256 = @sid_1026, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_1027]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_1027],L[]), @sid_256 = @sid_1027, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_1027],zero[])),m[!1 = @sid_1028])
+begin(card_permit(m[!1 = @sid_960])) && begin(card_add(m[!1 = @sid_960]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_960],L[]), @sid_256 = @sid_960, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_962]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_961], x_s = sign(m[!1 = @sid_962],L[]), @sid_256 = @sid_962, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_961]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_961],L[]), @sid_256 = @sid_961, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_961],m[!1 = @sid_962])))
+begin(card_permit(m[!1 = @sid_936])) && begin(card_add(m[!1 = @sid_936]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_936],L[]), @sid_256 = @sid_936, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_937]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_937],L[]), @sid_256 = @sid_937, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_937],zero[])),cells((m[!1 = @sid_937],zero[])))
+attacker(cells((m[!1 = @sid_861],m[!1 = @sid_862])),x_m_863) && begin(card_add(m[!1 = @sid_862]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_861], x_s = sign(m[!1 = @sid_862],L[]), @sid_256 = @sid_862, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_861]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_861],L[]), @sid_256 = @sid_861, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_861],m[!1 = @sid_862])),sign(x_m_863,L[]))
+begin(card_add(m[!1 = @sid_856]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_855], x_s = sign(m[!1 = @sid_856],L[]), @sid_256 = @sid_856, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_855]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_855],L[]), @sid_256 = @sid_855, @occ28 = @occ_cst) -> end(@sid_857,card_permit(m[!1 = @sid_856]))
+begin(card_permit(m[!1 = @sid_851])) && begin(card_add(m[!1 = @sid_851]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_852], x_s = sign(m[!1 = @sid_851],L[]), @sid_256 = @sid_851, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_852]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_852],L[]), @sid_256 = @sid_852, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_852],m[!1 = @sid_851])),cells((m[!1 = @sid_852],zero[])))
+begin(card_add(m[!1 = @sid_846]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_845], x_s = sign(m[!1 = @sid_846],L[]), @sid_256 = @sid_846, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_845]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_845],L[]), @sid_256 = @sid_845, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_845],m[!1 = @sid_846])),m[!1 = @sid_847])
+begin(card_add(m[!1 = @sid_832]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_831], x_s = sign(m[!1 = @sid_832],L[]), @sid_256 = @sid_832, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_831]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_831],L[]), @sid_256 = @sid_831, @occ28 = @occ_cst) && attacker(cells((zero[],zero[])),v_833) -> attacker(cells((m[!1 = @sid_831],m[!1 = @sid_832])),v_833)
+begin(card_permit(m[!1 = @sid_825])) && begin(card_add(m[!1 = @sid_825]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_825],L[]), @sid_256 = @sid_825, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_827]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_826], x_s = sign(m[!1 = @sid_827],L[]), @sid_256 = @sid_827, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_826]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_826],L[]), @sid_256 = @sid_826, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_825],zero[])),cells((m[!1 = @sid_826],m[!1 = @sid_827])))
+begin(card_permit(m[!1 = @sid_817])) && begin(card_add(m[!1 = @sid_817]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_817],L[]), @sid_256 = @sid_817, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_819]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_818], x_s = sign(m[!1 = @sid_819],L[]), @sid_256 = @sid_819, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_818]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_818],L[]), @sid_256 = @sid_818, @occ28 = @occ_cst) && attacker(cells((zero[],zero[])),v_820) -> attacker(cells((m[!1 = @sid_818],m[!1 = @sid_819])),v_820)
+begin(card_permit(m[!1 = @sid_811])) && begin(card_add(m[!1 = @sid_811]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_811],L[]), @sid_256 = @sid_811, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_813]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_812], x_s = sign(m[!1 = @sid_813],L[]), @sid_256 = @sid_813, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_812]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_812],L[]), @sid_256 = @sid_812, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_812],m[!1 = @sid_813])))
+begin(card_add(m[!1 = @sid_767]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_766], x_s = sign(m[!1 = @sid_767],L[]), @sid_256 = @sid_767, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_766]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_766],L[]), @sid_256 = @sid_766, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_766],m[!1 = @sid_767])),cells((m[!1 = @sid_766],m[!1 = @sid_767])))
+begin(card_permit(m[!1 = @sid_726])) && begin(card_add(m[!1 = @sid_726]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_726],L[]), @sid_256 = @sid_726, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_727]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_727],L[]), @sid_256 = @sid_727, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_727],zero[])))
+begin(card_permit(m[!1 = @sid_698])) && begin(card_add(m[!1 = @sid_698]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_698],L[]), @sid_256 = @sid_698, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_699]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_699],L[]), @sid_256 = @sid_699, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_699],zero[])))
+begin(card_add(m[!1 = @sid_657]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_657],L[]), @sid_256 = @sid_657, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_658])) && attacker(cells((m[!1 = @sid_658],zero[])),x_659) && begin(card_add(m[!1 = @sid_658]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_658],L[]), @sid_256 = @sid_658, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_657],zero[])),x_659)
+begin(card_add(m[!1 = @sid_654]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_653], x_s = sign(m[!1 = @sid_654],L[]), @sid_256 = @sid_654, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_653]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_653],L[]), @sid_256 = @sid_653, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_653],m[!1 = @sid_654])))
+begin(card_add(m[!1 = @sid_648]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_647], x_s = sign(m[!1 = @sid_648],L[]), @sid_256 = @sid_648, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_647]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_647],L[]), @sid_256 = @sid_647, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_647],zero[])),v_649) -> attacker(cells((m[!1 = @sid_647],m[!1 = @sid_648])),v_649)
+begin(card_add(m[!1 = @sid_644]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_643], x_s = sign(m[!1 = @sid_644],L[]), @sid_256 = @sid_644, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_643]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_643],L[]), @sid_256 = @sid_643, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_643],m[!1 = @sid_644])))
+begin(card_add(m[!1 = @sid_629]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_629],L[]), @sid_256 = @sid_629, @occ28 = @occ_cst) && attacker(cells((zero[],zero[])),x_630) && begin(card_permit(m[!1 = @sid_631])) && begin(card_add(m[!1 = @sid_631]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_631],L[]), @sid_256 = @sid_631, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_629],zero[])),x_630)
+begin(card_permit(m[!1 = @sid_606])) && begin(card_add(m[!1 = @sid_606]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_606],L[]), @sid_256 = @sid_606, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_607]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_607],L[]), @sid_256 = @sid_607, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_606],zero[])),cells((m[!1 = @sid_607],zero[])))
+begin(card_add(m[!1 = @sid_558]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_557], x_s = sign(m[!1 = @sid_558],L[]), @sid_256 = @sid_558, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_557]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_557],L[]), @sid_256 = @sid_557, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_557],zero[])),cells((m[!1 = @sid_557],m[!1 = @sid_558])))
+attacker(cells((zero[],zero[])),x_m_553) && begin(card_permit(m[!1 = @sid_554])) && begin(card_add(m[!1 = @sid_554]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_554],L[]), @sid_256 = @sid_554, @occ28 = @occ_cst) -> attacker(cells((zero[],zero[])),sign(x_m_553,L[]))
+begin(card_permit(m[!1 = @sid_543])) && begin(card_add(m[!1 = @sid_543]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_543],L[]), @sid_256 = @sid_543, @occ28 = @occ_cst) -> attacker(cells((zero[],zero[])),m[!1 = @sid_544])
+begin(card_permit(m[!1 = @sid_518])) && begin(card_add(m[!1 = @sid_518]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_518],L[]), @sid_256 = @sid_518, @occ28 = @occ_cst) -> reach(cells((zero[],zero[])))
+begin(card_permit(m[!1 = @sid_510])) && begin(card_add(m[!1 = @sid_510]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_510],L[]), @sid_256 = @sid_510, @occ28 = @occ_cst) && attacker(cells((m[!1 = @sid_510],zero[])),v_511) -> attacker(cells((zero[],zero[])),v_511)
+begin(card_permit(m[!1 = @sid_497])) && begin(card_add(m[!1 = @sid_497]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_497],L[]), @sid_256 = @sid_497, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((zero[],zero[])))
+begin(card_add(m[!1 = @sid_477]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_477],L[]), @sid_256 = @sid_477, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_477],zero[])),cells((m[!1 = @sid_477],zero[])))
+attacker(cells((m[!1 = @sid_448],zero[])),x_m_449) && begin(card_add(m[!1 = @sid_448]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_448],L[]), @sid_256 = @sid_448, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_448],zero[])),sign(x_m_449,L[]))
+begin(card_add(m[!1 = @sid_444]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_444],L[]), @sid_256 = @sid_444, @occ28 = @occ_cst) -> end(@sid_445,card_permit(m[!1 = @sid_444]))
+begin(card_permit(m[!1 = @sid_442])) && begin(card_add(m[!1 = @sid_442]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_442],L[]), @sid_256 = @sid_442, @occ28 = @occ_cst) -> seq(cells((m[!1 = @sid_442],zero[])),cells((zero[],zero[])))
+begin(card_add(m[!1 = @sid_435]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_435],L[]), @sid_256 = @sid_435, @occ28 = @occ_cst) -> attacker(cells((m[!1 = @sid_435],zero[])),m[!1 = @sid_436])
+begin(card_add(m[!1 = @sid_425]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_425],L[]), @sid_256 = @sid_425, @occ28 = @occ_cst) -> reach(cells((m[!1 = @sid_425],zero[])))
+begin(card_add(m[!1 = @sid_421]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_421],L[]), @sid_256 = @sid_421, @occ28 = @occ_cst) && attacker(cells((zero[],zero[])),v_422) -> attacker(cells((m[!1 = @sid_421],zero[])),v_422)
+begin(card_add(m[!1 = @sid_419]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_419],L[]), @sid_256 = @sid_419, @occ28 = @occ_cst) -> seq(cells((zero[],zero[])),cells((m[!1 = @sid_419],zero[])))
+attacker(cells((zero[],zero[])),x_m_412) -> attacker(cells((zero[],zero[])),sign(x_m_412,L[]))
+attacker(cells((zero[],zero[])),m[!1 = @sid_409])
+seq(cells((zero[],zero[])),cells((zero[],zero[])))
+attacker(cells((zero[],zero[])),n[!1 = @sid_154])
+attacker(cells(s_53),new-name[!att = v_129])
+equal(v_128,v_128)
+attacker(cells(s_53),ch[])
+attacker(cells(s_53),fail-any)
+attacker(cells(s_54),v_126) && attacker(cells(s_54),v_125) -> mess(cells(s_54),v_126,v_125)
+reach(cells((zero[],zero[])))
+attacker(cells(s_107),v_108) -> attacker(cells(s_107),(v_108))
+attacker(cells(s_89),v_90) && attacker(cells(s_89),v_91) -> attacker(cells(s_89),(v_90,v_91))
+attacker(cells(s_84),true)
+attacker(cells(s_66),false)
+attacker(cells(s_63),v_64) && attacker(cells(s_63),v_65) -> attacker(cells(s_63),sign(v_64,v_65))
+Starting query inj-event(card_permit(x_52)) ==> inj-event(card_add(x_52))
+goal reachable: begin(card_permit(m[!1 = @sid_10079])) && begin(card_add(m[!1 = @sid_10079]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10080], x_s = sign(m[!1 = @sid_10079],L[]), @sid_256 = @sid_10079, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10081]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10080], x_s = sign(m[!1 = @sid_10081],L[]), @sid_256 = @sid_10081, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10080]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10080],L[]), @sid_256 = @sid_10080, @occ28 = @occ_cst) -> end(endsid_10082,card_permit(m[!1 = @sid_10081]))
+Abbreviations:
+m_10656 = m[!1 = @sid_10541]
+m_10657 = m[!1 = @sid_10641]
+m_10658 = m[!1 = @sid_10631]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_10657 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_10657).
+
+5. The message m_10657 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_10657,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_10657,L[])).
+
+6. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+11. So the message m_10656 may be sent to the attacker at output {23}.
+attacker(cells((m_10657,zero[])),m_10656).
+
+12. The message m_10656 that the attacker may have by 11 may be received at input {2}.
+So the message sign(m_10656,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_10657,zero[])),sign(m_10656,L[])).
+
+13. The message sign(m_10656,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_10656) (with environment s_2_51 = zero[], s_1_50 = m_10657, x_s = sign(m_10656,L[]), @sid_256 = @sid_10541, @occ31 = @occ_cst) may be executed at {31}.
+We have m_10657 <> zero[].
+So the cell s may be assigned the values (m_10657,m_10656) at assignment {32}.
+seq(cells((m_10657,zero[])),cells((m_10657,m_10656))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+16. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+17. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+20. So the message m_10658 may be sent to the attacker at output {23}.
+attacker(cells((m_10657,zero[])),m_10658).
+
+21. The message m_10658 that the attacker may have by 20 may be received at input {2}.
+So the message sign(m_10658,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_10657,zero[])),sign(m_10658,L[])).
+
+22. The message sign(m_10658,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_10658) (with environment s_2_51 = zero[], s_1_50 = m_10657, x_s = sign(m_10658,L[]), @sid_256 = @sid_10631, @occ31 = @occ_cst) may be executed at {31}.
+We have m_10657 <> zero[].
+So the cell s may be assigned the values (m_10657,m_10658) at assignment {32}.
+seq(cells((m_10657,zero[])),cells((m_10657,m_10658))).
+
+23. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+24. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+25. seq(cells((zero[],zero[])),cells((m_10657,m_10658))).
+
+26. The event card_permit(m_10658) may be executed at {15}.
+We have m_10658 <> zero[].
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {16}.
+seq(cells((m_10657,m_10658)),cells((m_10657,zero[]))).
+
+27. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+28. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+29. The message sign(m_10658,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_10658) (with environment s_2_51 = zero[], s_1_50 = m_10657, x_s = sign(m_10658,L[]), @sid_256 = @sid_10631, @occ31 = @occ_cst) may be executed at {31}.
+We have m_10657 <> zero[].
+So the cell s may be assigned the values (m_10657,m_10658) at assignment {32}.
+seq(cells((m_10657,zero[])),cells((m_10657,m_10658))).
+
+30. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+31. The message sign(m_10657,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10657) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10657,L[]), @sid_256 = @sid_10641, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10657,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+32. seq(cells((zero[],zero[])),cells((m_10657,m_10658))).
+
+33. seq(cells((zero[],zero[])),cells((m_10657,zero[]))).
+
+34. seq(cells((zero[],zero[])),cells((m_10657,m_10656))).
+
+35. We have m_10656 <> zero[].
+So event card_permit(m_10656) may be executed at {15} in session endsid_10654.
+end(endsid_10654,card_permit(m_10656)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_permit(m[!1 = @sid_10083])) && begin(card_add(m[!1 = @sid_10083]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10084], x_s = sign(m[!1 = @sid_10083],L[]), @sid_256 = @sid_10083, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_10084])) && begin(card_add(m[!1 = @sid_10084]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10084],L[]), @sid_256 = @sid_10084, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_10085]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10085],L[]), @sid_256 = @sid_10085, @occ28 = @occ_cst) -> end(endsid_10086,card_permit(m[!1 = @sid_10085]))
+Abbreviations:
+m_10867 = m[!1 = @sid_10700]
+m_10868 = m[!1 = @sid_10827]
+m_10869 = m[!1 = @sid_10817]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_10867 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_10867).
+
+5. The message m_10867 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_10867,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_10867,L[])).
+
+6. The message sign(m_10867,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_10867) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10867,L[]), @sid_256 = @sid_10700, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10867,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10867,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. So the message m_10868 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_10868).
+
+11. The message m_10868 that the attacker may have by 10 may be received at input {2}.
+So the message sign(m_10868,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_10868,L[])).
+
+12. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+13. The event card_permit(m_10868) may be executed at {18}.
+We have m_10868 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_10868,zero[])),cells((zero[],zero[]))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+16. reach(cells((m_10868,zero[]))).
+
+17. seq(cells((m_10868,zero[])),cells((m_10867,zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+20. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+21. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+22. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+23. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+24. So the message m_10869 may be sent to the attacker at output {23}.
+attacker(cells((m_10868,zero[])),m_10869).
+
+25. The message m_10869 that the attacker may have by 24 may be received at input {2}.
+So the message sign(m_10869,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_10868,zero[])),sign(m_10869,L[])).
+
+26. The message sign(m_10869,L[]) that the attacker may have by 25 may be received at input {24}.
+The event card_add(m_10869) (with environment s_2_51 = zero[], s_1_50 = m_10868, x_s = sign(m_10869,L[]), @sid_256 = @sid_10817, @occ31 = @occ_cst) may be executed at {31}.
+We have m_10868 <> zero[].
+So the cell s may be assigned the values (m_10868,m_10869) at assignment {32}.
+seq(cells((m_10868,zero[])),cells((m_10868,m_10869))).
+
+27. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+28. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+29. seq(cells((zero[],zero[])),cells((m_10868,m_10869))).
+
+30. The event card_permit(m_10869) may be executed at {15}.
+We have m_10869 <> zero[].
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {16}.
+seq(cells((m_10868,m_10869)),cells((m_10868,zero[]))).
+
+31. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+32. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+33. The message sign(m_10869,L[]) that the attacker may have by 25 may be received at input {24}.
+The event card_add(m_10869) (with environment s_2_51 = zero[], s_1_50 = m_10868, x_s = sign(m_10869,L[]), @sid_256 = @sid_10817, @occ31 = @occ_cst) may be executed at {31}.
+We have m_10868 <> zero[].
+So the cell s may be assigned the values (m_10868,m_10869) at assignment {32}.
+seq(cells((m_10868,zero[])),cells((m_10868,m_10869))).
+
+34. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+35. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+36. seq(cells((zero[],zero[])),cells((m_10868,m_10869))).
+
+37. seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+38. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+39. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+40. The event card_permit(m_10868) may be executed at {18}.
+We have m_10868 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_10868,zero[])),cells((zero[],zero[]))).
+
+41. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+42. The message sign(m_10868,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_10868) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_10868,L[]), @sid_256 = @sid_10827, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_10868,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_10868,zero[]))).
+
+43. reach(cells((m_10868,zero[]))).
+
+44. reach(cells((zero[],zero[]))).
+
+45. seq(cells((zero[],zero[])),cells((m_10867,zero[]))).
+
+46. We have m_10867 <> zero[].
+So event card_permit(m_10867) may be executed at {18} in session endsid_10865.
+end(endsid_10865,card_permit(m_10867)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_permit(m[!1 = @sid_10087])) && begin(card_add(m[!1 = @sid_10087]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10088], x_s = sign(m[!1 = @sid_10087],L[]), @sid_256 = @sid_10087, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_10088])) && begin(card_add(m[!1 = @sid_10088]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10088],L[]), @sid_256 = @sid_10088, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_10090]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10089], x_s = sign(m[!1 = @sid_10090],L[]), @sid_256 = @sid_10090, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10089]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10089],L[]), @sid_256 = @sid_10089, @occ28 = @occ_cst) -> end(endsid_10091,card_permit(m[!1 = @sid_10090]))
+Abbreviations:
+m_11127 = m[!1 = @sid_10946]
+m_11128 = m[!1 = @sid_10956]
+m_11129 = m[!1 = @sid_11086]
+m_11130 = m[!1 = @sid_11076]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_11128 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11128).
+
+5. The message m_11128 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_11128,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11128,L[])).
+
+6. The message sign(m_11128,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11128) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11128,L[]), @sid_256 = @sid_10956, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11128,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11128,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. The message sign(m_11128,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11128) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11128,L[]), @sid_256 = @sid_10956, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11128,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11128,zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. The message sign(m_11128,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11128) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11128,L[]), @sid_256 = @sid_10956, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11128,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11128,zero[]))).
+
+11. So the message m_11127 may be sent to the attacker at output {23}.
+attacker(cells((m_11128,zero[])),m_11127).
+
+12. The message m_11127 that the attacker may have by 11 may be received at input {2}.
+So the message sign(m_11127,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_11128,zero[])),sign(m_11127,L[])).
+
+13. The message sign(m_11127,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11127) (with environment s_2_51 = zero[], s_1_50 = m_11128, x_s = sign(m_11127,L[]), @sid_256 = @sid_10946, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11128 <> zero[].
+So the cell s may be assigned the values (m_11128,m_11127) at assignment {32}.
+seq(cells((m_11128,zero[])),cells((m_11128,m_11127))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_11128,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11128) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11128,L[]), @sid_256 = @sid_10956, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11128,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11128,zero[]))).
+
+16. seq(cells((zero[],zero[])),cells((m_11128,m_11127))).
+
+17. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+20. So the message m_11129 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11129).
+
+21. The message m_11129 that the attacker may have by 20 may be received at input {2}.
+So the message sign(m_11129,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11129,L[])).
+
+22. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+23. The event card_permit(m_11129) may be executed at {18}.
+We have m_11129 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_11129,zero[])),cells((zero[],zero[]))).
+
+24. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+25. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+26. reach(cells((m_11129,zero[]))).
+
+27. seq(cells((m_11129,zero[])),cells((m_11128,m_11127))).
+
+28. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+29. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+30. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+31. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+32. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+33. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+34. So the message m_11130 may be sent to the attacker at output {23}.
+attacker(cells((m_11129,zero[])),m_11130).
+
+35. The message m_11130 that the attacker may have by 34 may be received at input {2}.
+So the message sign(m_11130,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_11129,zero[])),sign(m_11130,L[])).
+
+36. The message sign(m_11130,L[]) that the attacker may have by 35 may be received at input {24}.
+The event card_add(m_11130) (with environment s_2_51 = zero[], s_1_50 = m_11129, x_s = sign(m_11130,L[]), @sid_256 = @sid_11076, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11129 <> zero[].
+So the cell s may be assigned the values (m_11129,m_11130) at assignment {32}.
+seq(cells((m_11129,zero[])),cells((m_11129,m_11130))).
+
+37. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+38. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+39. seq(cells((zero[],zero[])),cells((m_11129,m_11130))).
+
+40. The event card_permit(m_11130) may be executed at {15}.
+We have m_11130 <> zero[].
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {16}.
+seq(cells((m_11129,m_11130)),cells((m_11129,zero[]))).
+
+41. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+42. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+43. The message sign(m_11130,L[]) that the attacker may have by 35 may be received at input {24}.
+The event card_add(m_11130) (with environment s_2_51 = zero[], s_1_50 = m_11129, x_s = sign(m_11130,L[]), @sid_256 = @sid_11076, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11129 <> zero[].
+So the cell s may be assigned the values (m_11129,m_11130) at assignment {32}.
+seq(cells((m_11129,zero[])),cells((m_11129,m_11130))).
+
+44. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+45. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+46. seq(cells((zero[],zero[])),cells((m_11129,m_11130))).
+
+47. seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+48. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+49. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+50. The event card_permit(m_11129) may be executed at {18}.
+We have m_11129 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_11129,zero[])),cells((zero[],zero[]))).
+
+51. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+52. The message sign(m_11129,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11129) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11129,L[]), @sid_256 = @sid_11086, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11129,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11129,zero[]))).
+
+53. reach(cells((m_11129,zero[]))).
+
+54. reach(cells((zero[],zero[]))).
+
+55. seq(cells((zero[],zero[])),cells((m_11128,m_11127))).
+
+56. We have m_11127 <> zero[].
+So event card_permit(m_11127) may be executed at {15} in session endsid_11125.
+end(endsid_11125,card_permit(m_11127)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_permit(m[!1 = @sid_10092])) && begin(card_add(m[!1 = @sid_10092]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10093], x_s = sign(m[!1 = @sid_10092],L[]), @sid_256 = @sid_10092, @occ31 = @occ_cst) && begin(card_permit(m[!1 = @sid_10094])) && begin(card_add(m[!1 = @sid_10094]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10094],L[]), @sid_256 = @sid_10094, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_10095]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10093], x_s = sign(m[!1 = @sid_10095],L[]), @sid_256 = @sid_10095, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10093]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10093],L[]), @sid_256 = @sid_10093, @occ28 = @occ_cst) -> end(endsid_10096,card_permit(m[!1 = @sid_10095]))
+Abbreviations:
+m_11450 = m[!1 = @sid_11294]
+m_11451 = m[!1 = @sid_11409]
+m_11452 = m[!1 = @sid_11250]
+m_11453 = m[!1 = @sid_11399]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_11451 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11451).
+
+5. The message m_11451 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_11451,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11451,L[])).
+
+6. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+11. So the message m_11450 may be sent to the attacker at output {23}.
+attacker(cells((m_11451,zero[])),m_11450).
+
+12. The message m_11450 that the attacker may have by 11 may be received at input {2}.
+So the message sign(m_11450,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_11451,zero[])),sign(m_11450,L[])).
+
+13. The message sign(m_11450,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11450) (with environment s_2_51 = zero[], s_1_50 = m_11451, x_s = sign(m_11450,L[]), @sid_256 = @sid_11294, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11451 <> zero[].
+So the cell s may be assigned the values (m_11451,m_11450) at assignment {32}.
+seq(cells((m_11451,zero[])),cells((m_11451,m_11450))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+16. seq(cells((zero[],zero[])),cells((m_11451,m_11450))).
+
+17. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+20. So the message m_11452 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11452).
+
+21. The message m_11452 that the attacker may have by 20 may be received at input {2}.
+So the message sign(m_11452,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11452,L[])).
+
+22. The message sign(m_11452,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11452) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11452,L[]), @sid_256 = @sid_11250, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11452,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11452,zero[]))).
+
+23. The event card_permit(m_11452) may be executed at {18}.
+We have m_11452 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_11452,zero[])),cells((zero[],zero[]))).
+
+24. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+25. The message sign(m_11452,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11452) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11452,L[]), @sid_256 = @sid_11250, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11452,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11452,zero[]))).
+
+26. reach(cells((m_11452,zero[]))).
+
+27. reach(cells((zero[],zero[]))).
+
+28. reach(cells((m_11451,m_11450))).
+
+29. seq(cells((m_11451,m_11450)),cells((m_11451,m_11450))).
+
+30. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+31. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+32. The message sign(m_11450,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11450) (with environment s_2_51 = zero[], s_1_50 = m_11451, x_s = sign(m_11450,L[]), @sid_256 = @sid_11294, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11451 <> zero[].
+So the cell s may be assigned the values (m_11451,m_11450) at assignment {32}.
+seq(cells((m_11451,zero[])),cells((m_11451,m_11450))).
+
+33. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+34. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+35. reach(cells((m_11451,zero[]))).
+
+36. seq(cells((m_11451,zero[])),cells((m_11451,m_11450))).
+
+37. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+38. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+39. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+40. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+41. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+42. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+43. So the message m_11453 may be sent to the attacker at output {23}.
+attacker(cells((m_11451,zero[])),m_11453).
+
+44. The message m_11453 that the attacker may have by 43 may be received at input {2}.
+So the message sign(m_11453,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_11451,zero[])),sign(m_11453,L[])).
+
+45. The message sign(m_11453,L[]) that the attacker may have by 44 may be received at input {24}.
+The event card_add(m_11453) (with environment s_2_51 = zero[], s_1_50 = m_11451, x_s = sign(m_11453,L[]), @sid_256 = @sid_11399, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11451 <> zero[].
+So the cell s may be assigned the values (m_11451,m_11453) at assignment {32}.
+seq(cells((m_11451,zero[])),cells((m_11451,m_11453))).
+
+46. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+47. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+48. seq(cells((zero[],zero[])),cells((m_11451,m_11453))).
+
+49. The event card_permit(m_11453) may be executed at {15}.
+We have m_11453 <> zero[].
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {16}.
+seq(cells((m_11451,m_11453)),cells((m_11451,zero[]))).
+
+50. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+51. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+52. The message sign(m_11453,L[]) that the attacker may have by 44 may be received at input {24}.
+The event card_add(m_11453) (with environment s_2_51 = zero[], s_1_50 = m_11451, x_s = sign(m_11453,L[]), @sid_256 = @sid_11399, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11451 <> zero[].
+So the cell s may be assigned the values (m_11451,m_11453) at assignment {32}.
+seq(cells((m_11451,zero[])),cells((m_11451,m_11453))).
+
+53. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+54. The message sign(m_11451,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11451) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11451,L[]), @sid_256 = @sid_11409, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11451,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+55. seq(cells((zero[],zero[])),cells((m_11451,m_11453))).
+
+56. seq(cells((zero[],zero[])),cells((m_11451,zero[]))).
+
+57. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+58. The message sign(m_11452,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11452) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11452,L[]), @sid_256 = @sid_11250, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11452,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11452,zero[]))).
+
+59. The event card_permit(m_11452) may be executed at {18}.
+We have m_11452 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_11452,zero[])),cells((zero[],zero[]))).
+
+60. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+61. The message sign(m_11452,L[]) that the attacker may have by 21 may be received at input {24}.
+The event card_add(m_11452) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11452,L[]), @sid_256 = @sid_11250, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11452,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11452,zero[]))).
+
+62. reach(cells((m_11452,zero[]))).
+
+63. reach(cells((zero[],zero[]))).
+
+64. seq(cells((zero[],zero[])),cells((m_11451,m_11450))).
+
+65. We have m_11450 <> zero[].
+So event card_permit(m_11450) may be executed at {15} in session endsid_11448.
+end(endsid_11448,card_permit(m_11450)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_permit(m[!1 = @sid_10097])) && begin(card_add(m[!1 = @sid_10097]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10097],L[]), @sid_256 = @sid_10097, @occ28 = @occ_cst) && begin(card_permit(m[!1 = @sid_10098])) && begin(card_add(m[!1 = @sid_10098]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10099], x_s = sign(m[!1 = @sid_10098],L[]), @sid_256 = @sid_10098, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10099]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10099],L[]), @sid_256 = @sid_10099, @occ28 = @occ_cst) -> end(endsid_10100,card_permit(m[!1 = @sid_10099]))
+Abbreviations:
+m_11638 = m[!1 = @sid_11601]
+m_11639 = m[!1 = @sid_11626]
+m_11640 = m[!1 = @sid_11591]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_11638 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11638).
+
+5. The message m_11638 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_11638,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11638,L[])).
+
+6. The message sign(m_11638,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11638) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11638,L[]), @sid_256 = @sid_11601, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11638,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11638,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. The message sign(m_11638,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11638) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11638,L[]), @sid_256 = @sid_11601, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11638,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11638,zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. The message sign(m_11638,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11638) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11638,L[]), @sid_256 = @sid_11601, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11638,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11638,zero[]))).
+
+11. So the message m_11640 may be sent to the attacker at output {23}.
+attacker(cells((m_11638,zero[])),m_11640).
+
+12. The message m_11640 that the attacker may have by 11 may be received at input {2}.
+So the message sign(m_11640,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_11638,zero[])),sign(m_11640,L[])).
+
+13. The message sign(m_11640,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11640) (with environment s_2_51 = zero[], s_1_50 = m_11638, x_s = sign(m_11640,L[]), @sid_256 = @sid_11591, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11638 <> zero[].
+So the cell s may be assigned the values (m_11638,m_11640) at assignment {32}.
+seq(cells((m_11638,zero[])),cells((m_11638,m_11640))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_11638,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11638) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11638,L[]), @sid_256 = @sid_11601, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11638,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11638,zero[]))).
+
+16. seq(cells((zero[],zero[])),cells((m_11638,m_11640))).
+
+17. The event card_permit(m_11640) may be executed at {15}.
+We have m_11640 <> zero[].
+So the cell s may be assigned the values (m_11638,zero[]) at assignment {16}.
+seq(cells((m_11638,m_11640)),cells((m_11638,zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. The message sign(m_11638,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11638) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11638,L[]), @sid_256 = @sid_11601, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11638,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11638,zero[]))).
+
+20. The message sign(m_11640,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11640) (with environment s_2_51 = zero[], s_1_50 = m_11638, x_s = sign(m_11640,L[]), @sid_256 = @sid_11591, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11638 <> zero[].
+So the cell s may be assigned the values (m_11638,m_11640) at assignment {32}.
+seq(cells((m_11638,zero[])),cells((m_11638,m_11640))).
+
+21. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+22. The message sign(m_11638,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11638) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11638,L[]), @sid_256 = @sid_11601, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11638,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11638,zero[]))).
+
+23. seq(cells((zero[],zero[])),cells((m_11638,m_11640))).
+
+24. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+25. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+26. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+27. So the message m_11639 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11639).
+
+28. The message m_11639 that the attacker may have by 27 may be received at input {2}.
+So the message sign(m_11639,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11639,L[])).
+
+29. The message sign(m_11639,L[]) that the attacker may have by 28 may be received at input {24}.
+The event card_add(m_11639) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11639,L[]), @sid_256 = @sid_11626, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11639,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11639,zero[]))).
+
+30. The event card_permit(m_11639) may be executed at {18}.
+We have m_11639 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_11639,zero[])),cells((zero[],zero[]))).
+
+31. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+32. The message sign(m_11639,L[]) that the attacker may have by 28 may be received at input {24}.
+The event card_add(m_11639) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11639,L[]), @sid_256 = @sid_11626, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11639,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11639,zero[]))).
+
+33. reach(cells((m_11639,zero[]))).
+
+34. reach(cells((zero[],zero[]))).
+
+35. seq(cells((zero[],zero[])),cells((m_11638,zero[]))).
+
+36. We have m_11638 <> zero[].
+So event card_permit(m_11638) may be executed at {18} in session endsid_11636.
+end(endsid_11636,card_permit(m_11638)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_permit(m[!1 = @sid_10101])) && begin(card_add(m[!1 = @sid_10101]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10102], x_s = sign(m[!1 = @sid_10101],L[]), @sid_256 = @sid_10101, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10102]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10102],L[]), @sid_256 = @sid_10102, @occ28 = @occ_cst) -> end(endsid_10103,card_permit(m[!1 = @sid_10102]))
+Abbreviations:
+m_11788 = m[!1 = @sid_11777]
+m_11789 = m[!1 = @sid_11767]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_11788 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11788).
+
+5. The message m_11788 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_11788,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11788,L[])).
+
+6. The message sign(m_11788,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11788) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11788,L[]), @sid_256 = @sid_11777, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11788,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11788,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. The message sign(m_11788,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11788) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11788,L[]), @sid_256 = @sid_11777, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11788,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11788,zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. The message sign(m_11788,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11788) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11788,L[]), @sid_256 = @sid_11777, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11788,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11788,zero[]))).
+
+11. So the message m_11789 may be sent to the attacker at output {23}.
+attacker(cells((m_11788,zero[])),m_11789).
+
+12. The message m_11789 that the attacker may have by 11 may be received at input {2}.
+So the message sign(m_11789,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_11788,zero[])),sign(m_11789,L[])).
+
+13. The message sign(m_11789,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11789) (with environment s_2_51 = zero[], s_1_50 = m_11788, x_s = sign(m_11789,L[]), @sid_256 = @sid_11767, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11788 <> zero[].
+So the cell s may be assigned the values (m_11788,m_11789) at assignment {32}.
+seq(cells((m_11788,zero[])),cells((m_11788,m_11789))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_11788,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11788) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11788,L[]), @sid_256 = @sid_11777, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11788,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11788,zero[]))).
+
+16. seq(cells((zero[],zero[])),cells((m_11788,m_11789))).
+
+17. The event card_permit(m_11789) may be executed at {15}.
+We have m_11789 <> zero[].
+So the cell s may be assigned the values (m_11788,zero[]) at assignment {16}.
+seq(cells((m_11788,m_11789)),cells((m_11788,zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. The message sign(m_11788,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11788) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11788,L[]), @sid_256 = @sid_11777, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11788,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11788,zero[]))).
+
+20. The message sign(m_11789,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11789) (with environment s_2_51 = zero[], s_1_50 = m_11788, x_s = sign(m_11789,L[]), @sid_256 = @sid_11767, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11788 <> zero[].
+So the cell s may be assigned the values (m_11788,m_11789) at assignment {32}.
+seq(cells((m_11788,zero[])),cells((m_11788,m_11789))).
+
+21. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+22. The message sign(m_11788,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11788) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11788,L[]), @sid_256 = @sid_11777, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11788,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11788,zero[]))).
+
+23. seq(cells((zero[],zero[])),cells((m_11788,m_11789))).
+
+24. seq(cells((zero[],zero[])),cells((m_11788,zero[]))).
+
+25. We have m_11788 <> zero[].
+So event card_permit(m_11788) may be executed at {18} in session endsid_11786.
+end(endsid_11786,card_permit(m_11788)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_permit(m[!1 = @sid_10104])) && begin(card_add(m[!1 = @sid_10104]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10104],L[]), @sid_256 = @sid_10104, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_10106]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10105], x_s = sign(m[!1 = @sid_10106],L[]), @sid_256 = @sid_10106, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10105]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10105],L[]), @sid_256 = @sid_10105, @occ28 = @occ_cst) -> end(endsid_10107,card_permit(m[!1 = @sid_10106]))
+Abbreviations:
+m_11897 = m[!1 = @sid_11852]
+m_11898 = m[!1 = @sid_11862]
+m_11899 = m[!1 = @sid_11884]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_11898 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11898).
+
+5. The message m_11898 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_11898,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11898,L[])).
+
+6. The message sign(m_11898,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11898) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11898,L[]), @sid_256 = @sid_11862, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11898,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11898,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. The message sign(m_11898,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11898) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11898,L[]), @sid_256 = @sid_11862, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11898,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11898,zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. The message sign(m_11898,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11898) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11898,L[]), @sid_256 = @sid_11862, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11898,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11898,zero[]))).
+
+11. So the message m_11897 may be sent to the attacker at output {23}.
+attacker(cells((m_11898,zero[])),m_11897).
+
+12. The message m_11897 that the attacker may have by 11 may be received at input {2}.
+So the message sign(m_11897,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_11898,zero[])),sign(m_11897,L[])).
+
+13. The message sign(m_11897,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_11897) (with environment s_2_51 = zero[], s_1_50 = m_11898, x_s = sign(m_11897,L[]), @sid_256 = @sid_11852, @occ31 = @occ_cst) may be executed at {31}.
+We have m_11898 <> zero[].
+So the cell s may be assigned the values (m_11898,m_11897) at assignment {32}.
+seq(cells((m_11898,zero[])),cells((m_11898,m_11897))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_11898,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11898) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11898,L[]), @sid_256 = @sid_11862, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11898,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11898,zero[]))).
+
+16. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+17. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. So the message m_11899 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11899).
+
+20. The message m_11899 that the attacker may have by 19 may be received at input {2}.
+So the message sign(m_11899,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11899,L[])).
+
+21. The message sign(m_11899,L[]) that the attacker may have by 20 may be received at input {24}.
+The event card_add(m_11899) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11899,L[]), @sid_256 = @sid_11884, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11899,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11899,zero[]))).
+
+22. The event card_permit(m_11899) may be executed at {18}.
+We have m_11899 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_11899,zero[])),cells((zero[],zero[]))).
+
+23. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+24. The message sign(m_11899,L[]) that the attacker may have by 20 may be received at input {24}.
+The event card_add(m_11899) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11899,L[]), @sid_256 = @sid_11884, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11899,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11899,zero[]))).
+
+25. reach(cells((m_11899,zero[]))).
+
+26. reach(cells((zero[],zero[]))).
+
+27. seq(cells((zero[],zero[])),cells((m_11898,m_11897))).
+
+28. We have m_11897 <> zero[].
+So event card_permit(m_11897) may be executed at {15} in session endsid_11895.
+end(endsid_11895,card_permit(m_11897)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_permit(m[!1 = @sid_10108])) && begin(card_add(m[!1 = @sid_10108]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10108],L[]), @sid_256 = @sid_10108, @occ28 = @occ_cst) && begin(card_add(m[!1 = @sid_10109]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10109],L[]), @sid_256 = @sid_10109, @occ28 = @occ_cst) -> end(endsid_10110,card_permit(m[!1 = @sid_10109]))
+Abbreviations:
+m_11988 = m[!1 = @sid_11943]
+m_11989 = m[!1 = @sid_11980]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_11988 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11988).
+
+5. The message m_11988 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_11988,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11988,L[])).
+
+6. The message sign(m_11988,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_11988) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11988,L[]), @sid_256 = @sid_11943, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11988,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11988,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. So the message m_11989 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_11989).
+
+11. The message m_11989 that the attacker may have by 10 may be received at input {2}.
+So the message sign(m_11989,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_11989,L[])).
+
+12. The message sign(m_11989,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_11989) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11989,L[]), @sid_256 = @sid_11980, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11989,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11989,zero[]))).
+
+13. The event card_permit(m_11989) may be executed at {18}.
+We have m_11989 <> zero[].
+So the cell s may be assigned the values (zero[],zero[]) at assignment {19}.
+seq(cells((m_11989,zero[])),cells((zero[],zero[]))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_11989,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_11989) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11989,L[]), @sid_256 = @sid_11980, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11989,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11989,zero[]))).
+
+16. reach(cells((m_11989,zero[]))).
+
+17. seq(cells((m_11989,zero[])),cells((m_11988,zero[]))).
+
+18. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+19. The message sign(m_11989,L[]) that the attacker may have by 11 may be received at input {24}.
+The event card_add(m_11989) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_11989,L[]), @sid_256 = @sid_11980, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_11989,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_11989,zero[]))).
+
+20. seq(cells((zero[],zero[])),cells((m_11988,zero[]))).
+
+21. We have m_11988 <> zero[].
+So event card_permit(m_11988) may be executed at {18} in session endsid_11986.
+end(endsid_11986,card_permit(m_11988)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_add(m[!1 = @sid_10112]), s_2_51 = zero[], s_1_50 = m[!1 = @sid_10111], x_s = sign(m[!1 = @sid_10112],L[]), @sid_256 = @sid_10112, @occ31 = @occ_cst) && begin(card_add(m[!1 = @sid_10111]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10111],L[]), @sid_256 = @sid_10111, @occ28 = @occ_cst) -> end(endsid_10113,card_permit(m[!1 = @sid_10112]))
+Abbreviations:
+m_12071 = m[!1 = @sid_12052]
+m_12072 = m[!1 = @sid_12062]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_12072 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_12072).
+
+5. The message m_12072 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_12072,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_12072,L[])).
+
+6. The message sign(m_12072,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_12072) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_12072,L[]), @sid_256 = @sid_12062, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_12072,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_12072,zero[]))).
+
+7. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+8. The message sign(m_12072,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_12072) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_12072,L[]), @sid_256 = @sid_12062, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_12072,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_12072,zero[]))).
+
+9. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+10. The message sign(m_12072,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_12072) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_12072,L[]), @sid_256 = @sid_12062, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_12072,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_12072,zero[]))).
+
+11. So the message m_12071 may be sent to the attacker at output {23}.
+attacker(cells((m_12072,zero[])),m_12071).
+
+12. The message m_12071 that the attacker may have by 11 may be received at input {2}.
+So the message sign(m_12071,L[]) may be sent to the attacker at output {4}.
+attacker(cells((m_12072,zero[])),sign(m_12071,L[])).
+
+13. The message sign(m_12071,L[]) that the attacker may have by 12 may be received at input {24}.
+The event card_add(m_12071) (with environment s_2_51 = zero[], s_1_50 = m_12072, x_s = sign(m_12071,L[]), @sid_256 = @sid_12052, @occ31 = @occ_cst) may be executed at {31}.
+We have m_12072 <> zero[].
+So the cell s may be assigned the values (m_12072,m_12071) at assignment {32}.
+seq(cells((m_12072,zero[])),cells((m_12072,m_12071))).
+
+14. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+15. The message sign(m_12072,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_12072) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_12072,L[]), @sid_256 = @sid_12062, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_12072,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_12072,zero[]))).
+
+16. seq(cells((zero[],zero[])),cells((m_12072,m_12071))).
+
+17. We have m_12071 <> zero[].
+So event card_permit(m_12071) may be executed at {15} in session endsid_12069.
+end(endsid_12069,card_permit(m_12071)).
+
+
+Could not find a trace corresponding to this derivation.
+goal reachable: begin(card_add(m[!1 = @sid_10114]), s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m[!1 = @sid_10114],L[]), @sid_256 = @sid_10114, @occ28 = @occ_cst) -> end(endsid_10115,card_permit(m[!1 = @sid_10114]))
+Abbreviations:
+m_12110 = m[!1 = @sid_12105]
+
+1. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+2. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+3. seq(cells((zero[],zero[])),cells((zero[],zero[]))).
+
+4. So the message m_12110 may be sent to the attacker at output {23}.
+attacker(cells((zero[],zero[])),m_12110).
+
+5. The message m_12110 that the attacker may have by 4 may be received at input {2}.
+So the message sign(m_12110,L[]) may be sent to the attacker at output {4}.
+attacker(cells((zero[],zero[])),sign(m_12110,L[])).
+
+6. The message sign(m_12110,L[]) that the attacker may have by 5 may be received at input {24}.
+The event card_add(m_12110) (with environment s_2_51 = zero[], s_1_50 = zero[], x_s = sign(m_12110,L[]), @sid_256 = @sid_12105, @occ28 = @occ_cst) may be executed at {28}.
+So the cell s may be assigned the values (m_12110,zero[]) at assignment {29}.
+seq(cells((zero[],zero[])),cells((m_12110,zero[]))).
+
+7. We have m_12110 <> zero[].
+So event card_permit(m_12110) may be executed at {18} in session endsid_12108.
+end(endsid_12108,card_permit(m_12110)).
+
+
+Could not find a trace corresponding to this derivation.
+RESULT inj-event(card_permit(x_52)) ==> inj-event(card_add(x_52)) cannot be proved.
+RESULT (but event(card_permit(x_10449)) ==> event(card_add(x_10449)) is true.)

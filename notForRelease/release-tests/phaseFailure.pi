@@ -1,0 +1,39 @@
+
+free c.
+fun enc/2.
+free initKey.
+
+private free beep1.
+private free beep2.
+
+query attacker:beep2.
+
+cell s1 := initKey.
+cell s2 := initKey.
+
+reduc dec(enc(m,k),k)= m.
+
+
+let S1 =
+read s1 as k1;
+in(c, m1);
+out(c, dec(m1,k1)).
+
+let S2 =
+phase 1;
+read s2 as k2;
+in(c, m2);
+out(c, dec(m2,k2)).
+
+process 
+new k1;
+new k2;
+s1 := k1;
+s2 := k2;
+(S1 | S2 |
+phase 1;out(c,enc(beep1,k1)); out(c,enc(beep2,k2)))
+
+
+
+
+

@@ -1,0 +1,37 @@
+channel c.
+type key.
+
+free initMessage:bitstring[private].
+free k:key[private].
+fun enc(bitstring,key):bitstring.
+reduc forall m:bitstring, k:key; dec(enc(m,k),k)= m.
+
+event data_sent(bitstring).
+event data_received(bitstring).
+
+cell s:=initMessage.
+cell t := initMessage.
+
+query m:bitstring ; inj-event(data_received(m)) ==> inj-event(data_sent(m)).
+
+let A =
+! new m:bitstring;
+s := m;
+event data_sent(m);
+out (c, enc(m, k)).
+
+let B =
+in (c, xm:bitstring);
+lock s;
+! read s as m:bitstring;
+let m' = dec(xm, k) in
+if dec(xm, k) <>  m then
+s:= m;
+unlock s;
+out(c, xm);
+event data_received(m').
+
+process A | B
+
+
+

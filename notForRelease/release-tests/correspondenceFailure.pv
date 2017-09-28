@@ -1,0 +1,30 @@
+channel c.
+type key.
+
+free initKey:key.
+free beep:bitstring[private].
+fun enc(bitstring,key):bitstring.
+reduc forall m:bitstring, k:key; dec(enc(m,k),k)= m.
+
+event stored_key(key).
+event beep_received(key).
+
+cell s:=initKey.
+query kk:key ; event(beep_received(kk)) ==> event(stored_key(kk)).
+
+let A =
+! new k:key;
+out (c, k);
+s := k;
+event stored_key(k);
+out (c, enc(beep, k)).
+
+let B =
+! read s as k:key;
+in (c, xm:bitstring);
+if dec(xm, k) = beep then
+out(c, xm);
+event beep_received(k).
+
+process A | B
+
