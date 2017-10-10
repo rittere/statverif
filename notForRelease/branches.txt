@@ -1,6 +1,0 @@
-state-reachable-debug: New state predicates
-stateSelection: new selection function
-only-Reachable: Attempt at using only reachability predicate;
-               abandoned as it is not working.
-
-history: Displaying history corrected
