@@ -15,9 +15,9 @@ cell s:= zero.
 
 let A =
 new k:bitstring;
-lock s;
+lock (s);
 read s as r:bitstring;
-if r = zero then s := one; unlock s
+if r = zero then s := one; unlock (s)
 else if r= one then out(c, choice[hash(k), k]).
 
 process A

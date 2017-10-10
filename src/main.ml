@@ -319,7 +319,7 @@ let interface_for_merging_process p =
   else Printf.printf "No simplified process found\n"
 
 let show_version () =
-  Printf.printf "StatVerif 1.97. Cryptographic protocol verifier by Eike Ritter and Mark Ryan. Based on ProVerif\n";
+  Printf.printf "StatVerif 1.97pl1. Cryptographic protocol verifier by Eike Ritter and Mark Ryan. Based on ProVerif\n";
   exit 0
 
 (*********************************************
@@ -884,5 +884,5 @@ let _ =
           Param.verbose_explain_clauses := Param.ExplainedClauses), "\t\t\tHTML display";
       "-v", Arg.Unit show_version, "Show version information"
     ]
-    anal_file "StatVerif 1.97. Cryptographic protocol verifier by Eike Ritter and Mark Ryan. Based on ProVerif";
+    anal_file "StatVerif 1.97pl1. Cryptographic protocol verifier by Eike Ritter and Mark Ryan. Based on ProVerif";
   if !gc then Gc.print_stat stdout

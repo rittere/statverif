@@ -1,37 +1,29 @@
 channel c.
 type key.
 
-free initMessage:bitstring[private].
-free k:key[private].
+free initKey:key.
+free beep:bitstring[private].
 fun enc(bitstring,key):bitstring.
 reduc forall m:bitstring, k:key; dec(enc(m,k),k)= m.
 
-event data_sent(bitstring).
-event data_received(bitstring).
+event stored_key(key).
+event beep_received(key).
 
-cell s:=initMessage.
-cell t := initMessage.
-
-query m:bitstring ; inj-event(data_received(m)) ==> inj-event(data_sent(m)).
+cell s:=initKey.
+query k:key ; inj-event(beep_received(k)) ==> inj-event(stored_key(k)).
 
 let A =
-! new m:bitstring;
-s := m;
-event data_sent(m);
-out (c, enc(m, k)).
+! new k:key;
+s := k;
+event stored_key(k);
+out (c, enc(beep, k)).
 
 let B =
+! read s as k:key;
 in (c, xm:bitstring);
-lock s;
-! read s as m:bitstring;
-let m' = dec(xm, k) in
-if dec(xm, k) <>  m then
-s:= m;
-unlock s;
+if dec(xm, k) = beep then
 out(c, xm);
-event data_received(m').
+event beep_received(k).
 
 process A | B
-
-
 

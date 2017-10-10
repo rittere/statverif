@@ -972,12 +972,13 @@ let rec init_rule state tree =
       begin
         match tree.thefact with
 	  Out(_,_) -> state
-        | Pred(p, [t]) when p.p_prop land Param.pred_ATTACKER != 0 ->
+        | Pred(p, [cells; t]) when p.p_prop land Param.pred_ATTACKER != 0 ->
 	(* Note that the predicate "comp" is not pred_ATTACKER and
 	   could be handled similarly, but anyway it does not
 	   appear here since key compromise is incompatible with
 	   attack reconstruction. *)
-	  begin
+	   begin
+	    let cells' = rev_name_subst t in
 	    let t' = rev_name_subst t in
 	    match t' with
 	      FunApp({ f_cat = Name _; f_private = false },[]) ->
@@ -998,7 +999,7 @@ let rec init_rule state tree =
                 let recipe = Var (new_var "~M" (Terms.get_term_type t')) in
                 { state with
                   public = (recipe, t') :: state.public;
-	          hyp_not_matched = (Some recipe, Pred(p,[t']))::state.hyp_not_matched }
+	          hyp_not_matched = (Some recipe, Pred(p,[cells'; t']))::state.hyp_not_matched }
           end
         | _ ->
 	    let fact = rev_name_subst_fact tree.thefact in
@@ -1033,11 +1034,14 @@ let rec init_rule state tree =
 	    begin
 	      let (p,c) =
 		match tree.thefact with
-		  Pred(p,[t]) -> (p,rev_name_subst t)
+		  Pred(p,[_;t]) when p.p_prop land Param.pred_ATTACKER != 0 ->
+		       (p,rev_name_subst t)
+		|  Pred(p,[t]) -> (p,rev_name_subst t)
 		| _ -> Parsing_helper.internal_error "unexpected Apply clause"
               in
 	      let h = List.map (function
 	      { thefact = Pred(_,[t]) } -> (new_var "~X" (get_term_type t), rev_name_subst t)
+		| {thefact = Pred(p,[_;t]) } when p.p_prop land Param.pred_ATTACKER != 0 -> (new_var "~X" (get_term_type t), rev_name_subst t)
 	        |	_ -> Parsing_helper.internal_error "unexpected Apply clause") sons
               in
               let h' = decompose_list_rev h in

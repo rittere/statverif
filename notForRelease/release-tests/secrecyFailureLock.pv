@@ -9,15 +9,15 @@ cell s := (init,init).
 cell t := (init,init).
 
 let T =
-lock s;
-lock t;
+lock (s);
+lock (t);
 read s as x;
 read t as y;
 s := k;
 out (c, x);
 out (c, y);
-unlock s;
-unlock t.
+unlock (s);
+unlock (t).
 
 
 
