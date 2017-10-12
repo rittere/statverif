@@ -1280,16 +1280,33 @@ let do_query display_query = function
 	end;
       supplemental_info := []
 
+(* add state variables to the queries. This cannot be done during syntax check because we do not know the state variables at the time *)
+	
+let add_state_event e =
+  match e with
+    QFact(p, args) ->
+      (match p.p_info with
+	[Attacker(n,_)] | [Mess(n,_)] ->
+	  let args = Pitransl.add_state args in
+	  QFact(p, args)
+      | _ -> e)
+  | _ -> e
+     
+
+let rec add_state_hyp hs =
+  match hs with
+    [] -> []
+  | (NestedQuery rq)::hs ->(NestedQuery(add_state_realquery rq))::(add_state_hyp hs)
+  | (QEvent e)::hs -> (QEvent(add_state_event e))::(add_state_hyp hs)
+
+and add_state_realquery rq =
+  match rq with
+    Before(e, hll ) ->
+      Before(add_state_event e, List.map add_state_hyp hll)
+
 let add_state q =
   match q with
-    RealQuery (Before(e, [] )) ->
-      let e =
-	match e with
-	  QFact(att_n, [arg]) -> 
-	    let args = Pitransl.add_state arg in
-	    QFact(att_n, args)
-	| _ -> e
-      in RealQuery(Before(e, []))
+    RealQuery(rq) -> RealQuery(add_state_realquery rq)
   | _ -> q
 
 (* In a query 'F ==> H', F cannot contain function symbols 

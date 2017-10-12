@@ -29,4 +29,4 @@ open Types
 
 val transl : process -> reduction list
 val move_new : process -> process
-val add_state : term -> term list
+val add_state : term list -> term list

@@ -382,9 +382,9 @@ let new_state () =
         value = Var x }
     result) FunMap.empty !Param.cells
 
-let add_state arg =
+let add_state args =
   let fresh_cells = new_state () in
-  [get_state fresh_cells ; arg]
+  (get_state fresh_cells)::args
     
 let new_state_format () =
   FFunApp(Param.state_fun,
