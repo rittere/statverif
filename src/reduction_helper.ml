@@ -522,6 +522,7 @@ let rec process_subst p n1 n2 =
   | Barrier(n,tag,p,occ) -> Barrier(n,tag,process_subst p n1 n2,occ)
   | AnnBarrier _ ->
      Parsing_helper.internal_error "Annotated barriers should not appear here (14)"
+  | Open(st, p, occ) -> Open(st, process_subst p n1 n2, occ)
   | Lock(st, p, occ) -> Lock(st, process_subst p n1 n2, occ)
   | Unlock(st, p, occ) -> Unlock(st, process_subst p n1 n2, occ)
   | ReadAs(sp, p, occ) -> ReadAs(List.map (fun (s,p) -> s,pat_subst p n1 n2) sp, process_subst p n1 n2, occ)
