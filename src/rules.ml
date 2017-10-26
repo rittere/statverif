@@ -33,7 +33,7 @@ open Selfun
 
 let display_debug = ref false
 
-let default_time = Unix.times()
+let default_time = ref (Unix.times())
 
 (* let resol_step = ref 0 *)
 
@@ -439,7 +439,7 @@ let implies ((hyp1, concl1, _, constr1) as r1) ((hyp2, concl2, _, constr2) as r2
     end;
     let t0 =
       if !Param.profiling_subsumption then Unix.times()
-      else default_time in 
+      else !default_time in 
   try 
     Terms.auto_cleanup (fun () ->
       begin
@@ -1234,13 +1234,14 @@ let redundant_res res_list =
            (Pvqueue.length rule_queue);
        if !Param.execution_time > 0.0  then begin
 	 let current_time = Unix.times() in
-	 let time_used =  current_time.Unix.tms_utime -. default_time.Unix.tms_utime in
+	 let time_used =  current_time.Unix.tms_utime -. !default_time.Unix.tms_utime in
 		Printf.printf "Currently used time: %f seconds\n" time_used;
 		if time_used > !Param.execution_time then begin
 		  print_string "execution terminated because of timeout\n";
 		  exit 0
 		end
-       end; 
+       end;
+       default_time := Unix.times();
        (* display the rule *)
        if !Param.verbose_rules then
          Display.Text.display_rule rule
