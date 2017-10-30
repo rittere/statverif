@@ -1771,6 +1771,14 @@ let free_cell_vars t =
         FVar(Terms.new_var ("freecell_" ^ (s.f_name)) t))
         !Param.cells
 
+(* always eliminate attacker(_,x) *)
+let elim_attacker ty =
+    let state_var = new_state() in
+    let v = Terms.new_var_def ty in
+    let att_pred = Param.get_pred(Attacker(0,ty)) in
+    Rules.add_elimtrue(0,Pred(att_pred,[get_state state_var; v]))
+  
+    
 (* Global translation *)
 
 let transl p = 
@@ -1805,15 +1813,21 @@ let transl p =
   (* Check that injective events occur only once *)
   check_uniq_ev_proc p;
 
+  
   for i = 0 to !Param.max_used_phase do
     transl_attacker i;
     List.iter (fun t -> 
       (* The attacker has fail *)
       add_rule [] (att_fact state_var i (Terms.get_fail_term t)) [] Init;
 
+      (* always eliminate attacker(_,x) *)
+      elim_attacker t;
+
       let att_i = Param.get_pred (Attacker(i,t)) in
+      let seq_i = Param.get_pred(Seq(i)) in
       let v = Terms.new_var Param.def_var_name t in
       Selfun.add_no_unif (att_i, [(new_state_formatv());(FVar v)]) Selfun.never_select_weight;
+      Selfun.add_no_unif (seq_i, [(new_state_formatv());(new_state_formatv())]) Selfun.never_select_weight;
       if i > 0 then
 	(* It is enough to transmit only messages from one phase to the next
            because the attacker already has fail in all phases. *)

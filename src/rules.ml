@@ -302,7 +302,6 @@ let occur_count_constra v l =
 	In sound_mode, we always require that x1...xn do not occur in 
 	inequalities.
 ***********************************************************************)
-
 let elim_any_x (hypl', concl, histl', constra) =
   let (hypl'', _, histl'') = List.fold_right (fun hyp1 (hypl, nl, histl) ->
      match hyp1 with
@@ -311,16 +310,37 @@ let elim_any_x (hypl', concl, histl', constra) =
 	   try 
 	     let (n, ff) = List.find (fun (_, ff) ->
 	       let hyp1vlist = ref [] in
-	       Terms.get_vars_fact hyp1vlist hyp1;
 	       try
+	       (match hyp1 with
+		 Pred(p,[_;((Var _) as t)]) when (p.p_prop land Param.pred_ATTACKER != 0) -> begin
+		   if !Param.debug_output then begin
+		     Printf.printf "Checking whether attacker predicate is superfluous\n";
+		     Display.Text.display_fact hyp1;
+		     Printf.printf "\n";
+		     Display.Text.display_fact concl;
+		     Printf.printf "\n";
+		   end;
+		   Terms.get_vars hyp1vlist t
+		 end
+	       | _ -> (* Terms.get_vars_fact hyp1vlist hyp1 *)
+		  raise Unify);
+
 		 Terms.auto_cleanup (fun () -> 
 		   Terms.unify_facts ff hyp1;
 	       (* check that all modified variables of hyp1 do not 
 		  occur in the rest of R including inequalities *)
 		   List.iter (fun v ->
 		     let vt = Terms.follow_link (fun x -> Var x) (Var v) in
+		     if !Param.debug_output then begin
+		       Printf.printf "Obtained term ";
+		       Display.Text.display_term vt;
+		       Printf.printf " by unification\n";
+		       Printf.printf "Orginal variables is ";
+		       Display.Text.display_term (Var v);
+		       Printf.printf "\n"
+		     end;
 		     match vt with
-		       Var v' when v' == v -> ()
+		     (* Var v' when v' == v -> () *)
 		     | _ -> 
 			 if (occur_count v (concl :: hypl') > fact_occur_count v hyp1)
                        || (occur_count_constra v constra > 0) then raise Unify
