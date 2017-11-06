@@ -1053,7 +1053,7 @@ let rec init_rule state tree =
           | Rn _ ->
             begin
 	      match tree.thefact with
-                Pred(p, [t]) ->
+                Pred(p, [_;t]) ->
                   let t' = rev_name_subst t in
                   { state1 with prepared_attacker_rule = (p, [], (t', t'))::state1.prepared_attacker_rule }
               | _ ->

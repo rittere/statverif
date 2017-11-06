@@ -1239,7 +1239,7 @@ let redundant_res res_list =
 	   List.iter 
 	     (fun rule2 -> 
 	       if !Param.debug_output then begin 
-		 print_string "BACKWARDS WITH "; 
+		 Printf.printf "BACKWARDS (%d) WITH " sel_index; 
 		 Display.Text.display_rule rule2
 	       end; 
 	       compos normal_rule rule2 rule_sel) (!rule_base_ns);

@@ -1824,10 +1824,10 @@ let transl p =
       elim_attacker t;
 
       let att_i = Param.get_pred (Attacker(i,t)) in
-      let seq_i = Param.get_pred(Seq(i)) in
+      (*      let seq_i = Param.get_pred(Seq(i)) in *)
       let v = Terms.new_var Param.def_var_name t in
       Selfun.add_no_unif (att_i, [(new_state_formatv());(FVar v)]) Selfun.never_select_weight;
-      Selfun.add_no_unif (seq_i, [(new_state_formatv());(new_state_formatv())]) Selfun.never_select_weight;
+      (*      Selfun.add_no_unif (seq_i, [(new_state_formatv());(new_state_formatv())]) Selfun.never_select_weight; *)
       if i > 0 then
 	(* It is enough to transmit only messages from one phase to the next
            because the attacker already has fail in all phases. *)
