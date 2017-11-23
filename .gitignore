@@ -23,3 +23,8 @@ src/pitparser.mli
 src/_build
 src/main.byte
 src/main.native
+src/statveriftotex.native
+debian/files
+debian/debhelper-build-stamp
+debian/statverif.debhelper.log
+debian/statverif.substvars
