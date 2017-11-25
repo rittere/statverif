@@ -1,8 +1,10 @@
-statverif (1.97pl1) UNRELEASED; urgency=medium
+statverif (1.97pl1.1) UNRELEASED; urgency=medium
 
-  * new upstream release of proverif.
+  * Bugfixes.
+  * 
+  * 
 
- -- Eike Ritter <exr@cca-1239.cs.bham.ac.uk>  Fri, 22 Sep 2017 13:39:07 +0100
+ -- Eike Ritter <ubuntu@rittere.co.uk>  Thu, 23 Nov 2017 21:26:20 +0000
 
 statverif (1.97-1) unstable; urgency=medium
 
