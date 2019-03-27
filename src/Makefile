@@ -2,6 +2,7 @@ prefix=/usr/local
 
 all:
 	ocamlbuild -use-ocamlfind main.native
+	ocamlbuild -use-ocamlfind main.byte
 	ocamlbuild -use-ocamlfind statveriftotex.native
 
 clean:

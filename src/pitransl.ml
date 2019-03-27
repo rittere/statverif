@@ -324,7 +324,8 @@ type cell_state =
   }
 
 type transl_state = 
-    { hypothesis : fact list; (* Current hypotheses of the rule *)
+  { hypothesis : fact list; (* Current hypotheses of the rule *)
+    isAssignmentHyp: bool list; (* is hypothesis assignment *)
       constra : constraints list list; (* Current constraints of the rule *)
       unif : (term * term) list; (* Current unifications. 
 	 I keep the field unif here, since I use it for determining 
@@ -410,7 +411,8 @@ let update_cells ts =
     cur_cells = new_cells;
     hypothesis = (Pred(Param.get_pred (Seq(ts.cur_phase)),
                        [get_state old_cells; get_state new_cells]))
-                 :: ts.hypothesis;
+                    :: ts.hypothesis;
+    isAssignmentHyp = false::ts.isAssignmentHyp;
     (* hyp_tags = SequenceTag :: ts.hyp_tags } *)
     hyp_tags = ts.hyp_tags }
 
@@ -450,9 +452,30 @@ let testunif_fact t1 t2 =
 
 let remove_snd_comp l = List.map (fun (x,_,y,z) -> (x,y,z)) l
 
-let output_rule { hypothesis = prev_input; constra = constra; unif = unif;
+let rec eliminateAssignmentHyp hyps isAssignments =
+  match hyps, isAssignments  with
+  | [], []  ->  []
+  | h::hyps, isAssign::isAssignments ->
+     if isAssign then
+       eliminateAssignmentHyp hyps isAssignments
+     else
+       h::(eliminateAssignmentHyp hyps isAssignments)
+  | _ -> begin
+    Printf.printf "Have %d hypotheses and %d booleans\n" (List.length hyps) (List.length isAssignments);
+    List.iter
+      (fun h ->
+	Printf.printf "hypothesis is ";
+	Display.Text.display_fact h;
+	Printf.printf "\n")
+      hyps;
+    assert false
+  end
+    
+
+let output_rule { hypothesis = prev_input; isAssignmentHyp = isAssignmentHyp; constra = constra; unif = unif;
 		  last_step_unif = lsu;  
 		  hyp_tags = hyp_tags; name_params = name_params1 } out_fact =
+   let prev_input = eliminateAssignmentHyp prev_input isAssignmentHyp in
    let name_params = Reduction_helper.extract_name_params_noneed (remove_snd_comp name_params1) in
    Terms.auto_cleanup (fun _ ->
      assert (lsu == []); (* "last_step_unif should have been appended to unif" *)
@@ -638,6 +661,7 @@ let end_destructor_group next_f occ cur_state =
 	      let new_hyp = testunif_fact (FunApp(tuple_fun, l1)) (FunApp(tuple_fun, l2)) in
 	      output_rule { cur_state with 
                         hypothesis = new_hyp :: cur_state.hypothesis;
+		        isAssignmentHyp = false::cur_state.isAssignmentHyp;
 		        hyp_tags = TestUnifTag(occ) :: cur_state.hyp_tags;
 		        last_step_unif = [];
                         last_step_constra = [] } (Pred(bad_pred, []))
@@ -652,6 +676,7 @@ let end_destructor_group next_f occ cur_state =
 		let new_hyp = testunif_fact (FunApp(tuple_fun, l1)) (FunApp(tuple_fun, l2)) in
 		output_rule { cur_state with
 		          hypothesis = new_hyp :: cur_state.hypothesis;
+ 		          isAssignmentHyp = false::cur_state.isAssignmentHyp;
 		          hyp_tags = TestUnifTag(occ) :: cur_state.hyp_tags;
                           unif = cur_state.last_step_unif @ cur_state.unif;
 		          last_step_unif = [];
@@ -1021,7 +1046,8 @@ let rec transl_process cur_state process =
 	 begin
 	   if (!Param.key_compromise == 0) then
 	     transl_process { cur_state with 
-			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
+	                      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
+	                      isAssignmentHyp = false::cur_state.isAssignmentHyp;
 			      current_session_id = Some v;
 			      name_params = (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
@@ -1029,6 +1055,7 @@ let rec transl_process cur_state process =
 	   else if (!Param.key_compromise == 1) then
 	     transl_process { cur_state with 
 			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: (att_fact cur_state.cur_cells cur_state.cur_phase (Var comp_session_var)) :: cur_state.hypothesis;
+	                      isAssignmentHyp = false::cur_state.isAssignmentHyp;
 			      current_session_id = Some v;
 			      name_params = (MCompSid, comp_session_var, Var comp_session_var, Always) :: 
                                  (sid_meaning, v', Var v, Always) :: cur_state.name_params;
@@ -1037,7 +1064,8 @@ let rec transl_process cur_state process =
 	   else 
 	     transl_process { cur_state with 
 			      hypothesis = (att_fact cur_state.cur_cells cur_state.cur_phase (Var v)) :: cur_state.hypothesis;
-			      current_session_id = Some v;
+			      isAssignmentHyp = false::cur_state.isAssignmentHyp;
+	                      current_session_id = Some v;
 			      name_params = (MCompSid, v', compromised_session, Always) :: 
                                  (sid_meaning, v', Var v, Always) :: cur_state.name_params;
 			      hyp_tags = (ReplTag(occ, count_params)) :: cur_state.hyp_tags
@@ -1116,7 +1144,8 @@ let rec transl_process cur_state process =
 	 end_destructor_group (fun cur_state2 ->
            if !Param.non_interference then
 	     output_rule { cur_state2 with 
-			   hypothesis = (testunif_fact pat1 Terms.true_term) :: cur_state2.hypothesis;
+	                   hypothesis = (testunif_fact pat1 Terms.true_term) :: cur_state2.hypothesis;
+	                   isAssignmentHyp = false::cur_state2.isAssignmentHyp;
 			   hyp_tags = TestUnifTag(occ) :: cur_state2.hyp_tags 
 			 } (Pred(bad_pred, []));
 	   Terms.auto_cleanup (fun _ ->
@@ -1149,6 +1178,7 @@ let rec transl_process cur_state process =
 	            { cur_state1 with 
 		      last_step_unif = (pat1, x) :: cur_state1.last_step_unif;
 		      hypothesis = (att_fact cur_state1.cur_cells cur_state1.cur_phase x) :: cur_state1.hypothesis;
+		      isAssignmentHyp = false::cur_state1.isAssignmentHyp;
 		      hyp_tags = (InputTag(occ)) :: cur_state1.hyp_tags 
 		    }
               ) cur_state pat;
@@ -1170,6 +1200,7 @@ let rec transl_process cur_state process =
 		      { cur_state3 with 
                         last_step_unif = (pat2, x) :: cur_state3.last_step_unif;
 		        hypothesis = (mess_fact cur_state3.cur_cells cur_state3.cur_phase pat1 x) :: cur_state3.hypothesis;
+		        isAssignmentHyp = false::cur_state3.isAssignmentHyp;
 		        hyp_tags = (InputTag(occ)) :: cur_state3.hyp_tags
 		      }
                   ) cur_state2 pat;
@@ -1208,7 +1239,8 @@ let rec transl_process cur_state process =
                    end_destructor_group (fun cur_state3 ->
          	     if !Param.non_interference then
                        output_rule { cur_state3 with
-                                     hyp_tags = (OutputPTag occ) :: cur_state3.hyp_tags }
+                            hyp_tags = (OutputPTag occ) :: cur_state3.hyp_tags;
+		       }
 			  (Pred(cur_state.output_pred, [patc]));
                      output_rule { cur_state3 with 
 				   hypothesis = replace_begin_out cur_state3.name_params cur_state3.hyp_tags cur_state3.hypothesis;
@@ -1282,6 +1314,7 @@ let rec transl_process cur_state process =
        end_destructor_group_no_test_unif (fun cur_state2 ->
          transl_process { cur_state2 with 
 			  hypothesis = f1 :: cur_state2.hypothesis;
+		          isAssignmentHyp = false::cur_state2.isAssignmentHyp;
 			  hyp_tags = LetFilterFact :: (LetFilterTag(occ)) :: cur_state2.hyp_tags
 			} p
        ) cur_state1
@@ -1316,7 +1349,8 @@ let rec transl_process cur_state process =
 	       | None -> FunApp(Terms.get_tuple_fun [], [])
 	     in
  	     output_rule { cur_state with 
-                           hypothesis = replace_begin_out cur_state.name_params cur_state.hyp_tags cur_state.hypothesis
+                           hypothesis = replace_begin_out cur_state.name_params cur_state.hyp_tags cur_state.hypothesis;
+     
 			 } (Pred(Param.end_pred_inj, [first_param; pat])) 
        | NonInj ->
 	  	   output_rule { cur_state with 
@@ -1341,6 +1375,7 @@ let rec transl_process cur_state process =
 		 (fun cur_state1 ->
 		   end_and_next_process { cur_state1 with 
 				    hypothesis = Out(pat_begin, make_out @ [get_occ_var occ, occ_cst]) :: cur_state1.hypothesis;
+		                    isAssignmentHyp = false::cur_state1.isAssignmentHyp;
 				    hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state1.hyp_tags
 				  } pat_begin
 		 ) occ cur_state0
@@ -1350,7 +1385,9 @@ let rec transl_process cur_state process =
 	     (no_fail (fun cur_state0 pat_begin -> end_destructor_group 
 		 (fun cur_state1 ->
 		   end_and_next_process { cur_state1 with 
-				    hypothesis = Pred(pred_begin_tmp, [pat_begin]) :: cur_state1.hypothesis;
+		                    hypothesis = Pred(pred_begin_tmp, [pat_begin]) :: cur_state1.hypothesis;
+           		            isAssignmentHyp = false::cur_state1.isAssignmentHyp;
+
 				    hyp_tags = BeginFact :: (BeginEvent(occ)) :: cur_state1.hyp_tags
 				  } pat_begin
 		 ) occ cur_state0
@@ -1374,6 +1411,7 @@ let rec transl_process cur_state process =
 	 end_destructor_group (fun cur_state3 -> transl_process cur_state3 p) occ 
 	   { cur_state2 with 
              hypothesis = (table_fact cur_state2.cur_phase pat1) :: cur_state2.hypothesis;
+	     isAssignmentHyp = false::cur_state2.isAssignmentHyp;
 	     hyp_tags = (GetTag(occ)) :: cur_state2.hyp_tags; 
              last_step_unif = (patt, Terms.true_term) :: cur_state2.last_step_unif }
 	   )) cur_state1 t
@@ -1430,8 +1468,8 @@ let rec transl_process cur_state process =
            let cur_state3 = { cur_state2 with
              cur_cells = updated_cells;
              hypothesis = (Pred(Param.get_pred (Seq(cur_state2.cur_phase)),
-                                [get_state cur_state2.cur_cells; get_state updated_cells]))
-                        :: cur_state2.hypothesis; (* TODO: Discard old hypotheses? *)
+                                [get_state cur_state2.cur_cells; get_state updated_cells])) :: cur_state2.hypothesis; (* TODO: Discard old hypotheses? *)
+     	     isAssignmentHyp = true::cur_state2.isAssignmentHyp;
              hyp_tags = SequenceTag :: cur_state2.hyp_tags
            } in
 
@@ -1927,7 +1965,7 @@ let transl p =
     | _ -> internal_error "should be a name 1")
     (!Param.freenames);
   transl_process 
-    { hypothesis = []; constra = []; unif = []; last_step_unif = [];
+    { hypothesis = []; isAssignmentHyp= []; constra = []; unif = []; last_step_unif = [];
       last_step_constra = []; neg_success_conditions = ref None; 
       name_params = []; repl_count = 0; current_session_id = None;
       is_below_begin = false; cur_cells = initial_state (); cur_phase = 0; 
