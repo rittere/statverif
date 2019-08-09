@@ -1,7 +1,7 @@
 Protocol verifier, copyright INRIA-CNRS, by Bruno Blanchet,
 Vincent Cheval, and Marc Sylvestre 2000-2017.
 StatVerif additions copyright University of Birmingham, Eike Ritter,
-Mark Ryan and Joshua Philips 2013-2017.
+Mark Ryan and Joshua Philips 2013-2019.
 
 This software can be used to prove secrecy and authenticity properties
 of cryptographic protocols.
