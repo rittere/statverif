@@ -296,7 +296,7 @@ let build_pred = function
   | Seq(i) ->
       { p_name = "seq" ^ (get_suffix i);
         p_type = [state_type; state_type];
-        p_prop = pred_STATEFUL;
+        p_prop = pred_STATEFUL + pred_SIMPEQ;
         p_info = [Seq(i)] }
   | Reach(i) ->
       { p_name = "reach" ^ (get_suffix i);
