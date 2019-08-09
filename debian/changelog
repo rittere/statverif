@@ -1,3 +1,11 @@
+statverif (1.97pl1.2) unstable; urgency=medium
+
+  * Congruence for equations with state added.
+  * 
+  * 
+
+ -- Eike Ritter <ubuntu@rittere.co.uk>  Fri, 09 Aug 2019 09:38:40 +0100
+
 statverif (1.97pl1.1) UNRELEASED; urgency=medium
 
   * Bugfixes.
@@ -11,3 +19,4 @@ statverif (1.97-1) unstable; urgency=medium
   * Initial release
 
  -- Eike Ritter <E.Ritter@cs.bham.ac.uk>  Fri, 28 Jul 2017 09:41:16 +0100
+ 
